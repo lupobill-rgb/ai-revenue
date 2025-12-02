@@ -35,6 +35,7 @@ import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LeadTimeline from "@/components/crm/LeadTimeline";
 import LeadScoring from "@/components/crm/LeadScoring";
+import { LeadNurturing } from "@/components/crm/LeadNurturing";
 import { format } from "date-fns";
 
 interface Lead {
@@ -265,6 +266,7 @@ export default function LeadDetail() {
                 <TabsList>
                   <TabsTrigger value="details">Details</TabsTrigger>
                   <TabsTrigger value="activity">Activity</TabsTrigger>
+                  <TabsTrigger value="nurturing">AI Nurturing</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="details" className="space-y-6 mt-4">
@@ -440,6 +442,10 @@ export default function LeadDetail() {
                       <LeadTimeline leadId={lead.id} />
                     </CardContent>
                   </Card>
+                </TabsContent>
+
+                <TabsContent value="nurturing" className="mt-4">
+                  <LeadNurturing lead={lead} onUpdate={fetchLead} />
                 </TabsContent>
               </Tabs>
             </div>

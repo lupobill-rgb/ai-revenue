@@ -27,6 +27,9 @@ verify_jwt = true
 [functions.campaign-optimizer]
 verify_jwt = true
 
+[functions.ai-lead-nurturing]
+verify_jwt = true
+
 [functions.campaign-orchestrator]
 verify_jwt = true
 
