@@ -36,6 +36,8 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import LeadTimeline from "@/components/crm/LeadTimeline";
 import LeadScoring from "@/components/crm/LeadScoring";
 import { LeadNurturing } from "@/components/crm/LeadNurturing";
+import { PredictiveAnalytics } from "@/components/crm/PredictiveAnalytics";
+import { ConversationIntelligence } from "@/components/crm/ConversationIntelligence";
 import { format } from "date-fns";
 
 interface Lead {
@@ -263,10 +265,12 @@ export default function LeadDetail() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
               <Tabs defaultValue="details">
-                <TabsList>
+                <TabsList className="flex-wrap h-auto">
                   <TabsTrigger value="details">Details</TabsTrigger>
                   <TabsTrigger value="activity">Activity</TabsTrigger>
-                  <TabsTrigger value="nurturing">AI Nurturing</TabsTrigger>
+                  <TabsTrigger value="nurturing">Nurturing</TabsTrigger>
+                  <TabsTrigger value="analytics">Analytics</TabsTrigger>
+                  <TabsTrigger value="intelligence">Intelligence</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="details" className="space-y-6 mt-4">
@@ -446,6 +450,14 @@ export default function LeadDetail() {
 
                 <TabsContent value="nurturing" className="mt-4">
                   <LeadNurturing lead={lead} onUpdate={fetchLead} />
+                </TabsContent>
+
+                <TabsContent value="analytics" className="mt-4">
+                  <PredictiveAnalytics lead={lead} onUpdate={fetchLead} />
+                </TabsContent>
+
+                <TabsContent value="intelligence" className="mt-4">
+                  <ConversationIntelligence lead={lead} />
                 </TabsContent>
               </Tabs>
             </div>
