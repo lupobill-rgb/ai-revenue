@@ -33,11 +33,13 @@ import {
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import LeadTimeline from "@/components/crm/LeadTimeline";
 import LeadScoring from "@/components/crm/LeadScoring";
 import { LeadNurturing } from "@/components/crm/LeadNurturing";
 import { PredictiveAnalytics } from "@/components/crm/PredictiveAnalytics";
 import { ConversationIntelligence } from "@/components/crm/ConversationIntelligence";
+import { EnhancedTimeline } from "@/components/crm/EnhancedTimeline";
+import { FollowUpScheduler } from "@/components/crm/FollowUpScheduler";
+import { LeadTagsManager } from "@/components/crm/LeadTagsManager";
 import { format } from "date-fns";
 
 interface Lead {
@@ -59,6 +61,7 @@ interface Lead {
   created_at: string;
   updated_at: string;
   last_contacted_at?: string;
+  next_follow_up_at?: string;
 }
 
 const VERTICALS = [
@@ -441,11 +444,7 @@ export default function LeadDetail() {
                 </TabsContent>
 
                 <TabsContent value="activity" className="mt-4">
-                  <Card>
-                    <CardContent className="pt-6">
-                      <LeadTimeline leadId={lead.id} />
-                    </CardContent>
-                  </Card>
+                  <EnhancedTimeline leadId={lead.id} />
                 </TabsContent>
 
                 <TabsContent value="nurturing" className="mt-4">
@@ -464,6 +463,19 @@ export default function LeadDetail() {
 
             <div className="space-y-6">
               <LeadScoring lead={lead} onUpdate={fetchLead} />
+
+              <FollowUpScheduler 
+                leadId={lead.id} 
+                leadName={`${lead.first_name} ${lead.last_name}`}
+                currentFollowUp={lead.next_follow_up_at}
+                onUpdate={fetchLead}
+              />
+
+              <LeadTagsManager
+                leadId={lead.id}
+                currentTags={lead.tags || null}
+                onUpdate={fetchLead}
+              />
 
               <Card>
                 <CardHeader>
