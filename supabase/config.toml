@@ -119,3 +119,9 @@ verify_jwt = true
 
 [functions.vapi-outbound-call]
 verify_jwt = true
+
+[functions.predictive-analytics]
+verify_jwt = true
+
+[functions.conversation-intelligence]
+verify_jwt = true
