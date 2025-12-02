@@ -14,6 +14,10 @@ import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LeadPipeline from "@/components/crm/LeadPipeline";
 import CRMDashboard from "@/components/crm/CRMDashboard";
+import { DealsPipeline } from "@/components/crm/DealsPipeline";
+import { TaskManager } from "@/components/crm/TaskManager";
+import { EmailSequences } from "@/components/crm/EmailSequences";
+import { CRMReports } from "@/components/crm/CRMReports";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,7 +55,7 @@ const CRM = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "list" | "pipeline">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "list" | "pipeline" | "deals" | "tasks" | "sequences" | "reports">("dashboard");
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -859,19 +863,35 @@ const CRM = () => {
           </div>
 
           {/* CRM Navigation Tabs */}
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "dashboard" | "list" | "pipeline")} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-6">
+            <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/50 p-1">
               <TabsTrigger value="dashboard" className="gap-2">
                 <BarChart3 className="h-4 w-4" />
                 Dashboard
               </TabsTrigger>
               <TabsTrigger value="list" className="gap-2">
                 <List className="h-4 w-4" />
-                List
+                Leads
               </TabsTrigger>
               <TabsTrigger value="pipeline" className="gap-2">
                 <LayoutGrid className="h-4 w-4" />
                 Pipeline
+              </TabsTrigger>
+              <TabsTrigger value="deals" className="gap-2">
+                <Building className="h-4 w-4" />
+                Deals
+              </TabsTrigger>
+              <TabsTrigger value="tasks" className="gap-2">
+                <Calendar className="h-4 w-4" />
+                Tasks
+              </TabsTrigger>
+              <TabsTrigger value="sequences" className="gap-2">
+                <Mail className="h-4 w-4" />
+                Sequences
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Reports
               </TabsTrigger>
             </TabsList>
 
@@ -1078,6 +1098,26 @@ const CRM = () => {
                   </CardContent>
                 </Card>
               )}
+            </TabsContent>
+
+            {/* Deals Tab */}
+            <TabsContent value="deals">
+              <DealsPipeline />
+            </TabsContent>
+
+            {/* Tasks Tab */}
+            <TabsContent value="tasks">
+              <TaskManager />
+            </TabsContent>
+
+            {/* Sequences Tab */}
+            <TabsContent value="sequences">
+              <EmailSequences />
+            </TabsContent>
+
+            {/* Reports Tab */}
+            <TabsContent value="reports">
+              <CRMReports />
             </TabsContent>
           </Tabs>
 
