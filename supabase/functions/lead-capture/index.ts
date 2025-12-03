@@ -1,9 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { verifyHmacSignature } from "../_shared/webhook.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-ubigrowth-signature, x-ubigrowth-timestamp",
 };
 
 serve(async (req) => {
@@ -12,7 +13,32 @@ serve(async (req) => {
   }
 
   try {
+    const rawBody = await req.text();
+
+    // Verify HMAC signature
+    const isValid = await verifyHmacSignature({
+      req,
+      rawBody,
+      headerName: "x-ubigrowth-signature",
+      secretEnv: "LEAD_CAPTURE_WEBHOOK_SECRET",
+      timestampHeader: "x-ubigrowth-timestamp",
+      toleranceMs: 5 * 60 * 1000,
+    });
+
+    if (!isValid) {
+      console.error("[lead-capture] Invalid or missing webhook signature");
+      return new Response(
+        JSON.stringify({ error: "Invalid signature" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const body = JSON.parse(rawBody);
     const {
+      workspaceId,
       firstName,
       lastName,
       email,
@@ -25,9 +51,19 @@ serve(async (req) => {
       utmCampaign,
       landingPageUrl,
       customFields,
-    } = await req.json();
+    } = body;
 
     // Validate required fields
+    if (!workspaceId) {
+      return new Response(
+        JSON.stringify({ error: "Missing required field: workspaceId" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     if (!firstName || !lastName || !email) {
       return new Response(
         JSON.stringify({ error: "Missing required fields: firstName, lastName, email" }),
@@ -55,11 +91,30 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Check if lead already exists
+    // Verify workspace exists
+    const { data: workspace, error: wsError } = await supabaseClient
+      .from("workspaces")
+      .select("id")
+      .eq("id", workspaceId)
+      .single();
+
+    if (wsError || !workspace) {
+      console.error("[lead-capture] Invalid workspace:", workspaceId);
+      return new Response(
+        JSON.stringify({ error: "Invalid workspace" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Check if lead already exists in this workspace
     const { data: existingLead } = await supabaseClient
       .from("leads")
       .select("id")
       .eq("email", email)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (existingLead) {
@@ -89,10 +144,13 @@ serve(async (req) => {
       // Log activity
       await supabaseClient.from("lead_activities").insert({
         lead_id: existingLead.id,
+        workspace_id: workspaceId,
         activity_type: "note",
         description: `Lead updated via landing page form`,
         metadata: { landing_page_url: landingPageUrl },
       });
+
+      console.log(`[lead-capture] Lead updated: ${email} in workspace ${workspaceId}`);
 
       return new Response(
         JSON.stringify({ 
@@ -195,10 +253,11 @@ serve(async (req) => {
     // Cap score at 100
     score = Math.min(score, 100);
 
-    // Create new lead
+    // Create new lead with workspace_id
     const { data, error } = await supabaseClient
       .from("leads")
       .insert({
+        workspace_id: workspaceId,
         first_name: firstName,
         last_name: lastName,
         email,
@@ -220,9 +279,10 @@ serve(async (req) => {
 
     if (error) throw error;
 
-    // Log initial activity
+    // Log initial activity with workspace_id
     await supabaseClient.from("lead_activities").insert({
       lead_id: data.id,
+      workspace_id: workspaceId,
       activity_type: "note",
       description: `New lead captured via landing page form`,
       metadata: { 
@@ -231,7 +291,7 @@ serve(async (req) => {
       },
     });
 
-    console.log(`New lead captured: ${email} (Score: ${score})`);
+    console.log(`[lead-capture] New lead captured: ${email} (Score: ${score}) in workspace ${workspaceId}`);
 
     return new Response(
       JSON.stringify({ 
@@ -244,7 +304,7 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("Error in lead-capture function:", error);
+    console.error("[lead-capture] Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return new Response(
       JSON.stringify({ error: errorMessage }),
