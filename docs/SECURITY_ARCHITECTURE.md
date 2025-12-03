@@ -516,6 +516,59 @@ if (!allowedDay) {
 > 1. Fetching workspace configuration (`workspace.settings`)
 > 2. Passing plan-specific `_max_count` values into the RPC
 
+### 9.4 Example: Rate Limit Costly User Functions (e.g., `generate-video`)
+
+**Policy:**
+
+| Scope | Limit | Window |
+|-------|-------|--------|
+| Per workspace | 10 video generations | 1 hour |
+| Per user | 5 video generations | 1 hour |
+
+**In `generate-video` function:**
+
+```typescript
+// After auth.getUser() and workspace resolution
+const userId = user.id;
+const workspaceKey = workspaceId;
+
+// Per-workspace hourly limit
+const { data: allowedWorkspace, error: rlWsErr } = await supabase
+  .rpc('check_and_increment_rate_limit', {
+    _scope: 'workspace',
+    _key: workspaceKey,
+    _endpoint: 'generate-video',
+    _window_seconds: 3600,
+    _max_count: 10,
+  });
+
+if (rlWsErr || !allowedWorkspace) {
+  return new Response(JSON.stringify({ error: 'Workspace video limit reached' }), {
+    status: 429,
+    headers: corsHeaders,
+  });
+}
+
+// Per-user hourly limit
+const { data: allowedUser, error: rlUserErr } = await supabase
+  .rpc('check_and_increment_rate_limit', {
+    _scope: 'user',
+    _key: userId,
+    _endpoint: 'generate-video',
+    _window_seconds: 3600,
+    _max_count: 5,
+  });
+
+if (rlUserErr || !allowedUser) {
+  return new Response(JSON.stringify({ error: 'User video limit reached' }), {
+    status: 429,
+    headers: corsHeaders,
+  });
+}
+
+// Proceed with video generation
+```
+
 ---
 
 ## 10. Revision History
