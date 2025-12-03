@@ -80,20 +80,40 @@ if (!isValid) {
 
 ### 1.2 Svix/Resend Webhook Verification
 
-**File:** `supabase/functions/_shared/svix-verify.ts`
+**File:** `supabase/functions/_shared/svix-verify.ts`  
+**Pattern:** Svix (HMAC-SHA256, base64)
 
-| Aspect | Detail |
-|--------|--------|
+#### Headers
+
+| Header | Purpose |
+|--------|---------|
+| `svix-id` | Unique message identifier |
+| `svix-timestamp` | Unix timestamp (seconds) |
+| `svix-signature` | Base64 HMAC signature(s) |
+
+#### Configuration
+
+| Setting | Value |
+|---------|-------|
 | Algorithm | HMAC-SHA256 (Svix standard) |
-| ID Header | `svix-id` |
-| Timestamp Header | `svix-timestamp` |
-| Signature Header | `svix-signature` |
-| Timestamp Tolerance | 5 minutes |
-| Secret Format | `whsec_` prefix + base64-encoded key |
-| Secret Env Variable | `RESEND_WEBHOOK_SECRET` |
-| Used By | `email-tracking-webhook`, `email-webhook` |
+| Secret Format | `whsec_*` (base64-encoded) |
+| Secret Env | `RESEND_WEBHOOK_SECRET` |
+| Tolerance | 5 minutes |
 
-**Usage:**
+#### Behavior
+
+1. **Delegate:** Svix verification algorithm
+2. **Reject:** On any verification failure
+
+#### Endpoints Using This Pattern
+
+| Endpoint | Purpose |
+|----------|---------|
+| `email-tracking-webhook` | Email delivery/open/click events |
+| `email-webhook` | General email events |
+
+#### Usage
+
 ```typescript
 import { verifySvixSignature } from "../_shared/svix-verify.ts";
 
@@ -102,6 +122,10 @@ const isValid = await verifySvixSignature({
   rawBody,
   secretEnv: "RESEND_WEBHOOK_SECRET",
 });
+
+if (!isValid) {
+  return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+}
 ```
 
 ---
