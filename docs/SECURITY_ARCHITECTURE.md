@@ -297,20 +297,14 @@ WHERE id = 'workspace-uuid';
 
 ## 5. Secrets Inventory
 
-| Secret Name | Purpose | Rotation Frequency | Used By |
-|-------------|---------|-------------------|---------|
-| `LEAD_CAPTURE_WEBHOOK_SECRET` | HMAC signing for external lead capture webhooks | Quarterly | `lead-capture` |
-| `RESEND_WEBHOOK_SECRET` | Svix verification for Resend email events | Per Resend rotation | `email-tracking-webhook`, `email-webhook` |
-| `INTERNAL_FUNCTION_SECRET` | Internal cron/admin function calls | Quarterly | `cron-daily-automation`, `daily-automation`, `capture-screenshot` |
-| `UG_ADMIN_BASIC_USER` | Basic auth username for admin endpoints | Annually | `capture-screenshot` |
-| `UG_ADMIN_BASIC_PASS` | Basic auth password for admin endpoints | Quarterly | `capture-screenshot` |
-| `PREVIEW_PASSWORD` | Legacy/preview protection | As needed | Various |
-| `SUPABASE_SERVICE_ROLE_KEY` | Internal-only database operations | Never (managed by Supabase) | Internal cron functions only |
-
-**Service Role Key Security:**
-- ⚠️ **NEVER** use in user-facing edge functions
-- ✅ Only use in internal/cron functions with secret header guard
-- ✅ Always validate `x-internal-secret` header before using
+| Secret Name | Purpose | Used By |
+|-------------|---------|---------|
+| `LEAD_CAPTURE_WEBHOOK_SECRET` | HMAC signing for lead capture | `lead-capture` |
+| `RESEND_WEBHOOK_SECRET` | Svix verification for Resend webhooks | `email-*-webhook` |
+| `INTERNAL_FUNCTION_SECRET` | Internal function authorization | cron + internal functions |
+| `UG_ADMIN_BASIC_USER` | HTTP Basic username | `capture-screenshot` |
+| `UG_ADMIN_BASIC_PASS` | HTTP Basic password | `capture-screenshot` |
+| `PREVIEW_PASSWORD` | Optional preview protection for surfaces | Any preview endpoint |
 
 ---
 
