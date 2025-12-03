@@ -13,12 +13,27 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    
+    // Use anon key + user's JWT for RLS enforcement
+    const authHeader = req.headers.get('Authorization');
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader || '' } }
+    });
 
-    console.log('Syncing campaign metrics...');
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      console.error('Authentication error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // Fetch all active campaigns with metrics
+    console.log(`[sync-campaign-metrics] User ${user.id} syncing campaign metrics...`);
+
+    // RLS will automatically filter to only campaigns the user has access to
     const { data: campaigns, error: campaignsError } = await supabase
       .from('campaigns')
       .select('*, assets!inner(created_by), campaign_metrics(*)')
@@ -80,7 +95,7 @@ serve(async (req) => {
         const costIncrement = budgetAllocated * 0.05 * hoursActive;
         const newCost = Math.min(existingMetrics.cost + costIncrement, budgetAllocated);
 
-        // Update metrics
+        // Update metrics - RLS will enforce workspace access
         const { error: updateError } = await supabase
           .from('campaign_metrics')
           .update({

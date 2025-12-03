@@ -445,7 +445,7 @@ const CRM = () => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token}`,
           },
-          body: JSON.stringify(scraperParams),
+          body: JSON.stringify({ ...scraperParams, workspaceId }),
         }
       );
 

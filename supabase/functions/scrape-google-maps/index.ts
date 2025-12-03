@@ -76,11 +76,18 @@ serve(async (req) => {
   }
 
   try {
-    const { location, businessType, radius = 5000, maxResults = 20 } = await req.json();
+    const { location, businessType, radius = 5000, maxResults = 20, workspaceId } = await req.json();
 
     if (!location || !businessType) {
       return new Response(
         JSON.stringify({ error: 'Location and business type are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!workspaceId) {
+      return new Response(
+        JSON.stringify({ error: 'Workspace ID is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -202,10 +209,14 @@ serve(async (req) => {
     const places = textSearchData.results.slice(0, maxResults);
 
     // Step 2: Get detailed information for each place
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    // Use anon key + user's JWT for RLS enforcement
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const authHeader = req.headers.get('Authorization');
+    
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader || '' } }
+    });
 
     // Get Firecrawl API key for owner extraction (optional)
     const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
@@ -215,11 +226,11 @@ serve(async (req) => {
       console.log('Firecrawl API key not found - owner extraction disabled');
     }
 
-    const authHeader = req.headers.get('Authorization');
-    const token = authHeader?.replace('Bearer ', '');
-    const { data: { user } } = await supabaseClient.auth.getUser(token || '');
+    // Get authenticated user - using the client with JWT already set
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
 
-    if (!user) {
+    if (authError || !user) {
+      console.error('Authentication error:', authError);
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -327,6 +338,7 @@ serve(async (req) => {
             owner_extracted: ownerInfo ? true : false,
           },
           created_by: user.id,
+          workspace_id: workspaceId,
         };
 
         const { data: newLead, error: insertError } = await supabaseClient
@@ -354,6 +366,7 @@ serve(async (req) => {
             total_reviews: details.user_ratings_total,
           },
           created_by: user.id,
+          workspace_id: workspaceId,
         });
 
         importedCount++;

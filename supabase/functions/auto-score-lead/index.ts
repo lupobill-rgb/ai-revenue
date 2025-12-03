@@ -19,12 +19,28 @@ serve(async (req) => {
   try {
     const { leadId } = await req.json();
 
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    
+    // Use anon key + user's JWT for RLS enforcement
+    const authHeader = req.headers.get('Authorization');
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader || '' } }
+    });
 
-    // Fetch lead data
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      console.error('Authentication error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[auto-score-lead] User ${user.id} scoring lead ${leadId}`);
+
+    // Fetch lead data - RLS will enforce workspace access
     const { data: lead, error: leadError } = await supabaseClient
       .from("leads")
       .select("*")
@@ -32,14 +48,14 @@ serve(async (req) => {
       .single();
 
     if (leadError || !lead) {
-      console.error("Lead not found:", leadError);
-      return new Response(JSON.stringify({ error: "Lead not found" }), {
+      console.error("Lead not found or access denied:", leadError);
+      return new Response(JSON.stringify({ error: "Lead not found or access denied" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Fetch lead activities for engagement scoring
+    // Fetch lead activities for engagement scoring - RLS enforced
     const { data: activities } = await supabaseClient
       .from("lead_activities")
       .select("activity_type, created_at")
@@ -140,7 +156,7 @@ serve(async (req) => {
     const finalScore = Math.min(score, 100);
     const previousScore = lead.score || 0;
 
-    // Update lead score if changed
+    // Update lead score if changed - RLS enforced
     if (finalScore !== previousScore) {
       const { error: updateError } = await supabaseClient
         .from("leads")
@@ -152,7 +168,7 @@ serve(async (req) => {
         throw updateError;
       }
 
-      // Log the score change
+      // Log the score change - RLS enforced
       await supabaseClient.from("lead_activities").insert({
         lead_id: leadId,
         activity_type: "score_updated",
@@ -162,6 +178,7 @@ serve(async (req) => {
           new_score: finalScore,
           breakdown: scoreBreakdown 
         },
+        workspace_id: lead.workspace_id,
       });
 
       console.log(`Lead ${leadId} score updated: ${previousScore} → ${finalScore}`);
