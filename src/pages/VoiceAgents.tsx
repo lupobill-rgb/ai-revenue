@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Phone, PhoneOff, Mic, MicOff, RefreshCw, AlertCircle, Loader2, Plus, Trash2, Edit, PhoneCall, Clock, BarChart3, Users, PhoneIncoming, PhoneOutgoing, Play, Pause, Volume2, ChevronDown, ChevronUp, MessageSquare, Zap, CheckCircle2, XCircle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Phone, PhoneOff, Mic, MicOff, RefreshCw, AlertCircle, Loader2, Plus, Trash2, Edit, PhoneCall, Clock, BarChart3, Users, PhoneIncoming, PhoneOutgoing, Play, Pause, Volume2, ChevronDown, ChevronUp, MessageSquare, Zap, CheckCircle2, XCircle, Database } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -87,6 +88,35 @@ interface VoiceCampaign {
 }
 
 const CHART_COLORS = ['#3b82f6', '#22c55e', '#a855f7', '#f97316', '#06b6d4', '#ef4444'];
+
+// Sample data for demo mode
+const SAMPLE_ASSISTANTS: VapiAssistant[] = [
+  { id: "asst-1", name: "Sales Outreach Agent", firstMessage: "Hi! I'm calling from your marketing platform. Do you have a moment?", model: "gpt-4o", voice: "alloy", createdAt: "2024-11-15" },
+  { id: "asst-2", name: "Customer Support Agent", firstMessage: "Hello! How can I help you today?", model: "gpt-4o", voice: "nova", createdAt: "2024-11-18" },
+  { id: "asst-3", name: "Appointment Scheduler", firstMessage: "Hi there! I'm calling to help schedule your consultation.", model: "gpt-4o-mini", voice: "shimmer", createdAt: "2024-11-20" },
+];
+
+const SAMPLE_PHONE_NUMBERS: VapiPhoneNumber[] = [
+  { id: "phone-1", number: "+1 (555) 123-4567", name: "Primary Sales Line", provider: "Twilio" },
+  { id: "phone-2", number: "+1 (555) 987-6543", name: "Support Hotline", provider: "Twilio" },
+];
+
+const SAMPLE_CALLS: VapiCall[] = [
+  { id: "call-1", type: "outboundPhoneCall", status: "ended", assistantId: "asst-1", customer: { number: "+1-555-0101", name: "Sarah Johnson" }, duration: 245, cost: 0.12, createdAt: new Date(Date.now() - 3600000).toISOString(), transcript: "Agent: Hi! I'm calling from your marketing platform...", summary: "Lead was interested in premium features. Scheduled demo for next week." },
+  { id: "call-2", type: "outboundPhoneCall", status: "ended", assistantId: "asst-1", customer: { number: "+1-555-0102", name: "Michael Chen" }, duration: 180, cost: 0.09, createdAt: new Date(Date.now() - 7200000).toISOString(), transcript: "Agent: Hello! Do you have a moment to discuss...", summary: "Contact requested callback next month." },
+  { id: "call-3", type: "inboundPhoneCall", status: "ended", assistantId: "asst-2", customer: { number: "+1-555-0103", name: "Emily Rodriguez" }, duration: 320, cost: 0.16, createdAt: new Date(Date.now() - 14400000).toISOString(), transcript: "Customer: Hi, I need help with my account...", summary: "Resolved billing inquiry successfully." },
+  { id: "call-4", type: "outboundPhoneCall", status: "no-answer", assistantId: "asst-1", customer: { number: "+1-555-0104", name: "David Thompson" }, duration: 0, cost: 0.01, createdAt: new Date(Date.now() - 21600000).toISOString() },
+  { id: "call-5", type: "inboundPhoneCall", status: "ended", assistantId: "asst-3", customer: { number: "+1-555-0105", name: "Jennifer Martinez" }, duration: 420, cost: 0.21, createdAt: new Date(Date.now() - 86400000).toISOString(), transcript: "Customer: I'd like to schedule a consultation...", summary: "Appointment booked for Thursday at 2pm." },
+];
+
+const SAMPLE_ANALYTICS: VapiAnalytics = {
+  totalCalls: 156,
+  completedCalls: 128,
+  totalDurationMinutes: 892,
+  averageCallDuration: 185,
+  callsByType: { outboundPhoneCall: 98, inboundPhoneCall: 58 },
+  callsByStatus: { ended: 128, "no-answer": 18, busy: 6, failed: 4 },
+};
 
 const AnalyticsCharts = ({ analytics, calls }: { analytics: VapiAnalytics | null; calls: VapiCall[] }) => {
   const callsByTypeData = useMemo(() => {
@@ -318,6 +348,13 @@ const VoiceAgents = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [activeTab, setActiveTab] = useState("call");
+  const [showSampleData, setShowSampleData] = useState(true);
+
+  // Display data (sample or real)
+  const displayAssistants = showSampleData && assistants.length === 0 ? SAMPLE_ASSISTANTS : assistants;
+  const displayPhoneNumbers = showSampleData && phoneNumbers.length === 0 ? SAMPLE_PHONE_NUMBERS : phoneNumbers;
+  const displayCalls = showSampleData && calls.length === 0 ? SAMPLE_CALLS : calls;
+  const displayAnalytics = showSampleData && !analytics ? SAMPLE_ANALYTICS : analytics;
 
   // Create assistant dialog
   const [showCreateDialog, setShowCreateDialog] = useState(false);
