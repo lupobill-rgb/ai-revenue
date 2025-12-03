@@ -853,6 +853,33 @@ export type Database = {
           },
         ]
       }
+      rate_limit_counters: {
+        Row: {
+          count: number
+          created_at: string | null
+          id: number
+          key: string
+          updated_at: string | null
+          window_start: string
+        }
+        Insert: {
+          count?: number
+          created_at?: string | null
+          id?: number
+          key: string
+          updated_at?: string | null
+          window_start: string
+        }
+        Update: {
+          count?: number
+          created_at?: string | null
+          id?: number
+          key?: string
+          updated_at?: string | null
+          window_start?: string
+        }
+        Relationships: []
+      }
       segments: {
         Row: {
           created_at: string
