@@ -16,6 +16,15 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    const { workspaceId } = await req.json();
+    
+    if (!workspaceId) {
+      return new Response(JSON.stringify({ error: 'workspaceId is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const now = new Date();
     const results = {
       contentPublished: 0,
@@ -25,12 +34,13 @@ serve(async (req) => {
       errors: [] as string[],
     };
 
-    console.log(`[Daily Automation] Starting at ${now.toISOString()}`);
+    console.log(`[Daily Automation] Starting for workspace ${workspaceId} at ${now.toISOString()}`);
 
-    // 1. Publish scheduled content
+    // 1. Publish scheduled content for this workspace
     const { data: scheduledContent, error: contentError } = await supabase
       .from('content_calendar')
       .select('*')
+      .eq('workspace_id', workspaceId)
       .eq('status', 'scheduled')
       .lte('scheduled_at', now.toISOString());
 
@@ -39,7 +49,6 @@ serve(async (req) => {
     } else if (scheduledContent && scheduledContent.length > 0) {
       for (const item of scheduledContent) {
         try {
-          // Deploy based on content type
           if (item.content_type === 'email' && item.asset_id) {
             await supabase.functions.invoke('email-deploy', {
               body: { assetId: item.asset_id }
@@ -50,7 +59,6 @@ serve(async (req) => {
             });
           }
 
-          // Mark as published
           await supabase
             .from('content_calendar')
             .update({ status: 'published', published_at: now.toISOString() })
@@ -68,10 +76,11 @@ serve(async (req) => {
       }
     }
 
-    // 2. Run campaign optimization
+    // 2. Run campaign optimization for this workspace
     const { data: activeCampaigns } = await supabase
       .from('campaigns')
       .select('id')
+      .eq('workspace_id', workspaceId)
       .in('status', ['active', 'scheduled']);
 
     if (activeCampaigns && activeCampaigns.length > 0) {
@@ -87,10 +96,11 @@ serve(async (req) => {
       }
     }
 
-    // 3. Process lead nurturing sequences
+    // 3. Process lead nurturing sequences for this workspace
     const { data: activeEnrollments } = await supabase
       .from('sequence_enrollments')
       .select('*, leads(*), email_sequences(*)')
+      .eq('workspace_id', workspaceId)
       .eq('status', 'active')
       .lte('next_email_at', now.toISOString());
 
@@ -111,7 +121,7 @@ serve(async (req) => {
     // 4. Sync campaign metrics
     try {
       await supabase.functions.invoke('sync-campaign-metrics', {
-        body: { syncAll: true }
+        body: { syncAll: true, workspaceId }
       });
       results.metricsSync = 1;
     } catch (e: unknown) {
@@ -119,8 +129,9 @@ serve(async (req) => {
       results.errors.push(`Metrics sync error: ${errorMsg}`);
     }
 
-    // 5. Log automation job
+    // 5. Log automation job for this workspace
     await supabase.from('automation_jobs').insert({
+      workspace_id: workspaceId,
       job_type: 'daily_automation',
       status: results.errors.length === 0 ? 'completed' : 'completed_with_errors',
       scheduled_at: now.toISOString(),
@@ -129,7 +140,7 @@ serve(async (req) => {
       result: results,
     });
 
-    console.log(`[Daily Automation] Completed:`, results);
+    console.log(`[Daily Automation] Completed for workspace ${workspaceId}:`, results);
 
     return new Response(JSON.stringify({ success: true, results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

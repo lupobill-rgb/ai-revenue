@@ -23,6 +23,10 @@ interface AutomationJob {
   error_message: string | null;
 }
 
+interface AutomationDashboardProps {
+  workspaceId: string;
+}
+
 const jobTypeLabels: Record<string, { label: string; icon: React.ReactNode }> = {
   daily_automation: { label: "Daily Automation", icon: <Zap className="h-4 w-4" /> },
   content_publish: { label: "Content Publish", icon: <Calendar className="h-4 w-4" /> },
@@ -39,7 +43,7 @@ const statusConfig: Record<string, { color: string; icon: React.ReactNode }> = {
   failed: { color: "bg-red-500/20 text-red-400", icon: <XCircle className="h-3 w-3" /> },
 };
 
-export default function AutomationDashboard() {
+export default function AutomationDashboard({ workspaceId }: AutomationDashboardProps) {
   const [jobs, setJobs] = useState<AutomationJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -53,14 +57,15 @@ export default function AutomationDashboard() {
 
   useEffect(() => {
     fetchJobs();
-    const interval = setInterval(fetchJobs, 30000); // Refresh every 30s
+    const interval = setInterval(fetchJobs, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [workspaceId]);
 
   const fetchJobs = async () => {
     const { data, error } = await supabase
       .from("automation_jobs")
       .select("*")
+      .eq("workspace_id", workspaceId)
       .order("scheduled_at", { ascending: false })
       .limit(50);
 
@@ -100,7 +105,9 @@ export default function AutomationDashboard() {
   const triggerDailyAutomation = async () => {
     setRunning(true);
     try {
-      const { error } = await supabase.functions.invoke("daily-automation");
+      const { error } = await supabase.functions.invoke("daily-automation", {
+        body: { workspaceId }
+      });
       
       if (error) throw error;
       toast.success("Daily automation triggered successfully!");
@@ -178,7 +185,7 @@ export default function AutomationDashboard() {
           </Button>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[400px]">
+          <ScrollArea className="h-[300px]">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -186,7 +193,7 @@ export default function AutomationDashboard() {
             ) : jobs.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <Zap className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No automation jobs yet</p>
+                <p>No automation jobs yet for this workspace</p>
                 <Button variant="outline" className="mt-4" onClick={triggerDailyAutomation}>
                   Run First Automation
                 </Button>
@@ -233,44 +240,6 @@ export default function AutomationDashboard() {
               </div>
             )}
           </ScrollArea>
-        </CardContent>
-      </Card>
-
-      {/* Automation Schedule Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Automation Schedule</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 rounded-lg border">
-              <div className="flex items-center gap-2 mb-2">
-                <Calendar className="h-4 w-4 text-blue-500" />
-                <span className="font-medium">Content Publishing</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Scheduled content is automatically published at the set time
-              </p>
-            </div>
-            <div className="p-4 rounded-lg border">
-              <div className="flex items-center gap-2 mb-2">
-                <BarChart3 className="h-4 w-4 text-green-500" />
-                <span className="font-medium">Campaign Optimization</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                AI analyzes performance and applies optimizations daily
-              </p>
-            </div>
-            <div className="p-4 rounded-lg border">
-              <div className="flex items-center gap-2 mb-2">
-                <Mail className="h-4 w-4 text-purple-500" />
-                <span className="font-medium">Lead Nurturing</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Email sequences are sent automatically based on schedule
-              </p>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

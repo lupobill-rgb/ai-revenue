@@ -27,6 +27,10 @@ interface ContentItem {
   content: Json;
 }
 
+interface ContentCalendarProps {
+  workspaceId: string;
+}
+
 const contentTypeIcons: Record<string, React.ReactNode> = {
   email: <Mail className="h-4 w-4" />,
   social: <Share2 className="h-4 w-4" />,
@@ -41,7 +45,7 @@ const statusColors: Record<string, string> = {
   cancelled: "bg-muted text-muted-foreground",
 };
 
-export default function ContentCalendar() {
+export default function ContentCalendar({ workspaceId }: ContentCalendarProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +60,7 @@ export default function ContentCalendar() {
 
   useEffect(() => {
     fetchContent();
-  }, [selectedDate]);
+  }, [selectedDate, workspaceId]);
 
   const fetchContent = async () => {
     const start = startOfMonth(selectedDate);
@@ -65,6 +69,7 @@ export default function ContentCalendar() {
     const { data, error } = await supabase
       .from("content_calendar")
       .select("*")
+      .eq("workspace_id", workspaceId)
       .gte("scheduled_at", start.toISOString())
       .lte("scheduled_at", end.toISOString())
       .order("scheduled_at", { ascending: true });
@@ -90,6 +95,7 @@ export default function ContentCalendar() {
       channel: newContent.channel || null,
       scheduled_at: new Date(newContent.scheduled_at).toISOString(),
       content: { description: newContent.description },
+      workspace_id: workspaceId,
     });
 
     if (error) {
@@ -134,166 +140,154 @@ export default function ContentCalendar() {
   const datesWithContent = contentItems.map((item) => new Date(item.scheduled_at));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Calendar */}
-      <Card className="lg:col-span-1">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarIcon className="h-5 w-5" />
-            Content Calendar
-          </CardTitle>
-          <CardDescription>Schedule and manage content across channels</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Calendar
-            mode="single"
-            selected={selectedDate}
-            onSelect={(date) => date && setSelectedDate(date)}
-            modifiers={{
-              hasContent: datesWithContent,
-            }}
-            modifiersStyles={{
-              hasContent: { fontWeight: "bold", textDecoration: "underline" },
-            }}
-            className="rounded-md border"
-          />
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="w-full mt-4">
-                <Plus className="h-4 w-4 mr-2" />
-                Schedule Content
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Schedule New Content</DialogTitle>
-                <DialogDescription>Add content to your calendar for automated publishing</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 mt-4">
-                <div>
-                  <Label>Title</Label>
-                  <Input
-                    value={newContent.title}
-                    onChange={(e) => setNewContent({ ...newContent, title: e.target.value })}
-                    placeholder="e.g., Weekly Newsletter"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Content Type</Label>
-                    <Select
-                      value={newContent.content_type}
-                      onValueChange={(v) => setNewContent({ ...newContent, content_type: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="email">Email</SelectItem>
-                        <SelectItem value="social">Social Media</SelectItem>
-                        <SelectItem value="video">Video</SelectItem>
-                        <SelectItem value="voice">Voice</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Channel</Label>
-                    <Input
-                      value={newContent.channel}
-                      onChange={(e) => setNewContent({ ...newContent, channel: e.target.value })}
-                      placeholder="e.g., LinkedIn"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label>Scheduled Date & Time</Label>
-                  <Input
-                    type="datetime-local"
-                    value={newContent.scheduled_at}
-                    onChange={(e) => setNewContent({ ...newContent, scheduled_at: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Description</Label>
-                  <Textarea
-                    value={newContent.description}
-                    onChange={(e) => setNewContent({ ...newContent, description: e.target.value })}
-                    placeholder="Brief description or notes..."
-                  />
-                </div>
-                <Button onClick={handleCreate} className="w-full">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <CalendarIcon className="h-5 w-5" />
+          Content Calendar
+        </CardTitle>
+        <CardDescription>Schedule and manage content across channels</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Calendar */}
+          <div>
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={(date) => date && setSelectedDate(date)}
+              modifiers={{
+                hasContent: datesWithContent,
+              }}
+              modifiersStyles={{
+                hasContent: { fontWeight: "bold", textDecoration: "underline" },
+              }}
+              className="rounded-md border"
+            />
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="w-full mt-4">
+                  <Plus className="h-4 w-4 mr-2" />
                   Schedule Content
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </CardContent>
-      </Card>
-
-      {/* Selected Date Content */}
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle>{format(selectedDate, "EEEE, MMMM d, yyyy")}</CardTitle>
-          <CardDescription>
-            {selectedDateContent.length} item{selectedDateContent.length !== 1 ? "s" : ""} scheduled
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-[400px]">
-            {selectedDateContent.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <CalendarIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No content scheduled for this date</p>
-                <Button variant="outline" className="mt-4" onClick={() => setDialogOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Content
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {selectedDateContent.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between p-4 rounded-lg border bg-card"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        {contentTypeIcons[item.content_type] || <CalendarIcon className="h-4 w-4" />}
-                      </div>
-                      <div>
-                        <h4 className="font-medium">{item.title}</h4>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {format(new Date(item.scheduled_at), "h:mm a")}
-                          {item.channel && (
-                            <>
-                              <span>•</span>
-                              <span>{item.channel}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Schedule New Content</DialogTitle>
+                  <DialogDescription>Add content to your calendar for automated publishing</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 mt-4">
+                  <div>
+                    <Label>Title</Label>
+                    <Input
+                      value={newContent.title}
+                      onChange={(e) => setNewContent({ ...newContent, title: e.target.value })}
+                      placeholder="e.g., Weekly Newsletter"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Content Type</Label>
+                      <Select
+                        value={newContent.content_type}
+                        onValueChange={(v) => setNewContent({ ...newContent, content_type: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="email">Email</SelectItem>
+                          <SelectItem value="social">Social Media</SelectItem>
+                          <SelectItem value="video">Video</SelectItem>
+                          <SelectItem value="voice">Voice</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={statusColors[item.status]}>
-                        {item.status}
-                      </Badge>
-                      {item.status === "scheduled" && (
-                        <Button size="sm" variant="ghost" onClick={() => handlePublishNow(item.id)}>
-                          <Send className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button size="sm" variant="ghost" onClick={() => handleDelete(item.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                    <div>
+                      <Label>Channel</Label>
+                      <Input
+                        value={newContent.channel}
+                        onChange={(e) => setNewContent({ ...newContent, channel: e.target.value })}
+                        placeholder="e.g., LinkedIn"
+                      />
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-        </CardContent>
-      </Card>
-    </div>
+                  <div>
+                    <Label>Scheduled Date & Time</Label>
+                    <Input
+                      type="datetime-local"
+                      value={newContent.scheduled_at}
+                      onChange={(e) => setNewContent({ ...newContent, scheduled_at: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Description</Label>
+                    <Textarea
+                      value={newContent.description}
+                      onChange={(e) => setNewContent({ ...newContent, description: e.target.value })}
+                      placeholder="Brief description or notes..."
+                    />
+                  </div>
+                  <Button onClick={handleCreate} className="w-full">
+                    Schedule Content
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {/* Selected Date Content */}
+          <div>
+            <h3 className="font-semibold mb-2">{format(selectedDate, "EEEE, MMMM d, yyyy")}</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {selectedDateContent.length} item{selectedDateContent.length !== 1 ? "s" : ""} scheduled
+            </p>
+            <ScrollArea className="h-[300px]">
+              {selectedDateContent.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CalendarIcon className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm">No content scheduled</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedDateContent.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          {contentTypeIcons[item.content_type] || <CalendarIcon className="h-4 w-4" />}
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-sm">{item.title}</h4>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            {format(new Date(item.scheduled_at), "h:mm a")}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className={`text-xs ${statusColors[item.status]}`}>
+                          {item.status}
+                        </Badge>
+                        {item.status === "scheduled" && (
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handlePublishNow(item.id)}>
+                            <Send className="h-3 w-3" />
+                          </Button>
+                        )}
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(item.id)}>
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
