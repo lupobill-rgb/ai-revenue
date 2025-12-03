@@ -398,22 +398,53 @@ CREATE INDEX rate_limit_gc_idx
 ```
 
 > ⚠️ **Note:** RLS is NOT enabled on this table. This is internal metering, accessed only by Edge Functions via service-role or guarded anon+JWT.
-├─────────────────────────────────────────────────────────────────────────┤
-│   ┌─────────────────────────────────────────────────────────────────┐   │
-│   │                    RLS ENFORCEMENT LAYER                         │   │
-│   │   • user_has_workspace_access()                                  │   │
-│   │   • has_role()                                                   │   │
-│   │   • check_workspace_form_password()                              │   │
-│   └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│   Tables: workspaces, leads, campaigns, assets, deals, tasks, ...       │
-│   Extensions: pgcrypto (bcrypt)                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+
+### 9.2 Rate Limit Function (Atomic Check + Increment)
+
+**Migration:**
+
+```sql
+CREATE OR REPLACE FUNCTION public.check_and_increment_rate_limit(
+  _scope          text,
+  _key            text,
+  _endpoint       text,
+  _window_seconds integer,
+  _max_count      integer
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_now          timestamptz := now();
+  v_window_start timestamptz;
+  v_new_count    integer;
+BEGIN
+  -- Align window_start to the floor of window_seconds
+  v_window_start :=
+    to_timestamp(floor(extract(epoch FROM v_now) / _window_seconds) * _window_seconds);
+
+  -- Upsert counter in a single statement
+  INSERT INTO public.rate_limit_counters (scope, key, endpoint, window_start, count)
+  VALUES (_scope, _key, _endpoint, v_window_start, 1)
+  ON CONFLICT (scope, key, endpoint, window_start)
+  DO UPDATE SET count = public.rate_limit_counters.count + 1
+  RETURNING count INTO v_new_count;
+
+  RETURN v_new_count <= _max_count;
+END;
+$$;
 ```
+
+**This provides a general primitive:**
+
+- Windowed counter (per scope + key + endpoint)
+- Atomic increment
+- Boolean "allowed / blocked" response
 
 ---
 
-## 12. Revision History
+## 10. Revision History
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
