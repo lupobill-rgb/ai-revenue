@@ -569,6 +569,37 @@ if (rlUserErr || !allowedUser) {
 // Proceed with video generation
 ```
 
+### 9.5 Operational Notes
+
+#### Garbage Collection (GC)
+
+Use `rate_limit_gc_idx` + a scheduled job to delete old rows (keep last 30–90 days):
+
+```sql
+DELETE FROM public.rate_limit_counters
+WHERE window_start < now() - interval '90 days';
+```
+
+#### Per-Plan Limits
+
+Store limits in `workspaces.settings` JSON:
+
+```json
+{
+  "limits": {
+    "lead_capture_per_minute": 60,
+    "lead_capture_per_day": 2000,
+    "video_per_hour": 10
+  }
+}
+```
+
+Read these values inside the Edge Function instead of hardcoding.
+
+#### Abuse Detection
+
+Log 429 responses to `automation_jobs` or a separate `security_events` table if you want an audit trail for abuse.
+
 ---
 
 ## 10. Revision History
