@@ -1192,6 +1192,10 @@ export type Database = {
         Args: { approval_asset_id: string }
         Returns: boolean
       }
+      check_and_increment_rate_limit: {
+        Args: { max_requests: number; rate_key: string; window_seconds: number }
+        Returns: boolean
+      }
       check_workspace_form_password: {
         Args: { _password: string; _workspace_id: string }
         Returns: boolean
