@@ -308,60 +308,14 @@ WHERE id = 'workspace-uuid';
 
 ---
 
-## 6. Shared Helper Functions
+## 6. Shared Security Helpers
 
-### 6.1 `_shared/webhook.ts`
-
-```typescript
-export async function verifyHmacSignature(opts: {
-  req: Request;
-  rawBody: string;
-  headerName: string;      // e.g. "x-ubigrowth-signature"
-  secretEnv: string;       // e.g. "WEBHOOK_SHARED_SECRET"
-  toleranceMs?: number;    // default: 300000 (5 min)
-  timestampHeader?: string; // e.g. "x-ubigrowth-timestamp"
-}): Promise<boolean>
-```
-
-### 6.2 `_shared/svix-verify.ts`
-
-```typescript
-export async function verifySvixSignature(opts: {
-  req: Request;
-  rawBody: string;
-  secretEnv: string;       // e.g. "RESEND_WEBHOOK_SECRET"
-  toleranceMs?: number;    // default: 300000 (5 min)
-}): Promise<boolean>
-```
-
-### 6.3 `_shared/basic-auth.ts`
-
-```typescript
-export function requireBasicAuth(
-  req: Request,
-  userEnv: string,   // e.g. "UG_ADMIN_BASIC_USER"
-  passEnv: string    // e.g. "UG_ADMIN_BASIC_PASS"
-): boolean
-
-export function basicAuthResponse(
-  realm?: string,
-  corsHeaders?: Record<string, string>
-): Response
-```
-
-### 6.4 `_shared/workspace-password.ts`
-
-```typescript
-export async function checkWorkspaceFormPassword(
-  workspaceId: string,
-  providedPassword: string | null
-): Promise<boolean>
-
-export function extractPasswordFromRequest(
-  req: Request,
-  body?: Record<string, unknown>
-): string | null
-```
+| File | Exports | Purpose |
+|------|---------|---------|
+| `_shared/webhook.ts` | `verifyHmacSignature()` | Custom HMAC verification (UbiGrowth headers) |
+| `_shared/svix-verify.ts` | `verifySvixSignature()` | Resend/Svix webhook verification |
+| `_shared/basic-auth.ts` | `requireBasicAuth()`, `basicAuthResponse()` | HTTP Basic authentication |
+| `_shared/workspace-password.ts` | `checkWorkspaceFormPassword()`, `extractPasswordFromRequest()` | Per-tenant form password gating |
 
 ---
 
