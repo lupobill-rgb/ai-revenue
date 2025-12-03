@@ -3,8 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-secret',
 };
+
+// Internal secret for cron/orchestration calls
+const INTERNAL_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') || 'ubigrowth-internal-2024';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -16,20 +19,26 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    const { contentId, action, workspaceId } = await req.json();
+    const body = await req.json();
+    const { contentId, action, workspaceId, internal } = body;
     const authHeader = req.headers.get('Authorization');
+    const internalSecret = req.headers.get('x-internal-secret');
 
-    // For user-initiated requests, use anon key + JWT for RLS
-    // For internal/cron requests, use service role
-    const isUserRequest = authHeader && authHeader.startsWith('Bearer ');
-    
-    let supabase;
-    let userId: string | null = null;
+    // =========================================================
+    // PATH 1: User-facing "publish_now" action
+    // Uses anon key + JWT, RLS enforces workspace access
+    // =========================================================
+    if (action === 'publish_now' && contentId) {
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return new Response(
+          JSON.stringify({ error: 'Authorization required for publish_now' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    if (isUserRequest) {
       // User request: use anon key + JWT for RLS enforcement
-      supabase = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader! } }
+      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } }
       });
 
       const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -39,16 +48,10 @@ serve(async (req) => {
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      userId = user.id;
-      console.log(`[publish-scheduled-content] User ${userId} initiated request`);
-    } else {
-      // Internal/cron request: use service role (no user context)
-      supabase = createClient(supabaseUrl, serviceRoleKey);
-      console.log('[publish-scheduled-content] Internal/cron request');
-    }
 
-    // Publish a specific content item immediately
-    if (action === 'publish_now' && contentId) {
+      console.log(`[publish-scheduled-content] User ${user.id} publishing content ${contentId}`);
+
+      // RLS ensures user can only access content in their workspace
       const { data: content, error } = await supabase
         .from('content_calendar')
         .select('*, assets(*)')
@@ -57,35 +60,28 @@ serve(async (req) => {
 
       if (error) throw error;
       if (!content) {
-        return new Response(JSON.stringify({ error: 'Content not found' }), {
+        return new Response(JSON.stringify({ error: 'Content not found or access denied' }), {
           status: 404,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      // For user requests, RLS already verified access
-      // For service requests, we trust the caller
-      if (isUserRequest) {
-        console.log(`[publish-scheduled-content] User ${userId} publishing content ${contentId}`);
-      }
-
       let deployResult = null;
 
-      // Use service role for calling other functions (they have their own auth)
-      const serviceSupa = createClient(supabaseUrl, serviceRoleKey);
-
+      // Call deploy functions - they need the user's auth context
       if (content.content_type === 'email' && content.asset_id) {
-        const { data } = await serviceSupa.functions.invoke('email-deploy', {
+        const { data } = await supabase.functions.invoke('email-deploy', {
           body: { assetId: content.asset_id }
         });
         deployResult = data;
       } else if (content.content_type === 'social' && content.asset_id) {
-        const { data } = await serviceSupa.functions.invoke('social-deploy', {
+        const { data } = await supabase.functions.invoke('social-deploy', {
           body: { assetId: content.asset_id }
         });
         deployResult = data;
       }
 
+      // Update via RLS-protected client
       await supabase
         .from('content_calendar')
         .update({ 
@@ -101,7 +97,25 @@ serve(async (req) => {
       });
     }
 
-    // Batch publish requires workspaceId for multi-tenant scoping
+    // =========================================================
+    // PATH 2: Internal batch publish (cron/orchestration only)
+    // Requires x-internal-secret header + workspaceId
+    // =========================================================
+    if (internalSecret !== INTERNAL_SECRET) {
+      console.error('[publish-scheduled-content] Invalid or missing x-internal-secret for batch operation');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Batch operations require internal secret' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!internal) {
+      return new Response(
+        JSON.stringify({ error: 'Batch operations require internal flag' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (!workspaceId) {
       return new Response(JSON.stringify({ error: 'workspaceId required for batch operations' }), {
         status: 400,
@@ -109,8 +123,10 @@ serve(async (req) => {
       });
     }
 
-    // For user requests, RLS ensures they can only see their workspace content
-    // For service requests, we filter by workspaceId explicitly
+    console.log(`[publish-scheduled-content] Internal batch publish for workspace ${workspaceId}`);
+
+    // Internal request: use service role for batch operations
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     // Check and publish all due content for this workspace
     const now = new Date();
@@ -126,17 +142,15 @@ serve(async (req) => {
     const published: string[] = [];
     const failed: { id: string; error: string }[] = [];
 
-    // Use service role for calling other functions
-    const serviceSupa = createClient(supabaseUrl, serviceRoleKey);
-
     for (const item of dueContent || []) {
       try {
+        // Call deploy functions with internal context
         if (item.content_type === 'email' && item.asset_id) {
-          await serviceSupa.functions.invoke('email-deploy', {
+          await supabase.functions.invoke('email-deploy', {
             body: { assetId: item.asset_id }
           });
         } else if (item.content_type === 'social' && item.asset_id) {
-          await serviceSupa.functions.invoke('social-deploy', {
+          await supabase.functions.invoke('social-deploy', {
             body: { assetId: item.asset_id }
           });
         }
@@ -144,7 +158,8 @@ serve(async (req) => {
         await supabase
           .from('content_calendar')
           .update({ status: 'published', published_at: now.toISOString() })
-          .eq('id', item.id);
+          .eq('id', item.id)
+          .eq('workspace_id', workspaceId); // Extra safety
 
         published.push(item.id);
       } catch (e: unknown) {
@@ -152,14 +167,15 @@ serve(async (req) => {
         await supabase
           .from('content_calendar')
           .update({ status: 'failed' })
-          .eq('id', item.id);
+          .eq('id', item.id)
+          .eq('workspace_id', workspaceId);
         failed.push({ id: item.id, error: errorMsg });
       }
     }
 
     console.log(`[publish-scheduled-content] Workspace ${workspaceId}: ${published.length} published, ${failed.length} failed`);
 
-    return new Response(JSON.stringify({ published, failed }), {
+    return new Response(JSON.stringify({ success: true, workspaceId, published, failed }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: unknown) {
