@@ -3,8 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-secret',
 };
+
+// Internal secret for cron/orchestration calls
+const INTERNAL_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') || 'ubigrowth-internal-2024';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -12,7 +15,25 @@ serve(async (req) => {
   }
 
   try {
-    const { workspaceId } = await req.json();
+    // Verify internal secret header - blocks direct frontend calls
+    const internalSecret = req.headers.get('x-internal-secret');
+    if (internalSecret !== INTERNAL_SECRET) {
+      console.error('[schedule-campaigns] Invalid or missing x-internal-secret header');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Internal functions require secret header' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { workspaceId, internal } = await req.json();
+
+    // Double-check this is an internal call
+    if (!internal) {
+      return new Response(
+        JSON.stringify({ error: 'This function is for internal use only' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Require workspaceId for tenant isolation
     if (!workspaceId) {
