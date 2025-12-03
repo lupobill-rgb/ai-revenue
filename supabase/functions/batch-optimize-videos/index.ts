@@ -12,18 +12,29 @@ serve(async (req) => {
   }
 
   try {
+    const { workspaceId } = await req.json();
+
+    // Require workspaceId for tenant isolation
+    if (!workspaceId) {
+      return new Response(
+        JSON.stringify({ error: 'workspaceId is required for tenant isolation' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('Starting batch video optimization for pending approvals...');
+    console.log(`[batch-optimize-videos] Starting optimization for workspace ${workspaceId}...`);
 
-    // Fetch all video assets in review status
+    // Fetch all video assets in review status - SCOPED BY WORKSPACE
     const { data: pendingAssets, error: fetchError } = await supabase
       .from('assets')
       .select('*')
+      .eq('workspace_id', workspaceId)
       .eq('type', 'video')
       .in('status', ['review', 'draft'])
       .order('created_at', { ascending: false });
@@ -38,6 +49,7 @@ serve(async (req) => {
     if (!pendingAssets || pendingAssets.length === 0) {
       return new Response(JSON.stringify({ 
         success: true, 
+        workspaceId,
         message: 'No video assets pending optimization',
         optimized: 0 
       }), {
@@ -45,10 +57,11 @@ serve(async (req) => {
       });
     }
 
-    // Fetch the best optimized template
+    // Fetch the best optimized template - SCOPED BY WORKSPACE
     const { data: templates } = await supabase
       .from('content_templates')
       .select('*')
+      .eq('workspace_id', workspaceId)
       .eq('template_type', 'video')
       .order('conversion_rate', { ascending: false })
       .order('last_optimized_at', { ascending: false })
@@ -162,7 +175,8 @@ Return ONLY the JSON object, no other text.`;
             goal: optimizedContent.goal || asset.goal,
             updated_at: new Date().toISOString()
           })
-          .eq('id', asset.id);
+          .eq('id', asset.id)
+          .eq('workspace_id', workspaceId); // Extra safety: ensure we only update within workspace
 
         if (updateError) {
           console.error(`Update error for asset ${asset.id}:`, updateError);
@@ -195,10 +209,11 @@ Return ONLY the JSON object, no other text.`;
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
 
-    console.log(`Batch optimization complete. Success: ${successCount}, Failed: ${failCount}`);
+    console.log(`[batch-optimize-videos] Workspace ${workspaceId}: Success: ${successCount}, Failed: ${failCount}`);
 
     return new Response(JSON.stringify({ 
       success: true,
+      workspaceId,
       message: `Optimized ${successCount} video assets`,
       total: pendingAssets.length,
       optimized: successCount,

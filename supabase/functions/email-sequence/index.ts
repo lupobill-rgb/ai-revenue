@@ -12,16 +12,27 @@ serve(async (req) => {
   }
 
   try {
+    const { workspaceId } = await req.json();
+
+    // Require workspaceId for tenant isolation
+    if (!workspaceId) {
+      return new Response(
+        JSON.stringify({ error: 'workspaceId is required for tenant isolation' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('Processing email sequences...');
+    console.log(`[email-sequence] Processing sequences for workspace ${workspaceId}...`);
 
-    // Fetch email campaigns that need follow-ups
+    // Fetch email campaigns that need follow-ups - SCOPED BY WORKSPACE
     const { data: campaigns, error: campaignsError } = await supabase
       .from('campaigns')
       .select('*, assets!inner(*), campaign_metrics(*)')
+      .eq('workspace_id', workspaceId)
       .eq('channel', 'email')
       .eq('status', 'active');
 
@@ -114,6 +125,7 @@ serve(async (req) => {
               tags: [
                 { name: 'campaign_id', value: campaign.id },
                 { name: 'sequence_type', value: followUpType },
+                { name: 'workspace_id', value: workspaceId },
               ],
             }),
           });
@@ -129,7 +141,7 @@ serve(async (req) => {
         }
       }
 
-      // Update campaign metrics
+      // Update campaign metrics - already scoped by campaign_id
       await supabase
         .from('campaign_metrics')
         .update({
@@ -145,9 +157,12 @@ serve(async (req) => {
       });
     }
 
+    console.log(`[email-sequence] Workspace ${workspaceId}: processed ${sequenceResults.length} sequences`);
+
     return new Response(
       JSON.stringify({
         success: true,
+        workspaceId,
         sequencesProcessed: sequenceResults.length,
         results: sequenceResults,
       }),

@@ -12,15 +12,25 @@ serve(async (req) => {
   }
 
   try {
+    const { workspaceId } = await req.json();
+
+    // Require workspaceId for tenant isolation
+    if (!workspaceId) {
+      return new Response(
+        JSON.stringify({ error: 'workspaceId is required for tenant isolation' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('Starting daily video prompt optimization...');
+    console.log(`[optimize-video-prompts] Starting optimization for workspace ${workspaceId}...`);
 
-    // Fetch video campaigns with metrics
+    // Fetch video campaigns with metrics - SCOPED BY WORKSPACE
     const { data: campaigns, error: campaignsError } = await supabase
       .from('campaigns')
       .select(`
@@ -28,6 +38,7 @@ serve(async (req) => {
         channel,
         status,
         asset_id,
+        workspace_id,
         assets!inner (
           id,
           name,
@@ -44,6 +55,7 @@ serve(async (req) => {
           video_views
         )
       `)
+      .eq('workspace_id', workspaceId)
       .eq('channel', 'video')
       .in('status', ['active', 'completed']);
 
@@ -57,6 +69,7 @@ serve(async (req) => {
     if (!campaigns || campaigns.length === 0) {
       return new Response(JSON.stringify({ 
         success: true, 
+        workspaceId,
         message: 'No video campaigns to analyze yet',
         optimized: 0 
       }), {
@@ -102,10 +115,11 @@ serve(async (req) => {
 
     console.log(`Top performers: ${topPerformers.length}, Low performers: ${lowPerformers.length}`);
 
-    // Fetch existing video templates
+    // Fetch existing video templates - SCOPED BY WORKSPACE
     const { data: existingTemplates, error: templatesError } = await supabase
       .from('content_templates')
       .select('*')
+      .eq('workspace_id', workspaceId)
       .eq('template_type', 'video');
 
     if (templatesError) {
@@ -190,32 +204,61 @@ Return ONLY the JSON array, no other text.`;
       console.log('Raw AI content:', aiContent);
     }
 
-    // Upsert optimized templates
+    // Upsert optimized templates - INCLUDING workspace_id
     let upsertedCount = 0;
     for (const template of optimizedTemplates) {
-      const { error: upsertError } = await supabase
+      // Check if template with same name exists in this workspace
+      const { data: existing } = await supabase
         .from('content_templates')
-        .upsert({
-          template_name: template.template_name,
-          template_type: 'video',
-          content: template.content,
-          vertical: template.vertical || 'All Verticals',
-          tone: template.tone || 'energetic',
-          target_audience: template.target_audience,
-          optimization_notes: template.optimization_notes,
-          last_optimized_at: new Date().toISOString(),
-          optimization_version: 1,
-          conversion_rate: topPerformers[0]?.conversionRate || 0,
-          impressions: performanceData.reduce((sum, p) => sum + p.impressions, 0)
-        }, {
-          onConflict: 'template_name'
-        });
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .eq('template_name', template.template_name)
+        .maybeSingle();
 
-      if (upsertError) {
-        console.error('Error upserting template:', upsertError);
+      if (existing) {
+        // Update existing
+        const { error: updateError } = await supabase
+          .from('content_templates')
+          .update({
+            content: template.content,
+            vertical: template.vertical || 'All Verticals',
+            tone: template.tone || 'energetic',
+            target_audience: template.target_audience,
+            optimization_notes: template.optimization_notes,
+            last_optimized_at: new Date().toISOString(),
+            optimization_version: 1,
+            conversion_rate: topPerformers[0]?.conversionRate || 0,
+            impressions: performanceData.reduce((sum, p) => sum + p.impressions, 0),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existing.id);
+
+        if (!updateError) upsertedCount++;
       } else {
-        upsertedCount++;
-        console.log(`Upserted template: ${template.template_name}`);
+        // Insert new - INCLUDING workspace_id
+        const { error: insertError } = await supabase
+          .from('content_templates')
+          .insert({
+            workspace_id: workspaceId, // CRITICAL: Include workspace_id
+            template_name: template.template_name,
+            template_type: 'video',
+            content: template.content,
+            vertical: template.vertical || 'All Verticals',
+            tone: template.tone || 'energetic',
+            target_audience: template.target_audience,
+            optimization_notes: template.optimization_notes,
+            last_optimized_at: new Date().toISOString(),
+            optimization_version: 1,
+            conversion_rate: topPerformers[0]?.conversionRate || 0,
+            impressions: performanceData.reduce((sum, p) => sum + p.impressions, 0)
+          });
+
+        if (!insertError) {
+          upsertedCount++;
+          console.log(`Inserted template: ${template.template_name}`);
+        } else {
+          console.error('Error inserting template:', insertError);
+        }
       }
     }
 
@@ -234,14 +277,16 @@ Return ONLY the JSON array, no other text.`;
             impressions: totalImpressions,
             updated_at: new Date().toISOString()
           })
-          .eq('id', template.id);
+          .eq('id', template.id)
+          .eq('workspace_id', workspaceId); // Extra safety
       }
     }
 
-    console.log(`Optimization complete. Created/updated ${upsertedCount} templates.`);
+    console.log(`[optimize-video-prompts] Workspace ${workspaceId}: Created/updated ${upsertedCount} templates.`);
 
     return new Response(JSON.stringify({ 
       success: true,
+      workspaceId,
       message: 'Video prompts optimized based on conversion data',
       optimized: upsertedCount,
       analyzed: performanceData.length,

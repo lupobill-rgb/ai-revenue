@@ -12,16 +12,27 @@ serve(async (req) => {
   }
 
   try {
+    const { workspaceId } = await req.json();
+
+    // Require workspaceId for tenant isolation
+    if (!workspaceId) {
+      return new Response(
+        JSON.stringify({ error: 'workspaceId is required for tenant isolation' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('Running scheduled campaign deployment check...');
+    console.log(`[schedule-campaigns] Running deployment check for workspace ${workspaceId}...`);
 
-    // Fetch approved assets that haven't been deployed yet
+    // Fetch approved assets that haven't been deployed yet - SCOPED BY WORKSPACE
     const { data: approvedAssets, error: assetsError } = await supabase
       .from('assets')
       .select('*, asset_approvals!inner(*)')
+      .eq('workspace_id', workspaceId)
       .eq('status', 'approved')
       .is('external_id', null);
 
@@ -102,11 +113,12 @@ serve(async (req) => {
           }
 
           if (deployResult.success) {
-            // Create campaign record
+            // Create campaign record - INCLUDING workspace_id
             const { data: campaign, error: campaignError } = await supabase
               .from('campaigns')
               .insert({
                 asset_id: asset.id,
+                workspace_id: workspaceId, // CRITICAL: Include workspace_id
                 channel: integration.platform,
                 status: 'active',
                 deployed_at: new Date().toISOString(),
@@ -116,9 +128,10 @@ serve(async (req) => {
               .single();
 
             if (!campaignError && campaign) {
-              // Initialize campaign metrics
+              // Initialize campaign metrics - INCLUDING workspace_id
               await supabase.from('campaign_metrics').insert({
                 campaign_id: campaign.id,
+                workspace_id: workspaceId, // CRITICAL: Include workspace_id
               });
 
               deploymentResults.push({
@@ -146,13 +159,17 @@ serve(async (req) => {
         await supabase
           .from('assets')
           .update({ status: 'live' })
-          .eq('id', asset.id);
+          .eq('id', asset.id)
+          .eq('workspace_id', workspaceId); // Extra safety
       }
     }
+
+    console.log(`[schedule-campaigns] Workspace ${workspaceId}: ${deploymentResults.length} deployments processed`);
 
     return new Response(
       JSON.stringify({
         success: true,
+        workspaceId,
         deploymentsProcessed: deploymentResults.length,
         results: deploymentResults,
       }),
