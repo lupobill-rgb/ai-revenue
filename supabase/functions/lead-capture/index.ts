@@ -36,9 +36,26 @@ serve(async (req) => {
       );
     }
 
-    const body = JSON.parse(rawBody);
+    const body = JSON.parse(rawBody) as {
+      workspaceId: string;
+      password?: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone?: string;
+      company?: string;
+      jobTitle?: string;
+      vertical?: string;
+      utmSource?: string;
+      utmMedium?: string;
+      utmCampaign?: string;
+      landingPageUrl?: string;
+      customFields?: Record<string, unknown>;
+    };
+
     const {
       workspaceId,
+      password,
       firstName,
       lastName,
       email,
@@ -104,6 +121,26 @@ serve(async (req) => {
         JSON.stringify({ error: "Invalid workspace" }),
         {
           status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Check workspace form password (if configured)
+    const { data: passOk, error: passError } = await supabaseClient.rpc(
+      "check_workspace_form_password",
+      {
+        _workspace_id: workspaceId,
+        _password: password ?? "",
+      }
+    );
+
+    if (passError || !passOk) {
+      console.error("[lead-capture] Invalid form password for workspace:", workspaceId);
+      return new Response(
+        JSON.stringify({ error: "Invalid form password" }),
+        {
+          status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
