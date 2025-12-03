@@ -6,9 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
-import { BarChart3, TrendingUp, DollarSign, Eye, Users, Clock, Target, ArrowUpRight, ArrowDownRight } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from "recharts";
+import { BarChart3, TrendingUp, DollarSign, Eye, Users, Clock, Target, ArrowUpRight, Database } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 interface CampaignReport {
   id: string;
@@ -38,6 +40,36 @@ interface ConversionData {
 
 const PIPELINE_COLORS = ["hsl(var(--primary))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--muted))"];
 
+// Sample data for demo
+const SAMPLE_CAMPAIGNS: CampaignReport[] = [
+  { id: "1", asset_name: "Summer Sale Email Blast", channel: "email", status: "active", impressions: 45200, clicks: 3820, conversions: 412, revenue: 28450, cost: 2400, roi: 1085.4, deployed_at: "2024-11-15" },
+  { id: "2", asset_name: "Black Friday Landing Page", channel: "landing_page", status: "active", impressions: 125000, clicks: 18750, conversions: 2340, revenue: 156780, cost: 8500, roi: 1744.5, deployed_at: "2024-11-20" },
+  { id: "3", asset_name: "Product Demo Video", channel: "video", status: "active", impressions: 89400, clicks: 7150, conversions: 856, revenue: 42800, cost: 5200, roi: 723.1, deployed_at: "2024-11-18" },
+  { id: "4", asset_name: "LinkedIn Thought Leadership", channel: "social", status: "active", impressions: 67300, clicks: 4890, conversions: 234, revenue: 18720, cost: 3100, roi: 503.9, deployed_at: "2024-11-22" },
+  { id: "5", asset_name: "Retargeting Display Ads", channel: "social", status: "active", impressions: 234500, clicks: 9870, conversions: 567, revenue: 34020, cost: 4800, roi: 608.8, deployed_at: "2024-11-10" },
+];
+
+const SAMPLE_PIPELINE: PipelineMetrics[] = [
+  { stage: "New", count: 156, avgDays: 1.2 },
+  { stage: "Contacted", count: 98, avgDays: 2.8 },
+  { stage: "Qualified", count: 67, avgDays: 5.4 },
+  { stage: "Won", count: 45, avgDays: 12.3 },
+  { stage: "Lost", count: 23, avgDays: 8.7 },
+];
+
+const SAMPLE_CONVERSION_DATA: ConversionData[] = [
+  { name: "New → Contacted", rate: 72.4, count: 210 },
+  { name: "Contacted → Qualified", rate: 68.4, count: 112 },
+  { name: "Qualified → Won", rate: 67.2, count: 45 },
+];
+
+const SAMPLE_VELOCITY = [
+  { stage: "New", avgDays: 1.2 },
+  { stage: "Contacted", avgDays: 2.8 },
+  { stage: "Qualified", avgDays: 5.4 },
+  { stage: "Negotiation", avgDays: 4.1 },
+];
+
 const Reports = () => {
   const [campaigns, setCampaigns] = useState<CampaignReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,12 +82,35 @@ const Reports = () => {
   const [totalLeads, setTotalLeads] = useState(0);
   const [wonLeads, setWonLeads] = useState(0);
   const [avgConversionTime, setAvgConversionTime] = useState(0);
+  const [showSampleData, setShowSampleData] = useState(false);
 
   useEffect(() => {
     fetchAllData();
   }, []);
 
+  useEffect(() => {
+    if (showSampleData) {
+      // Apply sample data
+      setCampaigns(SAMPLE_CAMPAIGNS);
+      setPipelineMetrics(SAMPLE_PIPELINE);
+      setConversionData(SAMPLE_CONVERSION_DATA);
+      setVelocityData(SAMPLE_VELOCITY);
+      setTotalLeads(389);
+      setWonLeads(45);
+      setAvgConversionTime(18);
+      setTotalRevenue(SAMPLE_CAMPAIGNS.reduce((sum, c) => sum + c.revenue, 0));
+      setTotalImpressions(SAMPLE_CAMPAIGNS.reduce((sum, c) => sum + c.impressions, 0));
+      const avgROI = SAMPLE_CAMPAIGNS.reduce((sum, c) => sum + c.roi, 0) / SAMPLE_CAMPAIGNS.length;
+      setTotalROI(avgROI);
+      setLoading(false);
+    } else {
+      // Fetch real data
+      fetchAllData();
+    }
+  }, [showSampleData]);
+
   const fetchAllData = async () => {
+    setLoading(true);
     await Promise.all([
       fetchCampaignReports(),
       fetchLeadMetrics(),
@@ -64,6 +119,8 @@ const Reports = () => {
   };
 
   const fetchLeadMetrics = async () => {
+    if (showSampleData) return;
+    
     try {
       const { data: leads, error } = await supabase
         .from("leads")
@@ -137,6 +194,8 @@ const Reports = () => {
   };
 
   const fetchCampaignReports = async () => {
+    if (showSampleData) return;
+    
     try {
       const { data: campaignsData, error: campaignsError } = await supabase
         .from("campaigns")
@@ -210,12 +269,32 @@ const Reports = () => {
       <div className="flex min-h-screen flex-col bg-background">
         <NavBar />
         <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-foreground">Analytics Dashboard</h1>
-            <p className="mt-2 text-muted-foreground">
-              Lead conversion rates, pipeline velocity, and campaign performance
-            </p>
+          <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-4xl font-bold text-foreground">Analytics Dashboard</h1>
+              <p className="mt-2 text-muted-foreground">
+                Lead conversion rates, pipeline velocity, and campaign performance
+              </p>
+            </div>
+            <div className="flex items-center gap-3 bg-muted/50 px-4 py-2 rounded-lg border border-border">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              <Label htmlFor="sample-data" className="text-sm font-medium cursor-pointer">
+                Demo Data
+              </Label>
+              <Switch
+                id="sample-data"
+                checked={showSampleData}
+                onCheckedChange={setShowSampleData}
+              />
+            </div>
           </div>
+
+          {showSampleData && (
+            <div className="mb-6 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary flex items-center gap-2">
+              <Database className="h-4 w-4" />
+              Showing sample demo data. Toggle off to view real data.
+            </div>
+          )}
 
           <Tabs defaultValue="leads" className="space-y-6">
             <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
@@ -270,7 +349,7 @@ const Reports = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold flex items-center gap-1">
-                      {totalLeads > 0 ? ((wonLeads / (wonLeads + pipelineMetrics.find(p => p.stage === "Lost")?.count || 0)) * 100).toFixed(0) : 0}%
+                      {totalLeads > 0 ? ((wonLeads / (wonLeads + (pipelineMetrics.find(p => p.stage === "Lost")?.count || 0))) * 100).toFixed(0) : 0}%
                     </div>
                     <p className="text-xs text-muted-foreground">Won vs Lost</p>
                   </CardContent>
