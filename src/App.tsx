@@ -26,6 +26,7 @@ import NewCampaign from "./pages/NewCampaign";
 import VoiceAgents from "./pages/VoiceAgents";
 import UserManagement from "./pages/UserManagement";
 import Automation from "./pages/Automation";
+import OSDashboard from "./pages/OSDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,7 @@ const App = () => (
             <Route path="/crm" element={<CRM />} />
             <Route path="/crm/:id" element={<LeadDetail />} />
             <Route path="/automation" element={<Automation />} />
+            <Route path="/os" element={<OSDashboard />} />
             <Route path="/settings" element={<Settings />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
