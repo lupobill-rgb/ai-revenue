@@ -36,12 +36,14 @@ async function checkLimit(
   rateKey: string,
   maxRequests: number,
   windowSeconds: number,
-  endpoint: string
+  endpoint: string,
+  windowType: "minute" | "hour" | "day"
 ): Promise<boolean> {
   const { data, error } = await supabase.rpc("check_and_increment_rate_limit", {
     rate_key: rateKey,
     max_requests: maxRequests,
     window_seconds: windowSeconds,
+    p_window_type: windowType,
   });
 
   if (error) {
@@ -68,7 +70,7 @@ export async function checkRateLimits(
 
   // Check per-minute limit
   if (config.perMinute) {
-    const allowed = await checkLimit(supabase, `${rateKeyBase}:minute`, config.perMinute, 60, endpoint);
+    const allowed = await checkLimit(supabase, `${rateKeyBase}:minute`, config.perMinute, 60, endpoint, "minute");
     if (!allowed) {
       console.warn(`[${endpoint}] Rate limit exceeded (per-minute) for ${identifier} from ${ip}`);
       return { allowed: false, limitExceeded: "minute", retryAfter: 60 };
@@ -77,7 +79,7 @@ export async function checkRateLimits(
 
   // Check per-hour limit
   if (config.perHour) {
-    const allowed = await checkLimit(supabase, `${rateKeyBase}:hour`, config.perHour, 3600, endpoint);
+    const allowed = await checkLimit(supabase, `${rateKeyBase}:hour`, config.perHour, 3600, endpoint, "hour");
     if (!allowed) {
       console.warn(`[${endpoint}] Rate limit exceeded (per-hour) for ${identifier} from ${ip}`);
       return { allowed: false, limitExceeded: "hour", retryAfter: 3600 };
@@ -86,7 +88,7 @@ export async function checkRateLimits(
 
   // Check per-day limit
   if (config.perDay) {
-    const allowed = await checkLimit(supabase, `${rateKeyBase}:day`, config.perDay, 86400, endpoint);
+    const allowed = await checkLimit(supabase, `${rateKeyBase}:day`, config.perDay, 86400, endpoint, "day");
     if (!allowed) {
       console.warn(`[${endpoint}] Rate limit exceeded (per-day) for ${identifier} from ${ip}`);
       return { allowed: false, limitExceeded: "day", retryAfter: 86400 };

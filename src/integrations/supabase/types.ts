@@ -861,6 +861,7 @@ export type Database = {
           key: string
           updated_at: string | null
           window_start: string
+          window_type: string | null
         }
         Insert: {
           count?: number
@@ -869,6 +870,7 @@ export type Database = {
           key: string
           updated_at?: string | null
           window_start: string
+          window_type?: string | null
         }
         Update: {
           count?: number
@@ -877,6 +879,7 @@ export type Database = {
           key?: string
           updated_at?: string | null
           window_start?: string
+          window_type?: string | null
         }
         Relationships: []
       }
@@ -1192,14 +1195,29 @@ export type Database = {
         Args: { approval_asset_id: string }
         Returns: boolean
       }
-      check_and_increment_rate_limit: {
-        Args: { max_requests: number; rate_key: string; window_seconds: number }
-        Returns: boolean
-      }
+      check_and_increment_rate_limit:
+        | {
+            Args: {
+              max_requests: number
+              rate_key: string
+              window_seconds: number
+            }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              max_requests: number
+              p_window_type?: string
+              rate_key: string
+              window_seconds: number
+            }
+            Returns: boolean
+          }
       check_workspace_form_password: {
         Args: { _password: string; _workspace_id: string }
         Returns: boolean
       }
+      gc_rate_limit_counters: { Args: never; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
