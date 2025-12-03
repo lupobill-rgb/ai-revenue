@@ -281,20 +281,17 @@ WHERE id = 'workspace-uuid';
 
 ## 4. Authentication Matrix
 
-| Endpoint | JWT | HMAC | Svix | Basic | Internal | Workspace PW |
-|----------|:---:|:----:|:----:|:-----:|:--------:|:------------:|
-| `lead-capture` | - | ✅ | - | - | - | ✅ (optional) |
-| `email-tracking-webhook` | - | - | ✅ | - | - | - |
-| `email-webhook` | - | - | ✅ | - | - | - |
-| `capture-screenshot` | ✅ | - | - | ✅ | ✅ | - |
-| `cron-daily-automation` | - | - | - | - | ✅ | - |
-| `daily-automation` | - | - | - | - | ✅ | - |
-| User-facing functions | ✅ | - | - | - | - | - |
+| Endpoint | JWT | HMAC | Svix | Basic Auth | Internal Secret | Workspace PW |
+|----------|:---:|:----:|:----:|:----------:|:---------------:|:------------:|
+| `lead-capture` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| `email-tracking-webhook` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `email-webhook` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `cron-daily-automation` | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| `daily-automation` | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| `capture-screenshot` | ✅* | ❌ | ❌ | ✅ | ✅ | ❌ |
+| All other app functions | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-**Legend:**
-- ✅ = Required/Supported
-- ✅ (optional) = Supported but not required
-- `-` = Not applicable
+> *`capture-screenshot` accepts **any one of:** JWT, Basic Auth, or Internal Secret.
 
 ---
 
