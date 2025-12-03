@@ -9,11 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Mail, Share2, Video, Phone, Calendar as CalendarIcon, Clock, Send, Trash2 } from "lucide-react";
+import { Plus, Mail, Share2, Video, Phone, Calendar as CalendarIcon, Clock, Send, Trash2, Database } from "lucide-react";
 import { format, isSameDay, startOfMonth, endOfMonth } from "date-fns";
 import { Json } from "@/integrations/supabase/types";
+import { SAMPLE_CONTENT_CALENDAR } from "@/lib/sampleData";
 
 interface ContentItem {
   id: string;
@@ -49,6 +51,7 @@ export default function ContentCalendar({ workspaceId }: ContentCalendarProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showSampleData, setShowSampleData] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newContent, setNewContent] = useState({
     title: "",
@@ -59,8 +62,13 @@ export default function ContentCalendar({ workspaceId }: ContentCalendarProps) {
   });
 
   useEffect(() => {
-    fetchContent();
-  }, [selectedDate, workspaceId]);
+    if (showSampleData) {
+      setContentItems(SAMPLE_CONTENT_CALENDAR as ContentItem[]);
+      setLoading(false);
+    } else {
+      fetchContent();
+    }
+  }, [selectedDate, workspaceId, showSampleData]);
 
   const fetchContent = async () => {
     const start = startOfMonth(selectedDate);
@@ -142,13 +150,34 @@ export default function ContentCalendar({ workspaceId }: ContentCalendarProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CalendarIcon className="h-5 w-5" />
-          Content Calendar
-        </CardTitle>
-        <CardDescription>Schedule and manage content across channels</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5" />
+              Content Calendar
+            </CardTitle>
+            <CardDescription>Schedule and manage content across channels</CardDescription>
+          </div>
+          <div className="flex items-center gap-3 bg-muted/50 px-3 py-1.5 rounded-lg border border-border">
+            <Database className="h-4 w-4 text-muted-foreground" />
+            <Label htmlFor="sample-data-calendar" className="text-sm font-medium cursor-pointer">
+              Demo
+            </Label>
+            <Switch
+              id="sample-data-calendar"
+              checked={showSampleData}
+              onCheckedChange={setShowSampleData}
+            />
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
+        {showSampleData && (
+          <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary flex items-center gap-2">
+            <Database className="h-4 w-4" />
+            Showing sample demo data. Toggle off to view real content.
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Calendar */}
           <div>

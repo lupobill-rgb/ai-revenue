@@ -5,7 +5,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Video, Mail, Phone, Layout, Search, Download, FolderDown, Sparkles } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Plus, Video, Mail, Phone, Layout, Search, Download, FolderDown, Sparkles, Database } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
@@ -13,6 +15,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { QuickImportDialog } from "@/components/QuickImportDialog";
 import { BulkImportDialog } from "@/components/BulkImportDialog";
 import { getAssetPlaceholder } from "@/lib/placeholders";
+import { SAMPLE_ASSETS } from "@/lib/sampleData";
 
 const AssetCatalog = () => {
   const navigate = useNavigate();
@@ -26,6 +29,7 @@ const AssetCatalog = () => {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [bulkImportDialogOpen, setBulkImportDialogOpen] = useState(false);
   const [generatingImages, setGeneratingImages] = useState(false);
+  const [showSampleData, setShowSampleData] = useState(true);
 
   useEffect(() => {
     fetchAssets();
@@ -33,7 +37,7 @@ const AssetCatalog = () => {
 
   useEffect(() => {
     filterAssets();
-  }, [searchQuery, typeFilter, statusFilter, assets]);
+  }, [searchQuery, typeFilter, statusFilter, assets, showSampleData]);
 
   const fetchAssets = async () => {
     try {
@@ -44,7 +48,6 @@ const AssetCatalog = () => {
 
       if (error) throw error;
       setAssets(data || []);
-      setFilteredAssets(data || []);
     } catch (error) {
       console.error("Error fetching assets:", error);
     } finally {
@@ -53,7 +56,9 @@ const AssetCatalog = () => {
   };
 
   const filterAssets = () => {
-    let filtered = [...assets];
+    // Combine real assets with sample data if enabled
+    const baseAssets = showSampleData && assets.length === 0 ? SAMPLE_ASSETS : assets;
+    let filtered = [...baseAssets];
 
     if (searchQuery) {
       filtered = filtered.filter((asset) =>
@@ -146,16 +151,36 @@ const AssetCatalog = () => {
                 Browse and manage all marketing assets
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={handleGenerateMissingImages}
-                disabled={generatingImages}
-                variant="outline"
-                className="border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-              >
-                <Sparkles className={`mr-2 h-4 w-4 ${generatingImages ? 'animate-spin' : ''}`} />
-                {generatingImages ? 'Generating...' : 'Generate Images'}
-              </Button>
+            <div className="flex items-center gap-3 bg-muted/50 px-4 py-2 rounded-lg border border-border">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              <Label htmlFor="sample-data-assets" className="text-sm font-medium cursor-pointer">
+                Demo Data
+              </Label>
+              <Switch
+                id="sample-data-assets"
+                checked={showSampleData}
+                onCheckedChange={setShowSampleData}
+              />
+            </div>
+          </div>
+
+          {showSampleData && assets.length === 0 && (
+            <div className="mb-6 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary flex items-center gap-2">
+              <Database className="h-4 w-4" />
+              Showing sample demo data. Toggle off to view real data only.
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 mb-6">
+            <Button
+              onClick={handleGenerateMissingImages}
+              disabled={generatingImages}
+              variant="outline"
+              className="border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+            >
+              <Sparkles className={`mr-2 h-4 w-4 ${generatingImages ? 'animate-spin' : ''}`} />
+              {generatingImages ? 'Generating...' : 'Generate Images'}
+            </Button>
               <Button
                 onClick={() => setImportDialogOpen(true)}
                 variant="outline"
@@ -172,14 +197,13 @@ const AssetCatalog = () => {
                 <FolderDown className="mr-2 h-4 w-4" />
                 Bulk Import
               </Button>
-              <Button
-                onClick={() => navigate("/assets/new")}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                New Asset
-              </Button>
-            </div>
+            <Button
+              onClick={() => navigate("/assets/new")}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              New Asset
+            </Button>
           </div>
 
           {/* Filters */}

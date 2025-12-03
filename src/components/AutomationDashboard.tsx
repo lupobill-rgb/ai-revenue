@@ -3,14 +3,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
   Zap, Play, Clock, CheckCircle2, XCircle, AlertCircle, 
-  RefreshCw, Calendar, Mail, BarChart3, Users 
+  RefreshCw, Calendar, Mail, BarChart3, Users, Database 
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Json } from "@/integrations/supabase/types";
+import { SAMPLE_AUTOMATION_JOBS } from "@/lib/sampleData";
 
 interface AutomationJob {
   id: string;
@@ -47,6 +50,7 @@ export default function AutomationDashboard({ workspaceId }: AutomationDashboard
   const [jobs, setJobs] = useState<AutomationJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [showSampleData, setShowSampleData] = useState(true);
   const [stats, setStats] = useState({
     totalJobs: 0,
     completedToday: 0,
@@ -56,10 +60,21 @@ export default function AutomationDashboard({ workspaceId }: AutomationDashboard
   });
 
   useEffect(() => {
-    fetchJobs();
-    const interval = setInterval(fetchJobs, 30000);
-    return () => clearInterval(interval);
-  }, [workspaceId]);
+    if (showSampleData) {
+      setJobs(SAMPLE_AUTOMATION_JOBS as AutomationJob[]);
+      calculateStats(SAMPLE_AUTOMATION_JOBS as AutomationJob[]);
+      setLoading(false);
+    } else {
+      fetchJobs();
+    }
+  }, [workspaceId, showSampleData]);
+
+  useEffect(() => {
+    if (!showSampleData) {
+      const interval = setInterval(fetchJobs, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [workspaceId, showSampleData]);
 
   const fetchJobs = async () => {
     const { data, error } = await supabase
@@ -125,6 +140,26 @@ export default function AutomationDashboard({ workspaceId }: AutomationDashboard
 
   return (
     <div className="space-y-6">
+      {/* Sample Data Toggle */}
+      <div className="flex items-center justify-end gap-3 bg-muted/50 px-4 py-2 rounded-lg border border-border w-fit ml-auto">
+        <Database className="h-4 w-4 text-muted-foreground" />
+        <Label htmlFor="sample-data-automation" className="text-sm font-medium cursor-pointer">
+          Demo Data
+        </Label>
+        <Switch
+          id="sample-data-automation"
+          checked={showSampleData}
+          onCheckedChange={setShowSampleData}
+        />
+      </div>
+
+      {showSampleData && (
+        <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary flex items-center gap-2">
+          <Database className="h-4 w-4" />
+          Showing sample demo data. Toggle off to view real automation jobs.
+        </div>
+      )}
+
       {/* Stats Overview */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
