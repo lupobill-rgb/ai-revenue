@@ -3,8 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-secret',
 };
+
+// Internal secret for cron/orchestration calls
+const INTERNAL_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') || 'ubigrowth-internal-2024';
 
 // This function is called by pg_cron and runs daily-automation for ALL active workspaces
 serve(async (req) => {
@@ -13,12 +16,18 @@ serve(async (req) => {
   }
 
   try {
-    // Validate cron request - only accept requests with cron: true in body
+    // Validate request - require either x-internal-secret header OR cron flag (for pg_cron)
+    const internalSecret = req.headers.get('x-internal-secret');
     const body = await req.json().catch(() => ({}));
-    if (!body.cron) {
-      console.warn('[Cron Daily Automation] Rejected request - missing cron flag');
+    
+    // Accept if either: valid secret header OR cron flag (pg_cron doesn't support custom headers easily)
+    const isValidSecret = internalSecret === INTERNAL_SECRET;
+    const isCronCall = body.cron === true;
+    
+    if (!isValidSecret && !isCronCall) {
+      console.error('[cron-daily-automation] Unauthorized: missing valid secret or cron flag');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
+        status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -27,7 +36,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`[Cron Daily Automation] Starting at ${new Date().toISOString()}`);
+    console.log(`[cron-daily-automation] Starting at ${new Date().toISOString()}`);
 
     // Fetch all active workspaces
     const { data: workspaces, error: workspacesError } = await supabase
@@ -39,38 +48,44 @@ serve(async (req) => {
     }
 
     if (!workspaces || workspaces.length === 0) {
-      console.log('[Cron Daily Automation] No workspaces found, skipping');
+      console.log('[cron-daily-automation] No workspaces found, skipping');
       return new Response(JSON.stringify({ success: true, message: 'No workspaces to process' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`[Cron Daily Automation] Processing ${workspaces.length} workspaces`);
+    console.log(`[cron-daily-automation] Processing ${workspaces.length} workspaces`);
 
     const results: { workspaceId: string; workspaceName: string; success: boolean; error?: string }[] = [];
 
-    // Run daily-automation for each workspace
+    // Run daily-automation for each workspace with internal secret
     for (const workspace of workspaces) {
       try {
-        const { error } = await supabase.functions.invoke('daily-automation', {
-          body: { workspaceId: workspace.id }
+        const response = await fetch(`${supabaseUrl}/functions/v1/daily-automation`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-secret': INTERNAL_SECRET,
+          },
+          body: JSON.stringify({ workspaceId: workspace.id, internal: true })
         });
 
-        if (error) {
+        if (!response.ok) {
+          const errorText = await response.text();
           results.push({
             workspaceId: workspace.id,
             workspaceName: workspace.name,
             success: false,
-            error: error.message
+            error: errorText
           });
-          console.error(`[Cron] Failed for workspace ${workspace.name}: ${error.message}`);
+          console.error(`[cron] Failed for workspace ${workspace.name}: ${errorText}`);
         } else {
           results.push({
             workspaceId: workspace.id,
             workspaceName: workspace.name,
             success: true
           });
-          console.log(`[Cron] Completed for workspace ${workspace.name}`);
+          console.log(`[cron] Completed for workspace ${workspace.name}`);
         }
       } catch (e: unknown) {
         const errorMsg = e instanceof Error ? e.message : 'Unknown error';
@@ -80,14 +95,14 @@ serve(async (req) => {
           success: false,
           error: errorMsg
         });
-        console.error(`[Cron] Error for workspace ${workspace.name}: ${errorMsg}`);
+        console.error(`[cron] Error for workspace ${workspace.name}: ${errorMsg}`);
       }
     }
 
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
 
-    console.log(`[Cron Daily Automation] Completed: ${successCount} success, ${failCount} failed`);
+    console.log(`[cron-daily-automation] Completed: ${successCount} success, ${failCount} failed`);
 
     return new Response(JSON.stringify({
       success: true,
@@ -100,7 +115,7 @@ serve(async (req) => {
     });
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Cron Daily Automation] Fatal error:', error);
+    console.error('[cron-daily-automation] Fatal error:', error);
     return new Response(JSON.stringify({ error: errorMsg }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

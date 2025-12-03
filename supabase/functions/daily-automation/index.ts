@@ -3,8 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-secret',
 };
+
+// Internal secret for cron/orchestration calls
+const INTERNAL_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') || 'ubigrowth-internal-2024';
 
 // ⚠️ INTERNAL ONLY - Called by cron-daily-automation, NOT from frontend
 // This function uses service-role and bypasses RLS.
@@ -16,11 +19,25 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Verify internal secret header - blocks direct frontend calls
+    const internalSecret = req.headers.get('x-internal-secret');
+    if (internalSecret !== INTERNAL_SECRET) {
+      console.error('[daily-automation] Invalid or missing x-internal-secret header');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Internal functions require secret header' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    const { workspaceId } = await req.json();
+    const { workspaceId, internal } = await req.json();
+
+    // Double-check this is an internal call
+    if (!internal) {
+      return new Response(
+        JSON.stringify({ error: 'This function is for internal use only' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     if (!workspaceId) {
       return new Response(JSON.stringify({ error: 'workspaceId is required' }), {
@@ -28,6 +45,10 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const now = new Date();
     const results = {
@@ -38,7 +59,7 @@ serve(async (req) => {
       errors: [] as string[],
     };
 
-    console.log(`[Daily Automation] Starting for workspace ${workspaceId} at ${now.toISOString()}`);
+    console.log(`[daily-automation] Starting for workspace ${workspaceId} at ${now.toISOString()}`);
 
     // 1. Publish scheduled content for this workspace
     const { data: scheduledContent, error: contentError } = await supabase
@@ -53,29 +74,23 @@ serve(async (req) => {
     } else if (scheduledContent && scheduledContent.length > 0) {
       for (const item of scheduledContent) {
         try {
-          if (item.content_type === 'email' && item.asset_id) {
-            await supabase.functions.invoke('email-deploy', {
-              body: { assetId: item.asset_id }
-            });
-          } else if (item.content_type === 'social' && item.asset_id) {
-            await supabase.functions.invoke('social-deploy', {
-              body: { assetId: item.asset_id }
-            });
-          }
-
-          await supabase
-            .from('content_calendar')
-            .update({ status: 'published', published_at: now.toISOString() })
-            .eq('id', item.id);
+          // Call publish-scheduled-content with internal secret
+          await fetch(`${supabaseUrl}/functions/v1/publish-scheduled-content`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-internal-secret': INTERNAL_SECRET,
+            },
+            body: JSON.stringify({ 
+              workspaceId, 
+              internal: true 
+            })
+          });
 
           results.contentPublished++;
         } catch (e: unknown) {
           const errorMsg = e instanceof Error ? e.message : 'Unknown error';
           results.errors.push(`Publish error for ${item.id}: ${errorMsg}`);
-          await supabase
-            .from('content_calendar')
-            .update({ status: 'failed' })
-            .eq('id', item.id);
         }
       }
     }
@@ -100,7 +115,7 @@ serve(async (req) => {
       }
     }
 
-    // 3. Process lead nurturing sequences for this workspace
+    // 3. Process lead nurturing sequences for this workspace - use internal call
     const { data: activeEnrollments } = await supabase
       .from('sequence_enrollments')
       .select('*, leads(*), email_sequences(*)')
@@ -109,16 +124,23 @@ serve(async (req) => {
       .lte('next_email_at', now.toISOString());
 
     if (activeEnrollments && activeEnrollments.length > 0) {
-      for (const enrollment of activeEnrollments) {
-        try {
-          await supabase.functions.invoke('email-sequence', {
-            body: { enrollmentId: enrollment.id, action: 'send_next' }
-          });
-          results.leadsNurtured++;
-        } catch (e: unknown) {
-          const errorMsg = e instanceof Error ? e.message : 'Unknown error';
-          results.errors.push(`Nurture error for ${enrollment.id}: ${errorMsg}`);
-        }
+      // Call email-sequence with internal secret for batch processing
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/email-sequence`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-secret': INTERNAL_SECRET,
+          },
+          body: JSON.stringify({ 
+            workspaceId, 
+            internal: true 
+          })
+        });
+        results.leadsNurtured = activeEnrollments.length;
+      } catch (e: unknown) {
+        const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+        results.errors.push(`Nurture error: ${errorMsg}`);
       }
     }
 
@@ -144,14 +166,14 @@ serve(async (req) => {
       result: results,
     });
 
-    console.log(`[Daily Automation] Completed for workspace ${workspaceId}:`, results);
+    console.log(`[daily-automation] Completed for workspace ${workspaceId}:`, results);
 
-    return new Response(JSON.stringify({ success: true, results }), {
+    return new Response(JSON.stringify({ success: true, workspaceId, results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Daily Automation] Fatal error:', error);
+    console.error('[daily-automation] Fatal error:', error);
     return new Response(JSON.stringify({ error: errorMsg }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
