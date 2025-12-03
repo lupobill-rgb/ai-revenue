@@ -209,43 +209,68 @@ if (!requireBasicAuth(req, "UG_ADMIN_BASIC_USER", "UG_ADMIN_BASIC_PASS")) {
 
 **File:** `supabase/functions/_shared/workspace-password.ts`
 
-| Aspect | Detail |
-|--------|--------|
-| Hash Algorithm | Bcrypt (via `pgcrypto` extension) |
-| Storage Column | `workspaces.public_form_password_hash` |
-| SQL Function | `check_workspace_form_password(_workspace_id, _password)` |
-| Request Sources | `X-Form-Password` header OR `formPassword` body field |
-| Behavior | Returns `true` if no password configured (opt-in security) |
-| Used By | `lead-capture` |
+#### Database Schema
 
-**Database Function:**
+```sql
+ALTER TABLE public.workspaces
+ADD COLUMN public_form_password_hash text;
+```
+
+#### Database Function
+
 ```sql
 CREATE OR REPLACE FUNCTION public.check_workspace_form_password(
-  _workspace_id UUID,
-  _password TEXT
-) RETURNS BOOLEAN
-LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path = 'public', 'extensions'
+  _workspace_id uuid,
+  _password text
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.workspaces w
-    WHERE w.id = _workspace_id
-      AND (w.public_form_password_hash IS NULL
-        OR extensions.crypt(_password, w.public_form_password_hash) 
-           = w.public_form_password_hash)
-  );
+DECLARE
+  stored_hash text;
+BEGIN
+  SELECT public_form_password_hash
+  INTO stored_hash
+  FROM public.workspaces
+  WHERE id = _workspace_id;
+
+  -- If no password set → public form allowed
+  IF stored_hash IS NULL THEN
+    RETURN TRUE;
+  END IF;
+
+  -- Compare using pgcrypto's crypt() (bcrypt)
+  RETURN stored_hash = crypt(_password, stored_hash);
+END;
 $$;
 ```
 
-**Setting a Workspace Password:**
+#### Endpoints Using
+
+| Endpoint | When Called |
+|----------|-------------|
+| `lead-capture` | After HMAC verification, before inserting a lead |
+
+#### Behavior
+
+1. **Verify HMAC** (server-to-server authenticity)
+2. **Validate workspace** exists and is active
+3. **If `public_form_password_hash` is set:**
+   - Extract password from request (`X-Form-Password` header or `formPassword` body)
+   - Call `check_workspace_form_password`
+4. **Reject** with 401/403 on any failure
+
+#### Setting a Workspace Password
+
 ```sql
 UPDATE public.workspaces
-SET public_form_password_hash = extensions.crypt('your-secret-password', extensions.gen_salt('bf'))
+SET public_form_password_hash = crypt('your-secret-password', gen_salt('bf'))
 WHERE id = 'workspace-uuid';
 ```
 
-**Clearing a Workspace Password:**
+#### Clearing a Workspace Password
+
 ```sql
 UPDATE public.workspaces
 SET public_form_password_hash = NULL
