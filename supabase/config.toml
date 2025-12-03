@@ -39,6 +39,9 @@ verify_jwt = false
 [functions.content-generate]
 verify_jwt = true
 
+[functions.cron-daily-automation]
+verify_jwt = false
+
 [functions.daily-automation]
 verify_jwt = true
 
