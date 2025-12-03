@@ -21,27 +21,46 @@ It applies to all Supabase Edge Functions and Postgres schemas deployed under th
 
 ---
 
-## 1. Webhook Security
+## 1. Webhook Security (Server-to-Server)
 
 ### 1.1 Custom HMAC Verification
 
-**File:** `supabase/functions/_shared/webhook.ts`
+**File:** `supabase/functions/_shared/webhook.ts`  
+**Pattern:** HMAC-SHA256 with timestamp tolerance
 
-| Aspect | Detail |
-|--------|--------|
+#### Headers
+
+| Header | Purpose |
+|--------|---------|
+| `X-Ubigrowth-Signature` | HMAC signature (hex-encoded) |
+| `X-Ubigrowth-Timestamp` | Unix timestamp (milliseconds) |
+
+#### Configuration
+
+| Setting | Value |
+|---------|-------|
 | Algorithm | HMAC-SHA256 |
-| Signature Header | `x-ubigrowth-signature` |
-| Timestamp Header | `x-ubigrowth-timestamp` |
-| Timestamp Tolerance | 5 minutes (300,000ms, configurable) |
-| Secret Env Variable | `LEAD_CAPTURE_WEBHOOK_SECRET` |
-| Used By | `lead-capture` |
+| Secret | Per-endpoint env variable |
+| Tolerance | 5 minutes (configurable) |
+| Comparison | Constant-time |
 
-**Signature Format:**
-```
-HMAC-SHA256(timestamp + "." + rawBody, secret) → hex string
-```
+#### Behavior
 
-**Usage:**
+1. **Compute:** `HMAC(secret, timestamp + "." + rawBody)`
+2. **Compare:** Constant-time comparison with header value
+3. **Reject if:**
+   - Signature invalid
+   - Timestamp outside tolerance (±5 min)
+   - Missing headers
+
+#### Endpoints Using This Pattern
+
+| Endpoint | Secret Env Variable |
+|----------|---------------------|
+| `lead-capture` | `LEAD_CAPTURE_WEBHOOK_SECRET` |
+
+#### Usage
+
 ```typescript
 import { verifyHmacSignature } from "../_shared/webhook.ts";
 
@@ -51,8 +70,12 @@ const isValid = await verifyHmacSignature({
   headerName: "x-ubigrowth-signature",
   secretEnv: "LEAD_CAPTURE_WEBHOOK_SECRET",
   timestampHeader: "x-ubigrowth-timestamp",
-  toleranceMs: 300000,
+  toleranceMs: 300000, // 5 minutes
 });
+
+if (!isValid) {
+  return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+}
 ```
 
 ### 1.2 Svix/Resend Webhook Verification
