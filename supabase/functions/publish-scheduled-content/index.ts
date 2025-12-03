@@ -13,12 +13,36 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
     const { contentId, action, workspaceId } = await req.json();
+    const authHeader = req.headers.get('Authorization');
 
-    // Publish a specific content item immediately (doesn't require workspaceId)
+    // Helper to validate workspace access for user-initiated requests
+    const validateWorkspaceAccess = async (wsId: string): Promise<boolean> => {
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        // No auth = service call, allow
+        return true;
+      }
+      
+      const userSupabase = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } }
+      });
+
+      const { data: workspace } = await userSupabase
+        .from('workspaces')
+        .select('id')
+        .eq('id', wsId)
+        .maybeSingle();
+
+      return !!workspace;
+    };
+
+    // Use service role for actual operations
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Publish a specific content item immediately
     if (action === 'publish_now' && contentId) {
       const { data: content, error } = await supabase
         .from('content_calendar')
@@ -30,6 +54,15 @@ serve(async (req) => {
       if (!content) {
         return new Response(JSON.stringify({ error: 'Content not found' }), {
           status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Validate user has access to the content's workspace
+      if (content.workspace_id && !(await validateWorkspaceAccess(content.workspace_id))) {
+        console.error(`[Publish Content] Unauthorized access attempt to content ${contentId}`);
+        return new Response(JSON.stringify({ error: 'Unauthorized: no access to this workspace' }), {
+          status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
@@ -56,6 +89,8 @@ serve(async (req) => {
         })
         .eq('id', contentId);
 
+      console.log(`[Publish Content] Published content ${contentId}`);
+
       return new Response(JSON.stringify({ success: true, deployResult }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -65,6 +100,15 @@ serve(async (req) => {
     if (!workspaceId) {
       return new Response(JSON.stringify({ error: 'workspaceId required for batch operations' }), {
         status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate workspace access for batch operations
+    if (!(await validateWorkspaceAccess(workspaceId))) {
+      console.error(`[Publish Content] Unauthorized batch access attempt to workspace ${workspaceId}`);
+      return new Response(JSON.stringify({ error: 'Unauthorized: no access to this workspace' }), {
+        status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

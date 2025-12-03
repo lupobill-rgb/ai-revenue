@@ -13,8 +13,8 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
     const { workspaceId } = await req.json();
     
@@ -24,6 +24,39 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // Check if this is a user-initiated request (has Authorization header)
+    const authHeader = req.headers.get('Authorization');
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      // User-initiated: validate workspace access using user's JWT
+      const userSupabase = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } }
+      });
+
+      // Check if user has access to this workspace (RLS will enforce this)
+      const { data: workspace, error: accessError } = await userSupabase
+        .from('workspaces')
+        .select('id')
+        .eq('id', workspaceId)
+        .maybeSingle();
+
+      if (accessError || !workspace) {
+        console.error(`[Daily Automation] Unauthorized access attempt to workspace ${workspaceId}`);
+        return new Response(JSON.stringify({ error: 'Unauthorized: no access to this workspace' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log(`[Daily Automation] User authorized for workspace ${workspaceId}`);
+    } else {
+      // No auth header = called from cron (service-to-service)
+      console.log(`[Daily Automation] Service call for workspace ${workspaceId}`);
+    }
+
+    // Use service role for actual operations (needs to write to automation_jobs, etc.)
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const now = new Date();
     const results = {
