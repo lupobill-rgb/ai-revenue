@@ -357,26 +357,18 @@ WHERE id = 'workspace-uuid';
    - Metrics sync
 6. Logs to `automation_jobs`
 
-### 8.4 Screenshot Capture (Multi-Auth)
-
-```
-Admin/System → POST /capture-screenshot
-  ├─ Auth Options (checked in order):
-  │   ├─ Option A: Authorization: Basic base64(user:pass)
-  │   ├─ Option B: x-internal-secret header
-  │   └─ Option C: Authorization: Bearer <jwt>
-  │
-  ├─ 1. Check Basic Auth credentials
-  ├─ 2. If fails, check internal secret
-  ├─ 3. If fails, validate JWT
-  ├─ 4. If all fail, return 401
-  ├─ 5. Execute screenshot capture
-  └─ Response: { success: true, url: "..." }
-```
-
 ---
 
-## 9. Row-Level Security (RLS) Summary
+## 8. Security Considerations (Implemented)
+
+- **Timing-safe comparisons** for signatures
+- **Timestamp tolerance** on all signed requests (anti-replay)
+- **Fail-closed behavior:** missing auth = denied
+- **Bcrypt hashing** for workspace form passwords (`pgcrypto.crypt`)
+- **Clear separation:**
+  - Public/webhook endpoints
+  - User-facing JWT endpoints
+  - Internal service-role endpoints
 
 All tenant-scoped tables enforce RLS with the following patterns:
 
