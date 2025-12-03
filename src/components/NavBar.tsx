@@ -39,6 +39,7 @@ const NavBar = () => {
 
   const navLinks = [
     { path: "/dashboard", label: "Dashboard" },
+    { path: "/os", label: "OS" },
     { path: "/approvals", label: "Approvals" },
     { path: "/voice-agents", label: "Voice Agents" },
     { path: "/websites", label: "Websites" },
