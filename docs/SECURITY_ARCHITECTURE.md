@@ -442,6 +442,76 @@ $$;
 - Atomic increment
 - Boolean "allowed / blocked" response
 
+### 9.3 Example: Rate Limit `lead-capture` (Public Endpoint)
+
+**Policy:**
+
+| Scope | Limit | Window |
+|-------|-------|--------|
+| Per workspace | 60 requests | 60 seconds |
+| Per workspace | 2,000 requests | 1 day |
+
+**Edge Function Snippet** (`supabase/functions/lead-capture/index.ts`):
+
+At the top, after HMAC + workspace validation:
+
+```typescript
+// After verifying HMAC and resolving workspaceId
+const workspaceKey = workspaceId; // uuid string
+
+// 1. Per-minute limit
+const { data: allowedMinute, error: rlErrMinute } = await supabase
+  .rpc('check_and_increment_rate_limit', {
+    _scope: 'workspace',
+    _key: workspaceKey,
+    _endpoint: 'lead-capture',
+    _window_seconds: 60,
+    _max_count: 60,
+  });
+
+if (rlErrMinute) {
+  console.error('Rate limit RPC error (minute):', rlErrMinute);
+  return new Response(JSON.stringify({ error: 'Rate limit error' }), {
+    status: 500,
+    headers: corsHeaders,
+  });
+}
+
+if (!allowedMinute) {
+  return new Response(JSON.stringify({ error: 'Too many requests (minute limit)' }), {
+    status: 429,
+    headers: corsHeaders,
+  });
+}
+
+// 2. Per-day limit
+const { data: allowedDay, error: rlErrDay } = await supabase
+  .rpc('check_and_increment_rate_limit', {
+    _scope: 'workspace',
+    _key: workspaceKey,
+    _endpoint: 'lead-capture-daily',
+    _window_seconds: 86400,
+    _max_count: 2000,
+  });
+
+if (rlErrDay) {
+  console.error('Rate limit RPC error (day):', rlErrDay);
+  return new Response(JSON.stringify({ error: 'Rate limit error' }), {
+    status: 500,
+    headers: corsHeaders,
+  });
+}
+
+if (!allowedDay) {
+  return new Response(JSON.stringify({ error: 'Too many requests (daily limit)' }), {
+    status: 429,
+    headers: corsHeaders,
+  });
+}
+
+// If both checks pass → proceed to insert lead
+```
+
 ---
 
 ## 10. Revision History
