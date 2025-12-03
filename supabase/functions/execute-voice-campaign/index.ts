@@ -1,10 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Rate limit config: 10/min, 50/hour, 200/day (voice API costs)
+const RATE_LIMIT_CONFIG = { perMinute: 10, perHour: 50, perDay: 200 };
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -29,6 +33,13 @@ serve(async (req) => {
 
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!user) throw new Error("Not authenticated");
+
+    // Rate limiting per user
+    const rateLimitResult = await checkRateLimit(`voice_campaign:${user.id}`, RATE_LIMIT_CONFIG);
+    if (!rateLimitResult.allowed) {
+      console.warn(`[execute-voice-campaign] Rate limit exceeded for user ${user.id}`);
+      return rateLimitResponse(rateLimitResult, corsHeaders);
+    }
 
     const { assetId, assistantId, phoneNumberId } = await req.json();
 

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.84.0';
+import { checkRateLimit, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 // Declare EdgeRuntime global for background tasks
 declare const EdgeRuntime: {
@@ -10,6 +11,9 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Rate limit config: 5/min, 20/hour, 100/day (costly AI operation)
+const RATE_LIMIT_CONFIG = { perMinute: 5, perHour: 20, perDay: 100 };
 
 interface VideoRequest {
   vertical: string;
@@ -51,6 +55,13 @@ serve(async (req) => {
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Rate limiting per user
+    const rateLimitResult = await checkRateLimit(`generate_video:${user.id}`, RATE_LIMIT_CONFIG);
+    if (!rateLimitResult.allowed) {
+      console.warn(`[generate-video] Rate limit exceeded for user ${user.id}`);
+      return rateLimitResponse(rateLimitResult, corsHeaders);
     }
 
     console.log(`[generate-video] User ${user.id} generating video for asset ${assetId}`);

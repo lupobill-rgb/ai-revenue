@@ -1,11 +1,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { verifyHmacSignature } from "../_shared/webhook.ts";
+import { checkRateLimit, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-ubigrowth-signature, x-ubigrowth-timestamp",
 };
+
+// Rate limit config: 60/min, 500/hour, 2000/day
+const RATE_LIMIT_CONFIG = { perMinute: 60, perHour: 500, perDay: 2000 };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -79,6 +83,13 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
+    }
+
+    // Rate limiting per workspace
+    const rateLimitResult = await checkRateLimit(`lead_capture:${workspaceId}`, RATE_LIMIT_CONFIG);
+    if (!rateLimitResult.allowed) {
+      console.warn(`[lead-capture] Rate limit exceeded for workspace ${workspaceId}`);
+      return rateLimitResponse(rateLimitResult, corsHeaders);
     }
 
     if (!firstName || !lastName || !email) {

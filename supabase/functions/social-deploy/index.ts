@@ -1,10 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.84.0";
+import { checkRateLimit, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Rate limit config: 10/min, 60/hour, 500/day (social API limits)
+const RATE_LIMIT_CONFIG = { perMinute: 10, perHour: 60, perDay: 500 };
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -35,6 +39,13 @@ serve(async (req) => {
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Rate limiting per user
+    const rateLimitResult = await checkRateLimit(`social_deploy:${user.id}`, RATE_LIMIT_CONFIG);
+    if (!rateLimitResult.allowed) {
+      console.warn(`[social-deploy] Rate limit exceeded for user ${user.id}`);
+      return rateLimitResponse(rateLimitResult, corsHeaders);
     }
 
     const { assetId, platforms } = await req.json();
