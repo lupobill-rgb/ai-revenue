@@ -16,17 +16,23 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { contentId, action } = await req.json();
+    const { contentId, action, workspaceId } = await req.json();
 
+    // Publish a specific content item immediately (doesn't require workspaceId)
     if (action === 'publish_now' && contentId) {
-      // Publish a specific content item immediately
       const { data: content, error } = await supabase
         .from('content_calendar')
         .select('*, assets(*)')
         .eq('id', contentId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
+      if (!content) {
+        return new Response(JSON.stringify({ error: 'Content not found' }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       let deployResult = null;
 
@@ -55,11 +61,20 @@ serve(async (req) => {
       });
     }
 
-    // Default: check and publish all due content
+    // Batch publish requires workspaceId for multi-tenant scoping
+    if (!workspaceId) {
+      return new Response(JSON.stringify({ error: 'workspaceId required for batch operations' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Check and publish all due content for this workspace
     const now = new Date();
     const { data: dueContent, error: fetchError } = await supabase
       .from('content_calendar')
       .select('*')
+      .eq('workspace_id', workspaceId)
       .eq('status', 'scheduled')
       .lte('scheduled_at', now.toISOString());
 
@@ -95,6 +110,8 @@ serve(async (req) => {
         failed.push({ id: item.id, error: errorMsg });
       }
     }
+
+    console.log(`[Publish Content] Workspace ${workspaceId}: ${published.length} published, ${failed.length} failed`);
 
     return new Response(JSON.stringify({ published, failed }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
