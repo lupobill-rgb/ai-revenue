@@ -168,19 +168,31 @@ if (!internalSecret || internalSecret !== INTERNAL_SECRET) {
 
 > ⚠️ **Security Note:** These endpoints are NOT callable from browser clients. Only trusted backend systems or `pg_cron` may invoke them.
 
-### 2.2 HTTP Basic Authentication
+### 2.2 HTTP Basic Auth
 
-**File:** `supabase/functions/_shared/basic-auth.ts`
+**File:** `supabase/functions/_shared/basic-auth.ts`  
+**Pattern:** RFC 7617 HTTP Basic Auth
 
-| Aspect | Detail |
-|--------|--------|
-| Scheme | HTTP Basic Authentication (RFC 7617) |
-| Username Env Variable | `UG_ADMIN_BASIC_USER` |
-| Password Env Variable | `UG_ADMIN_BASIC_PASS` |
-| Comparison | Timing-safe string comparison |
-| Used By | `capture-screenshot` (primary) |
+#### Credentials
 
-**Usage:**
+| Setting | Env Variable |
+|---------|--------------|
+| Username | `UG_ADMIN_BASIC_USER` |
+| Password | `UG_ADMIN_BASIC_PASS` |
+
+#### Use Cases
+
+- Internal/admin tools
+- Staging / low-volume sensitive endpoints
+
+#### Endpoints Using
+
+| Endpoint | Auth Priority |
+|----------|---------------|
+| `capture-screenshot` | Primary (internal secret and JWT accepted as fallback) |
+
+#### Usage
+
 ```typescript
 import { requireBasicAuth, basicAuthResponse } from "../_shared/basic-auth.ts";
 
