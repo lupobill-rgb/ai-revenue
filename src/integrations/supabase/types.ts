@@ -147,7 +147,7 @@ export type Database = {
           scheduled_at: string
           started_at: string | null
           status: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           completed_at?: string | null
@@ -159,7 +159,7 @@ export type Database = {
           scheduled_at: string
           started_at?: string | null
           status?: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           completed_at?: string | null
@@ -171,7 +171,7 @@ export type Database = {
           scheduled_at?: string
           started_at?: string | null
           status?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -354,7 +354,7 @@ export type Database = {
           status: string
           target_audience: Json | null
           updated_at: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           asset_id: string
@@ -367,7 +367,7 @@ export type Database = {
           status?: string
           target_audience?: Json | null
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           asset_id?: string
@@ -380,7 +380,7 @@ export type Database = {
           status?: string
           target_audience?: Json | null
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -414,7 +414,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           asset_id?: string | null
@@ -430,7 +430,7 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           asset_id?: string | null
@@ -446,7 +446,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -774,7 +774,7 @@ export type Database = {
           utm_medium: string | null
           utm_source: string | null
           vertical: string | null
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           assigned_to?: string | null
@@ -804,7 +804,7 @@ export type Database = {
           utm_medium?: string | null
           utm_source?: string | null
           vertical?: string | null
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           assigned_to?: string | null
@@ -834,7 +834,7 @@ export type Database = {
           utm_medium?: string | null
           utm_source?: string | null
           vertical?: string | null
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -902,7 +902,7 @@ export type Database = {
           sequence_id: string
           status: string | null
           updated_at: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           completed_at?: string | null
@@ -914,7 +914,7 @@ export type Database = {
           sequence_id: string
           status?: string | null
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           completed_at?: string | null
@@ -926,7 +926,7 @@ export type Database = {
           sequence_id?: string
           status?: string | null
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {

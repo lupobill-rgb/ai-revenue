@@ -41,7 +41,11 @@ interface Lead {
   email: string;
 }
 
-export function EmailSequences() {
+interface EmailSequencesProps {
+  workspaceId: string;
+}
+
+export function EmailSequences({ workspaceId }: EmailSequencesProps) {
   const [sequences, setSequences] = useState<EmailSequence[]>([]);
   const [selectedSequence, setSelectedSequence] = useState<EmailSequence | null>(null);
   const [steps, setSteps] = useState<SequenceStep[]>([]);
@@ -243,6 +247,7 @@ export function EmailSequences() {
         lead_id: leadId,
         current_step: 1,
         next_email_at: new Date().toISOString(),
+        workspace_id: workspaceId,
       }));
 
       const { error } = await supabase.from("sequence_enrollments").insert(enrollments);

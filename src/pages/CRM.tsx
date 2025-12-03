@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Search, Filter, Mail, Phone, Building, User, Calendar, PhoneCall, Loader2, LayoutGrid, List, BarChart3, Download } from "lucide-react";
+import { Plus, Upload, Search, Filter, Mail, Phone, Building, User, Calendar, PhoneCall, Loader2, LayoutGrid, List, BarChart3, Download, Building2 } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast as sonnerToast } from "sonner";
+import WorkspaceSelector from "@/components/WorkspaceSelector";
 
 interface Lead {
   id: string;
@@ -54,6 +55,9 @@ interface VapiPhoneNumber {
 const CRM = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [workspaceId, setWorkspaceId] = useState<string | null>(
+    localStorage.getItem("currentWorkspaceId")
+  );
   const [leads, setLeads] = useState<Lead[]>([]);
   const [activeTab, setActiveTab] = useState<"dashboard" | "list" | "pipeline" | "deals" | "tasks" | "sequences" | "reports">("dashboard");
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
@@ -100,18 +104,26 @@ const CRM = () => {
   });
 
   useEffect(() => {
-    fetchLeads();
-  }, []);
+    if (workspaceId) {
+      fetchLeads();
+    } else {
+      setLeads([]);
+      setLoading(false);
+    }
+  }, [workspaceId]);
 
   useEffect(() => {
     filterLeads();
   }, [leads, searchQuery, statusFilter]);
 
   const fetchLeads = async () => {
+    if (!workspaceId) return;
+    
     try {
       const { data, error } = await supabase
         .from("leads")
         .select("*")
+        .eq("workspace_id", workspaceId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -241,6 +253,15 @@ const CRM = () => {
   };
 
   const handleCreateLead = async () => {
+    if (!workspaceId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please select a workspace first",
+      });
+      return;
+    }
+    
     try {
       const { data: user } = await supabase.auth.getUser();
       
@@ -248,6 +269,7 @@ const CRM = () => {
         {
           ...newLead,
           created_by: user.user?.id,
+          workspace_id: workspaceId,
         },
       ]);
 
@@ -532,7 +554,8 @@ const CRM = () => {
                   Manage and track your leads
                 </p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex items-center gap-3">
+                <WorkspaceSelector onWorkspaceChange={setWorkspaceId} />
                 <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
                   <DialogTrigger asChild>
                     <Button variant="outline">
@@ -1112,7 +1135,15 @@ const CRM = () => {
 
             {/* Sequences Tab */}
             <TabsContent value="sequences">
-              <EmailSequences />
+              {workspaceId ? (
+                <EmailSequences workspaceId={workspaceId} />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                  <Building2 className="h-16 w-16 text-muted-foreground/50 mb-4" />
+                  <h2 className="text-xl font-semibold mb-2">No Workspace Selected</h2>
+                  <p className="text-muted-foreground">Select a workspace to manage email sequences.</p>
+                </div>
+              )}
             </TabsContent>
 
             {/* Reports Tab */}
