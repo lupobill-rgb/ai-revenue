@@ -602,6 +602,16 @@ Log 429 responses to `automation_jobs` or a separate `security_events` table if 
 
 ---
 
+## Summary
+
+This architecture provides:
+
+1. **Documented, layered security** (auth + secrets + per-tenant passwords)
+2. **A generic rate limiting primitive** you can reuse across any endpoint
+3. **Concrete code examples** you can drop into `lead-capture` and cost-heavy functions today
+
+---
+
 ## 10. Revision History
 
 | Version | Date | Author | Changes |
