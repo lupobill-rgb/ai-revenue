@@ -370,114 +370,34 @@ WHERE id = 'workspace-uuid';
   - User-facing JWT endpoints
   - Internal service-role endpoints
 
-All tenant-scoped tables enforce RLS with the following patterns:
-
-### 9.1 Workspace Access Function
-
-```sql
-CREATE FUNCTION user_has_workspace_access(_workspace_id UUID)
-RETURNS BOOLEAN AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM workspaces WHERE id = _workspace_id AND owner_id = auth.uid()
-  ) OR EXISTS (
-    SELECT 1 FROM workspace_members WHERE workspace_id = _workspace_id AND user_id = auth.uid()
-  )
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
-```
-
-### 9.2 Role-Based Access
-
-```sql
-CREATE FUNCTION has_role(_user_id UUID, _role app_role)
-RETURNS BOOLEAN AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM user_roles WHERE user_id = _user_id AND role = _role
-  )
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
-```
-
-### 9.3 Tables with RLS Enabled
-
-| Table | Access Pattern |
-|-------|---------------|
-| `workspaces` | Owner or member |
-| `workspace_members` | Owner manages, members view |
-| `assets` | Workspace access |
-| `campaigns` | Workspace access |
-| `leads` | Workspace + role-based (admin/manager/sales) |
-| `lead_activities` | Workspace + sales team role |
-| `deals` | Workspace access |
-| `tasks` | Workspace access |
-| `email_sequences` | Workspace access |
-| `email_sequence_steps` | Via sequence → workspace |
-| `sequence_enrollments` | Workspace access |
-| `content_calendar` | Workspace access |
-| `content_templates` | Workspace access |
-| `segments` | Workspace access |
-| `automation_jobs` | Workspace access |
-| `campaign_metrics` | Workspace access |
-| `asset_approvals` | Via asset → workspace |
-| `business_profiles` | User's own profile |
-| `social_integrations` | User's own integrations |
-| `user_roles` | Admin manages, users view own |
-
 ---
 
-## 10. Security Checklist
+## 9. Rate Limiting Design (To Add)
 
-### Implemented ✅
+> **Goal:** Prevent abuse and cost blowups while staying multi-tenant and simple (Postgres-only, no Redis).
 
-- [x] Timing-safe string comparisons for all secret verification
-- [x] Timestamp tolerance to prevent replay attacks
-- [x] Fail-closed defaults (missing secrets/headers = rejection)
-- [x] Bcrypt hashing for workspace passwords
-- [x] Multi-layer authentication support
-- [x] Service role key isolation (internal functions only)
-- [x] RLS enforcement on all tenant-scoped tables
-- [x] SECURITY DEFINER functions with explicit search_path
+### 9.1 Rate Limit Table
 
-### Recommended 🔄
+**Migration:**
 
-- [ ] Implement rate limiting on public endpoints
-- [ ] Add failed authentication logging/alerting
-- [ ] IP allowlisting for cron endpoints (Supabase IPs)
-- [ ] Secret rotation automation
-- [ ] Request signing for inter-function calls
+```sql
+CREATE TABLE public.rate_limit_counters (
+  id           bigserial PRIMARY KEY,
+  scope        text        NOT NULL,  -- 'workspace', 'user', 'ip'
+  key          text        NOT NULL,  -- e.g., workspace_id::text, user_id::text, ip
+  endpoint     text        NOT NULL,  -- 'lead-capture', 'generate-video', etc.
+  window_start timestamptz NOT NULL,
+  count        integer     NOT NULL DEFAULT 0
+);
 
----
+CREATE UNIQUE INDEX rate_limit_unique_window_idx
+  ON public.rate_limit_counters(scope, key, endpoint, window_start);
 
-## 11. Architecture Diagram
-
+CREATE INDEX rate_limit_gc_idx
+  ON public.rate_limit_counters(window_start);
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         EXTERNAL SYSTEMS                                 │
-├───────────────────┬───────────────────┬─────────────────────────────────┤
-│   Lead Forms      │   Resend/Svix     │   Internal Cron                 │
-│   (HMAC + PW)     │   (Svix HMAC)     │   (Secret Header)               │
-└─────────┬─────────┴─────────┬─────────┴─────────┬───────────────────────┘
-          │                   │                   │
-          ▼                   ▼                   ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         EDGE FUNCTIONS                                   │
-├───────────────────┬───────────────────┬─────────────────────────────────┤
-│   lead-capture    │   email-webhook   │   cron-daily-automation         │
-│   (public)        │   email-tracking  │   daily-automation              │
-│                   │   (webhook)       │   capture-screenshot            │
-└─────────┬─────────┴─────────┬─────────┴─────────┬───────────────────────┘
-          │                   │                   │
-          ▼                   ▼                   ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         SHARED HELPERS                                   │
-├───────────────────┬───────────────────┬─────────────────────────────────┤
-│   webhook.ts      │   svix-verify.ts  │   basic-auth.ts                 │
-│   (HMAC-SHA256)   │   (Svix HMAC)     │   (HTTP Basic)                  │
-├───────────────────┴───────────────────┴─────────────────────────────────┤
-│   workspace-password.ts (Bcrypt via pgcrypto)                           │
-└─────────────────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         SUPABASE DATABASE                                │
+
+> ⚠️ **Note:** RLS is NOT enabled on this table. This is internal metering, accessed only by Edge Functions via service-role or guarded anon+JWT.
 ├─────────────────────────────────────────────────────────────────────────┤
 │   ┌─────────────────────────────────────────────────────────────────┐   │
 │   │                    RLS ENFORCEMENT LAYER                         │   │
