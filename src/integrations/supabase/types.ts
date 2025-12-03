@@ -1129,6 +1129,7 @@ export type Database = {
           id: string
           name: string
           owner_id: string
+          public_form_password_hash: string | null
           settings: Json | null
           slug: string
           updated_at: string
@@ -1138,6 +1139,7 @@ export type Database = {
           id?: string
           name: string
           owner_id: string
+          public_form_password_hash?: string | null
           settings?: Json | null
           slug: string
           updated_at?: string
@@ -1147,6 +1149,7 @@ export type Database = {
           id?: string
           name?: string
           owner_id?: string
+          public_form_password_hash?: string | null
           settings?: Json | null
           slug?: string
           updated_at?: string
