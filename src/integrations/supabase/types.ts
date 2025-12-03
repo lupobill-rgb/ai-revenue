@@ -1165,6 +1165,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      user_has_workspace_access: {
+        Args: { _workspace_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "sales" | "manager"
