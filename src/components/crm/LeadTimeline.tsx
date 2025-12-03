@@ -33,6 +33,7 @@ interface Activity {
 
 interface LeadTimelineProps {
   leadId: string;
+  workspaceId: string;
 }
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
@@ -55,7 +56,7 @@ const ACTIVITY_COLORS: Record<string, string> = {
   qualification: "bg-emerald-500",
 };
 
-export default function LeadTimeline({ leadId }: LeadTimelineProps) {
+export default function LeadTimeline({ leadId, workspaceId }: LeadTimelineProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddActivity, setShowAddActivity] = useState(false);
@@ -98,6 +99,7 @@ export default function LeadTimeline({ leadId }: LeadTimelineProps) {
         lead_id: leadId,
         activity_type: newActivity.type,
         description: newActivity.description,
+        workspace_id: workspaceId,
       });
 
       if (error) throw error;

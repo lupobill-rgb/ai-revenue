@@ -130,7 +130,7 @@ export function EmailSequences({ workspaceId }: EmailSequencesProps) {
       const { data: user } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from("email_sequences")
-        .insert([{ ...newSequence, created_by: user.user?.id }])
+        .insert([{ ...newSequence, created_by: user.user?.id, workspace_id: workspaceId }])
         .select()
         .single();
 

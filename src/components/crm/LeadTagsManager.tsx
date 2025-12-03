@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 interface LeadTagsManagerProps {
   leadId: string;
+  workspaceId: string;
   currentTags: string[] | null;
   onUpdate: () => void;
 }
@@ -44,7 +45,7 @@ const getTagColor = (tag: string) => {
   return colors[index];
 };
 
-export function LeadTagsManager({ leadId, currentTags, onUpdate }: LeadTagsManagerProps) {
+export function LeadTagsManager({ leadId, workspaceId, currentTags, onUpdate }: LeadTagsManagerProps) {
   const [tags, setTags] = useState<string[]>(currentTags || []);
   const [newTag, setNewTag] = useState("");
   const [saving, setSaving] = useState(false);
@@ -88,6 +89,7 @@ export function LeadTagsManager({ leadId, currentTags, onUpdate }: LeadTagsManag
       lead_id: leadId,
       activity_type: "note",
       description: `Tag added: ${trimmedTag}`,
+      workspace_id: workspaceId,
     });
     
     toast.success("Tag added");
@@ -101,6 +103,7 @@ export function LeadTagsManager({ leadId, currentTags, onUpdate }: LeadTagsManag
       lead_id: leadId,
       activity_type: "note",
       description: `Tag removed: ${tagToRemove}`,
+      workspace_id: workspaceId,
     });
     
     toast.success("Tag removed");
@@ -119,6 +122,7 @@ export function LeadTagsManager({ leadId, currentTags, onUpdate }: LeadTagsManag
       lead_id: leadId,
       activity_type: "note",
       description: `Tag added: ${tag}`,
+      workspace_id: workspaceId,
     });
     
     toast.success("Tag added");

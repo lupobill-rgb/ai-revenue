@@ -1104,9 +1104,10 @@ const CRM = () => {
 
             {/* Pipeline Tab */}
             <TabsContent value="pipeline">
-              {leads.length > 0 ? (
+              {leads.length > 0 && workspaceId ? (
                 <LeadPipeline
                   leads={filteredLeads}
+                  workspaceId={workspaceId}
                   onLeadClick={(lead) => navigate(`/crm/${lead.id}`)}
                   onLeadUpdate={fetchLeads}
                 />
@@ -1125,12 +1126,28 @@ const CRM = () => {
 
             {/* Deals Tab */}
             <TabsContent value="deals">
-              <DealsPipeline />
+              {workspaceId ? (
+                <DealsPipeline workspaceId={workspaceId} />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                  <Building2 className="h-16 w-16 text-muted-foreground/50 mb-4" />
+                  <h2 className="text-xl font-semibold mb-2">No Workspace Selected</h2>
+                  <p className="text-muted-foreground">Select a workspace to manage deals.</p>
+                </div>
+              )}
             </TabsContent>
 
             {/* Tasks Tab */}
             <TabsContent value="tasks">
-              <TaskManager />
+              {workspaceId ? (
+                <TaskManager workspaceId={workspaceId} />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                  <Building2 className="h-16 w-16 text-muted-foreground/50 mb-4" />
+                  <h2 className="text-xl font-semibold mb-2">No Workspace Selected</h2>
+                  <p className="text-muted-foreground">Select a workspace to manage tasks.</p>
+                </div>
+              )}
             </TabsContent>
 
             {/* Sequences Tab */}

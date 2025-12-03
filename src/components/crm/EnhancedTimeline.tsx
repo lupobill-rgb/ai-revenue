@@ -25,6 +25,7 @@ interface Activity {
 
 interface EnhancedTimelineProps {
   leadId: string;
+  workspaceId: string;
 }
 
 const ACTIVITY_CONFIG: Record<string, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
@@ -59,7 +60,7 @@ const NEW_ACTIVITY_TYPES = [
   { value: "video_call", label: "Video Call", icon: Video },
 ];
 
-export function EnhancedTimeline({ leadId }: EnhancedTimelineProps) {
+export function EnhancedTimeline({ leadId, workspaceId }: EnhancedTimelineProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -104,6 +105,7 @@ export function EnhancedTimeline({ leadId }: EnhancedTimelineProps) {
         activity_type: newActivity.type,
         description: newActivity.description,
         created_by: user.user?.id,
+        workspace_id: workspaceId,
       });
 
       if (error) throw error;

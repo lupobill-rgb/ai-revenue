@@ -50,7 +50,13 @@ const PRIORITIES = [
   { id: "high", label: "High", color: "bg-red-500/10 text-red-500" },
 ];
 
-export function TaskManager({ leadId, dealId }: { leadId?: string; dealId?: string }) {
+interface TaskManagerProps {
+  leadId?: string;
+  dealId?: string;
+  workspaceId: string;
+}
+
+export function TaskManager({ leadId, dealId, workspaceId }: TaskManagerProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +129,7 @@ export function TaskManager({ leadId, dealId }: { leadId?: string; dealId?: stri
         lead_id: newTask.lead_id || leadId || null,
         deal_id: dealId || null,
         created_by: user.user?.id,
+        workspace_id: workspaceId,
       }]);
 
       if (error) throw error;

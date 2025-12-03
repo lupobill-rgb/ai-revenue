@@ -277,7 +277,7 @@ export type Database = {
           unsubscribe_count: number | null
           updated_at: string
           video_views: number | null
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           bounce_count?: number | null
@@ -300,7 +300,7 @@ export type Database = {
           unsubscribe_count?: number | null
           updated_at?: string
           video_views?: number | null
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           bounce_count?: number | null
@@ -323,7 +323,7 @@ export type Database = {
           unsubscribe_count?: number | null
           updated_at?: string
           video_views?: number | null
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -489,7 +489,7 @@ export type Database = {
           tone: string | null
           updated_at: string
           vertical: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           content: string
@@ -507,7 +507,7 @@ export type Database = {
           tone?: string | null
           updated_at?: string
           vertical: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           content?: string
@@ -525,7 +525,7 @@ export type Database = {
           tone?: string | null
           updated_at?: string
           vertical?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -552,7 +552,7 @@ export type Database = {
           stage: string
           updated_at: string
           value: number | null
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           actual_close_date?: string | null
@@ -568,7 +568,7 @@ export type Database = {
           stage?: string
           updated_at?: string
           value?: number | null
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           actual_close_date?: string | null
@@ -584,7 +584,7 @@ export type Database = {
           stage?: string
           updated_at?: string
           value?: number | null
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -657,7 +657,7 @@ export type Database = {
           total_steps: number | null
           trigger_type: string | null
           updated_at: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           completed_count?: number | null
@@ -671,7 +671,7 @@ export type Database = {
           total_steps?: number | null
           trigger_type?: string | null
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           completed_count?: number | null
@@ -685,7 +685,7 @@ export type Database = {
           total_steps?: number | null
           trigger_type?: string | null
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -706,7 +706,7 @@ export type Database = {
           id: string
           lead_id: string
           metadata: Json | null
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           activity_type: string
@@ -716,7 +716,7 @@ export type Database = {
           id?: string
           lead_id: string
           metadata?: Json | null
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           activity_type?: string
@@ -726,7 +726,7 @@ export type Database = {
           id?: string
           lead_id?: string
           metadata?: Json | null
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -861,7 +861,7 @@ export type Database = {
           name: string
           targeting_rules: Json | null
           updated_at: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           created_at?: string
@@ -870,7 +870,7 @@ export type Database = {
           name: string
           targeting_rules?: Json | null
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           created_at?: string
@@ -879,7 +879,7 @@ export type Database = {
           name?: string
           targeting_rules?: Json | null
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -1010,7 +1010,7 @@ export type Database = {
           task_type: string | null
           title: string
           updated_at: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           assigned_to?: string | null
@@ -1027,7 +1027,7 @@ export type Database = {
           task_type?: string | null
           title: string
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           assigned_to?: string | null
@@ -1044,7 +1044,7 @@ export type Database = {
           task_type?: string | null
           title?: string
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -1158,11 +1158,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      asset_approval_workspace_access: {
+        Args: { approval_asset_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      sequence_step_workspace_access: {
+        Args: { step_sequence_id: string }
         Returns: boolean
       }
       user_has_workspace_access: {

@@ -62,6 +62,7 @@ interface Lead {
   updated_at: string;
   last_contacted_at?: string;
   next_follow_up_at?: string;
+  workspace_id: string;
 }
 
 const VERTICALS = [
@@ -444,7 +445,7 @@ export default function LeadDetail() {
                 </TabsContent>
 
                 <TabsContent value="activity" className="mt-4">
-                  <EnhancedTimeline leadId={lead.id} />
+                  <EnhancedTimeline leadId={lead.id} workspaceId={lead.workspace_id} />
                 </TabsContent>
 
                 <TabsContent value="nurturing" className="mt-4">
@@ -467,12 +468,14 @@ export default function LeadDetail() {
               <FollowUpScheduler 
                 leadId={lead.id} 
                 leadName={`${lead.first_name} ${lead.last_name}`}
+                workspaceId={lead.workspace_id}
                 currentFollowUp={lead.next_follow_up_at}
                 onUpdate={fetchLead}
               />
 
               <LeadTagsManager
                 leadId={lead.id}
+                workspaceId={lead.workspace_id}
                 currentTags={lead.tags || null}
                 onUpdate={fetchLead}
               />

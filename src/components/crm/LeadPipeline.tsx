@@ -23,6 +23,7 @@ interface Lead {
 
 interface LeadPipelineProps {
   leads: Lead[];
+  workspaceId: string;
   onLeadClick: (lead: Lead) => void;
   onLeadUpdate: () => void;
 }
@@ -35,7 +36,7 @@ const PIPELINE_STAGES = [
   { id: "lost", label: "Lost", color: "bg-muted" },
 ];
 
-export default function LeadPipeline({ leads, onLeadClick, onLeadUpdate }: LeadPipelineProps) {
+export default function LeadPipeline({ leads, workspaceId, onLeadClick, onLeadUpdate }: LeadPipelineProps) {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
 
@@ -97,6 +98,7 @@ export default function LeadPipeline({ leads, onLeadClick, onLeadUpdate }: LeadP
         lead_id: draggedLead.id,
         activity_type: "status_change",
         description: `Status changed from ${draggedLead.status} to ${newStatus}`,
+        workspace_id: workspaceId,
       });
 
       toast.success(`Lead moved to ${newStage}`);

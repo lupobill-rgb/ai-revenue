@@ -390,7 +390,7 @@ const Approvals = () => {
       // Find and activate the associated campaign
       const { data: campaign } = await supabase
         .from("campaigns")
-        .select("id, channel, budget_allocated")
+        .select("id, channel, budget_allocated, workspace_id")
         .eq("asset_id", assetId)
         .single();
 
@@ -426,6 +426,7 @@ const Approvals = () => {
               .from("campaign_metrics")
               .insert({
                 campaign_id: campaign.id,
+                workspace_id: campaign.workspace_id,
                 impressions: Math.floor(Math.random() * 100) + 50,
                 clicks: Math.floor(Math.random() * 10) + 5,
                 conversions: 0,
@@ -464,6 +465,7 @@ const Approvals = () => {
               .from("campaign_metrics")
               .insert({
                 campaign_id: campaign.id,
+                workspace_id: campaign.workspace_id,
                 impressions: Math.floor(Math.random() * 100) + 50,
                 clicks: Math.floor(Math.random() * 10) + 5,
                 conversions: 0,
@@ -494,6 +496,7 @@ const Approvals = () => {
             .from("campaign_metrics")
             .insert({
               campaign_id: campaign.id,
+              workspace_id: campaign.workspace_id,
               sent_count: targetLeads.length,
               delivered_count: 0,
               conversions: 0,
@@ -520,6 +523,7 @@ const Approvals = () => {
             .from("campaign_metrics")
             .insert({
               campaign_id: campaign.id,
+              workspace_id: campaign.workspace_id,
               impressions: Math.floor(Math.random() * 100) + 50,
               clicks: Math.floor(Math.random() * 10) + 5,
               conversions: 0,

@@ -42,7 +42,11 @@ const STAGES = [
   { id: "closed_lost", label: "Closed Lost", color: "bg-muted text-muted-foreground", probability: 0 },
 ];
 
-export function DealsPipeline() {
+interface DealsPipelineProps {
+  workspaceId: string;
+}
+
+export function DealsPipeline({ workspaceId }: DealsPipelineProps) {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,6 +118,7 @@ export function DealsPipeline() {
         expected_close_date: newDeal.expected_close_date || null,
         notes: newDeal.notes || null,
         created_by: user.user?.id,
+        workspace_id: workspaceId,
       }]);
 
       if (error) throw error;

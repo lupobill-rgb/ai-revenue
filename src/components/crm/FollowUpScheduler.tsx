@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 interface FollowUpSchedulerProps {
   leadId: string;
   leadName: string;
+  workspaceId: string;
   currentFollowUp?: string | null;
   onUpdate: () => void;
 }
@@ -32,7 +33,7 @@ const TIME_SLOTS = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"
 ];
 
-export function FollowUpScheduler({ leadId, leadName, currentFollowUp, onUpdate }: FollowUpSchedulerProps) {
+export function FollowUpScheduler({ leadId, leadName, workspaceId, currentFollowUp, onUpdate }: FollowUpSchedulerProps) {
   const [date, setDate] = useState<Date | undefined>(currentFollowUp ? new Date(currentFollowUp) : undefined);
   const [time, setTime] = useState(currentFollowUp ? format(new Date(currentFollowUp), "HH:00") : "10:00");
   const [notes, setNotes] = useState("");
@@ -69,6 +70,7 @@ export function FollowUpScheduler({ leadId, leadName, currentFollowUp, onUpdate 
         task_type: "follow_up",
         lead_id: leadId,
         created_by: user.user?.id,
+        workspace_id: workspaceId,
       });
 
       if (taskError) throw taskError;
@@ -79,6 +81,7 @@ export function FollowUpScheduler({ leadId, leadName, currentFollowUp, onUpdate 
         activity_type: "task",
         description: `Follow-up scheduled for ${format(followUpDate, "MMM d, yyyy 'at' h:mm a")}`,
         metadata: { follow_up_date: followUpDate.toISOString(), notes },
+        workspace_id: workspaceId,
       });
 
       toast.success("Follow-up scheduled");
@@ -114,12 +117,14 @@ export function FollowUpScheduler({ leadId, leadName, currentFollowUp, onUpdate 
         task_type: "follow_up",
         lead_id: leadId,
         created_by: user.user?.id,
+        workspace_id: workspaceId,
       });
 
       await supabase.from("lead_activities").insert({
         lead_id: leadId,
         activity_type: "task",
         description: `Follow-up scheduled for ${format(followUpDate, "MMM d, yyyy 'at' h:mm a")}`,
+        workspace_id: workspaceId,
       });
 
       toast.success("Follow-up scheduled");
