@@ -14,6 +14,7 @@ import BusinessProfileTab from "@/components/BusinessProfileTab";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import ModuleToggles from "@/components/ModuleToggles";
 
 interface SocialIntegration {
   id: string;
@@ -402,12 +403,17 @@ export default function Settings() {
             </div>
 
             <Tabs defaultValue="integrations" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            <TabsTrigger value="modules">Modules</TabsTrigger>
             <TabsTrigger value="profile">Business Profile</TabsTrigger>
             <TabsTrigger value="discovery">Brand Discovery</TabsTrigger>
             <TabsTrigger value="brand">Brand Guidelines</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="modules" className="space-y-6">
+            <ModuleToggles />
+          </TabsContent>
 
           <TabsContent value="integrations" className="space-y-6">
         {/* Stripe Billing Section */}

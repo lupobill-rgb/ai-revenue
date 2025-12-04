@@ -9,12 +9,14 @@ import { Menu, X, LogOut, User, Settings, Plus, Shield } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useAllModulesEnabled } from "@/hooks/useModuleEnabled";
 
 const NavBar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
   const { user, roles, isAdmin, signOut } = useAuth();
+  const { modules } = useAllModulesEnabled();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userName, setUserName] = useState<string>("");
   const [userInitials, setUserInitials] = useState<string>("U");
@@ -37,15 +39,22 @@ const NavBar = () => {
     navigate("/login");
   };
 
-  const navLinks = [
-    { path: "/dashboard", label: "Dashboard" },
-    { path: "/os", label: "OS" },
-    { path: "/approvals", label: "Approvals" },
-    { path: "/voice-agents", label: "Voice Agents" },
-    { path: "/websites", label: "Websites" },
-    { path: "/crm", label: "CRM" },
-    { path: "/reports", label: "Reports" },
+  // Base nav links - filtered by module access
+  const allNavLinks = [
+    { path: "/dashboard", label: "Dashboard", module: null },
+    { path: "/os", label: "OS", module: "os_admin" as const },
+    { path: "/approvals", label: "Approvals", module: null },
+    { path: "/voice-agents", label: "Voice Agents", module: null },
+    { path: "/websites", label: "Websites", module: null },
+    { path: "/crm", label: "CRM", module: "crm" as const },
+    { path: "/reports", label: "Reports", module: null },
   ];
+
+  // Filter nav links based on module access
+  const navLinks = allNavLinks.filter((link) => {
+    if (!link.module) return true;
+    return modules[link.module];
+  });
 
   const isActive = (path: string) => location.pathname === path;
 

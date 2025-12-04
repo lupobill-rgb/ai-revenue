@@ -5,6 +5,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { getModule, getAgentForMode, getAllModules } from './core';
+import { isModuleEnabledForTenant } from './launch/module-toggle';
 import type { 
   ExecModule, 
   KernelRequest, 
@@ -24,6 +25,19 @@ export * from './health/module-health';
 export async function runKernel(request: KernelRequest): Promise<KernelResponse> {
   const startTime = Date.now();
   const { module, mode, tenant_id, workspace_id, payload, context } = request;
+
+  // Check if module is enabled for tenant FIRST
+  const moduleEnabled = await isModuleEnabledForTenant(module, tenant_id);
+  if (!moduleEnabled) {
+    return {
+      success: false,
+      module,
+      mode,
+      agent: 'unknown',
+      run_id: '',
+      error: `Module ${module} is disabled for this tenant`,
+    };
+  }
 
   // Validate module exists
   const manifest = getModule(module);
