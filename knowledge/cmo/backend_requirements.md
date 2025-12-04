@@ -1,111 +1,69 @@
-# CMO Backend Requirements
+# AI CMO – Backend Requirements (v2)
 
-## Edge Function Architecture
+## Stack
+- Supabase (Postgres + Edge Functions)
+- TypeScript
+- Auth: Supabase Auth with tenant_id
+- RLS: Enabled on all cmo_* tables
+- Logging: agent_runs with tenant_id, agent, mode, input, output
 
-### Core Agent Functions
-| Function | Mode | Input | Output |
-|----------|------|-------|--------|
-| `cmo-brand-intake` | setup | `{ messages, currentStep, existingData }` | Streamed AI response |
-| `cmo-plan-90day` | strategy | `{ workspaceId, primaryGoal, budget, targetMetrics, constraints, startDate }` | Streamed plan JSON |
-| `cmo-funnel-architect` | funnels | `{ workspaceId, planId?, funnelType? }` | Streamed funnel JSON |
-| `cmo-campaign-designer` | campaigns | `{ workspaceId, funnelId?, planId?, campaignGoal, channels, preferences }` | Streamed campaign JSON |
-| `cmo-content-engine` | content | `{ workspaceId, campaignId, funnelStage, channels, ctaIntent, contentTypes }` | Streamed content JSON |
-| `cmo-optimization-analyst` | optimization | `{ workspaceId, planId?, funnelId?, period? }` | Streamed recommendations JSON |
+## Tables
+- cmo_brand_profiles
+- cmo_icp_segments
+- cmo_offers
+- cmo_plans_90d
+- cmo_plan_milestones
+- cmo_funnels
+- cmo_funnel_stages
+- cmo_campaigns
+- cmo_campaign_channels
+- cmo_content_assets
+- cmo_content_variants
+- cmo_calendar_events
+- cmo_metrics_snapshots
+- cmo_weekly_summaries
+- cmo_recommendations
 
-### Kernel Routing
-```typescript
-// cmo-kernel routes based on mode
-const MODE_TO_FUNCTION = {
-  setup: 'cmo-brand-intake',
-  strategy: 'cmo-plan-90day',
-  funnels: 'cmo-funnel-architect',
-  campaigns: 'cmo-campaign-designer',
-  content: 'cmo-content-engine',
-  optimization: 'cmo-optimization-analyst'
-};
-```
+## Functions / Endpoints
+- create_plan_90d(plan_json)
+- generate_funnel(plan_id)
+- launch_campaign(campaign_json)
+- generate_content(campaign_id)
+- record_metrics(snapshot_json)
+- summarize_performance(tenant_id)
 
-## Database Operations
+## Edge Functions
+| Function | Purpose |
+|----------|---------|
+| `cmo-kernel` | Routes mode → agent function |
+| `cmo-brand-intake` | Conversational brand setup |
+| `cmo-plan-90day` | 90-day plan generation |
+| `cmo-funnel-architect` | Funnel stage design |
+| `cmo-campaign-designer` | Campaign blueprint creation |
+| `cmo-content-engine` | Content asset generation |
+| `cmo-optimization-analyst` | Performance recommendations |
+| `cmo-create-plan` | Persists plan to DB |
+| `cmo-generate-funnel` | Creates funnel from plan |
+| `cmo-launch-campaign` | Activates campaign |
+| `cmo-generate-content` | Generates content pieces |
+| `cmo-record-metrics` | Records metric snapshots |
+| `cmo-summarize-weekly` | Weekly performance summary |
+| `cmo-webhook-outbound` | External webhook delivery |
+| `cmo-cron-weekly` | Scheduled weekly tasks |
 
-### Required Queries
-```typescript
-// All queries MUST be tenant-scoped
-supabase.from('cmo_brand_profiles').select('*').eq('workspace_id', workspaceId)
-supabase.from('cmo_icp_segments').select('*').eq('workspace_id', workspaceId)
-supabase.from('cmo_offers').select('*').eq('workspace_id', workspaceId)
-```
+## Security
+- All queries scoped by workspace_id
+- RLS policies use tenant_isolation or user_has_workspace_access()
+- JWT validation on all requests
+- Service role reserved for internal/cron only
 
-### Insert Requirements
-- All inserts MUST include `tenant_id` and `workspace_id`
-- Use `created_by: user.id` when available
-- Never insert without workspace context
+## AI Gateway
+- Endpoint: `https://ai.gateway.lovable.dev/v1/chat/completions`
+- Model: `google/gemini-2.5-flash`
+- Auth: `Bearer ${LOVABLE_API_KEY}`
+- Streaming: enabled
 
-## AI Gateway Contract
-
-### Request Format
-```typescript
-{
-  model: "google/gemini-2.5-flash",
-  messages: [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: contextPrompt }
-  ],
-  stream: true
-}
-```
-
-### Required Headers
-```typescript
-{
-  Authorization: `Bearer ${LOVABLE_API_KEY}`,
-  "Content-Type": "application/json"
-}
-```
-
-### Error Responses
-- `429` → Return `{ error: "Rate limits exceeded" }` with status 429
-- `402` → Return `{ error: "Payment required" }` with status 402
-- `500` → Log error, return generic message
-
-## Agent Run Logging
-
-Every agent execution MUST log to `agent_runs`:
-```typescript
-// Before execution
-await supabase.from('agent_runs').insert({
-  agent: functionName,
-  mode: requestMode,
-  tenant_id: tenantId,
-  workspace_id: workspaceId,
-  status: 'running',
-  input: requestPayload
-});
-
-// After execution
-await supabase.from('agent_runs').update({
-  status: 'completed',
-  output: responseData,
-  duration_ms: elapsed,
-  completed_at: new Date().toISOString()
-});
-```
-
-## Security Requirements
-
-### Authentication
-- Validate JWT on all requests
-- Extract user from `supabase.auth.getUser()`
-- Reject unauthenticated requests with 401
-
-### Tenant Isolation
-- Never query without workspace_id filter
-- Validate user has workspace access before operations
-- Use RLS as defense-in-depth
-
-### CORS Headers
-```typescript
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-```
+## Error Handling
+- 429 → Rate limit exceeded
+- 402 → Payment required
+- 500 → Log and return generic error
