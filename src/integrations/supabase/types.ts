@@ -399,6 +399,258 @@ export type Database = {
           },
         ]
       }
+      cmo_brand_profiles: {
+        Row: {
+          brand_colors: Json | null
+          brand_fonts: Json | null
+          brand_name: string
+          brand_personality: Json | null
+          brand_tone: string | null
+          brand_voice: string | null
+          competitors: Json | null
+          content_themes: Json | null
+          core_values: Json | null
+          created_at: string
+          created_by: string | null
+          id: string
+          industry: string | null
+          key_differentiators: Json | null
+          logo_url: string | null
+          messaging_pillars: Json | null
+          mission_statement: string | null
+          tagline: string | null
+          unique_value_proposition: string | null
+          updated_at: string
+          website_url: string | null
+          workspace_id: string
+        }
+        Insert: {
+          brand_colors?: Json | null
+          brand_fonts?: Json | null
+          brand_name: string
+          brand_personality?: Json | null
+          brand_tone?: string | null
+          brand_voice?: string | null
+          competitors?: Json | null
+          content_themes?: Json | null
+          core_values?: Json | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          industry?: string | null
+          key_differentiators?: Json | null
+          logo_url?: string | null
+          messaging_pillars?: Json | null
+          mission_statement?: string | null
+          tagline?: string | null
+          unique_value_proposition?: string | null
+          updated_at?: string
+          website_url?: string | null
+          workspace_id: string
+        }
+        Update: {
+          brand_colors?: Json | null
+          brand_fonts?: Json | null
+          brand_name?: string
+          brand_personality?: Json | null
+          brand_tone?: string | null
+          brand_voice?: string | null
+          competitors?: Json | null
+          content_themes?: Json | null
+          core_values?: Json | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          industry?: string | null
+          key_differentiators?: Json | null
+          logo_url?: string | null
+          messaging_pillars?: Json | null
+          mission_statement?: string | null
+          tagline?: string | null
+          unique_value_proposition?: string | null
+          updated_at?: string
+          website_url?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_brand_profiles_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cmo_icp_segments: {
+        Row: {
+          budget_range: Json | null
+          buying_triggers: Json | null
+          company_size: string | null
+          content_preferences: Json | null
+          created_at: string
+          created_by: string | null
+          decision_criteria: Json | null
+          demographics: Json | null
+          goals: Json | null
+          id: string
+          industry_verticals: Json | null
+          is_primary: boolean | null
+          job_titles: Json | null
+          objections: Json | null
+          pain_points: Json | null
+          preferred_channels: Json | null
+          priority_score: number | null
+          psychographics: Json | null
+          segment_description: string | null
+          segment_name: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          budget_range?: Json | null
+          buying_triggers?: Json | null
+          company_size?: string | null
+          content_preferences?: Json | null
+          created_at?: string
+          created_by?: string | null
+          decision_criteria?: Json | null
+          demographics?: Json | null
+          goals?: Json | null
+          id?: string
+          industry_verticals?: Json | null
+          is_primary?: boolean | null
+          job_titles?: Json | null
+          objections?: Json | null
+          pain_points?: Json | null
+          preferred_channels?: Json | null
+          priority_score?: number | null
+          psychographics?: Json | null
+          segment_description?: string | null
+          segment_name: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          budget_range?: Json | null
+          buying_triggers?: Json | null
+          company_size?: string | null
+          content_preferences?: Json | null
+          created_at?: string
+          created_by?: string | null
+          decision_criteria?: Json | null
+          demographics?: Json | null
+          goals?: Json | null
+          id?: string
+          industry_verticals?: Json | null
+          is_primary?: boolean | null
+          job_titles?: Json | null
+          objections?: Json | null
+          pain_points?: Json | null
+          preferred_channels?: Json | null
+          priority_score?: number | null
+          psychographics?: Json | null
+          segment_description?: string | null
+          segment_name?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_icp_segments_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cmo_offers: {
+        Row: {
+          case_studies: Json | null
+          competitive_positioning: string | null
+          created_at: string
+          created_by: string | null
+          demo_url: string | null
+          description: string | null
+          features: Json | null
+          id: string
+          is_flagship: boolean | null
+          key_benefits: Json | null
+          landing_page_url: string | null
+          launch_date: string | null
+          offer_name: string
+          offer_type: string
+          price_range: Json | null
+          pricing_model: string | null
+          status: string | null
+          success_metrics: Json | null
+          target_segments: Json | null
+          testimonials: Json | null
+          updated_at: string
+          use_cases: Json | null
+          workspace_id: string
+        }
+        Insert: {
+          case_studies?: Json | null
+          competitive_positioning?: string | null
+          created_at?: string
+          created_by?: string | null
+          demo_url?: string | null
+          description?: string | null
+          features?: Json | null
+          id?: string
+          is_flagship?: boolean | null
+          key_benefits?: Json | null
+          landing_page_url?: string | null
+          launch_date?: string | null
+          offer_name: string
+          offer_type: string
+          price_range?: Json | null
+          pricing_model?: string | null
+          status?: string | null
+          success_metrics?: Json | null
+          target_segments?: Json | null
+          testimonials?: Json | null
+          updated_at?: string
+          use_cases?: Json | null
+          workspace_id: string
+        }
+        Update: {
+          case_studies?: Json | null
+          competitive_positioning?: string | null
+          created_at?: string
+          created_by?: string | null
+          demo_url?: string | null
+          description?: string | null
+          features?: Json | null
+          id?: string
+          is_flagship?: boolean | null
+          key_benefits?: Json | null
+          landing_page_url?: string | null
+          launch_date?: string | null
+          offer_name?: string
+          offer_type?: string
+          price_range?: Json | null
+          pricing_model?: string | null
+          status?: string | null
+          success_metrics?: Json | null
+          target_segments?: Json | null
+          testimonials?: Json | null
+          updated_at?: string
+          use_cases?: Json | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_offers_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       content_calendar: {
         Row: {
           asset_id: string | null
