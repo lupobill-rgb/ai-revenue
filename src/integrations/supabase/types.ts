@@ -482,6 +482,152 @@ export type Database = {
           },
         ]
       }
+      cmo_funnel_stages: {
+        Row: {
+          budget_allocation: number | null
+          campaign_types: Json | null
+          channels: Json | null
+          content_assets: Json | null
+          conversion_rate_target: number | null
+          created_at: string
+          description: string | null
+          entry_criteria: string | null
+          exit_criteria: string | null
+          expected_volume: number | null
+          funnel_id: string
+          id: string
+          kpis: Json | null
+          linked_offers: Json | null
+          objective: string | null
+          stage_name: string
+          stage_order: number
+          stage_type: string
+          target_icps: Json | null
+          updated_at: string
+        }
+        Insert: {
+          budget_allocation?: number | null
+          campaign_types?: Json | null
+          channels?: Json | null
+          content_assets?: Json | null
+          conversion_rate_target?: number | null
+          created_at?: string
+          description?: string | null
+          entry_criteria?: string | null
+          exit_criteria?: string | null
+          expected_volume?: number | null
+          funnel_id: string
+          id?: string
+          kpis?: Json | null
+          linked_offers?: Json | null
+          objective?: string | null
+          stage_name: string
+          stage_order?: number
+          stage_type: string
+          target_icps?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          budget_allocation?: number | null
+          campaign_types?: Json | null
+          channels?: Json | null
+          content_assets?: Json | null
+          conversion_rate_target?: number | null
+          created_at?: string
+          description?: string | null
+          entry_criteria?: string | null
+          exit_criteria?: string | null
+          expected_volume?: number | null
+          funnel_id?: string
+          id?: string
+          kpis?: Json | null
+          linked_offers?: Json | null
+          objective?: string | null
+          stage_name?: string
+          stage_order?: number
+          stage_type?: string
+          target_icps?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_funnel_stages_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_funnels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cmo_funnels: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          expected_conversion_rate: number | null
+          expected_revenue: number | null
+          funnel_name: string
+          funnel_type: string
+          id: string
+          plan_id: string | null
+          status: string
+          target_icp_segments: Json | null
+          target_offers: Json | null
+          total_budget: number | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          expected_conversion_rate?: number | null
+          expected_revenue?: number | null
+          funnel_name: string
+          funnel_type?: string
+          id?: string
+          plan_id?: string | null
+          status?: string
+          target_icp_segments?: Json | null
+          target_offers?: Json | null
+          total_budget?: number | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          expected_conversion_rate?: number | null
+          expected_revenue?: number | null
+          funnel_name?: string
+          funnel_type?: string
+          id?: string
+          plan_id?: string | null
+          status?: string
+          target_icp_segments?: Json | null
+          target_offers?: Json | null
+          total_budget?: number | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_funnels_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_marketing_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cmo_funnels_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cmo_icp_segments: {
         Row: {
           budget_range: Json | null
@@ -1562,6 +1708,10 @@ export type Database = {
           }
       check_workspace_form_password: {
         Args: { _password: string; _workspace_id: string }
+        Returns: boolean
+      }
+      funnel_stage_workspace_access: {
+        Args: { stage_funnel_id: string }
         Returns: boolean
       }
       gc_rate_limit_counters: { Args: never; Returns: undefined }
