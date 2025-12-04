@@ -78,10 +78,10 @@ export function getAgentForMode(moduleId: string, mode: string): AgentConfig | u
 
   // CRO mode mappings
   const croModeToAgent: Record<string, string> = {
-    setup: 'setup',
-    experiments: 'experimentDesigner',
-    analysis: 'analyst',
-    recommendations: 'optimizer'
+    setup: 'pipelineIntake',
+    forecast: 'forecastPlanner',
+    deal_review: 'dealReviewer',
+    optimization: 'revenueMoves'
   };
 
   // CFO mode mappings

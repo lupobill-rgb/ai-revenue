@@ -6,7 +6,7 @@
 export type ExecModule = 'ai_cmo' | 'ai_cro' | 'ai_cfo' | 'ai_coo';
 
 export type CMOMode = 'setup' | 'strategy' | 'funnels' | 'campaigns' | 'content' | 'optimization';
-export type CROMode = 'setup' | 'experiments' | 'analysis' | 'recommendations';
+export type CROMode = 'setup' | 'forecast' | 'deal_review' | 'optimization';
 export type CFOMode = 'setup' | 'budgeting' | 'forecasting' | 'reporting';
 export type COOMode = 'setup' | 'workflows' | 'processes' | 'optimization';
 

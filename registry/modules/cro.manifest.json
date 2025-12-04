@@ -5,7 +5,7 @@
   "description": "AI-powered Chief Revenue Officer module for targets, forecasting, deal reviews, and revenue optimization.",
   "entry_agent": "CRO Orchestrator",
   "orchestrator_prompt": "/agents/cro/orchestrator.system.prompt.txt",
-  "modes": ["setup", "targets", "forecasting", "deal_review", "recommendations"],
+  "modes": ["setup", "forecast", "deal_review", "optimization"],
   "requires": ["supabase", "kernel", "ai_gateway"],
   "docs": [
     "/knowledge/cro/backend_requirements.md",
@@ -32,25 +32,21 @@
     "role": ["admin", "sales"]
   },
   "agents": {
-    "setup": {
-      "prompt": "/agents/cro/setup/intake.prompt.txt",
-      "function": "cro-setup"
+    "pipelineIntake": {
+      "prompt": "/agents/cro/setup/pipelineIntake.prompt.txt",
+      "function": "cro-pipeline-intake"
     },
-    "targetSetter": {
-      "prompt": "/agents/cro/targets/setter.prompt.txt",
-      "function": "cro-target-setter"
-    },
-    "forecaster": {
-      "prompt": "/agents/cro/forecasting/forecaster.prompt.txt",
-      "function": "cro-forecaster"
+    "forecastPlanner": {
+      "prompt": "/agents/cro/forecast/forecastPlanner.prompt.txt",
+      "function": "cro-forecast-planner"
     },
     "dealReviewer": {
-      "prompt": "/agents/cro/deals/reviewer.prompt.txt",
-      "function": "cro-deal-reviewer"
+      "prompt": "/agents/cro/deals/dealReview.prompt.txt",
+      "function": "cro-deal-review"
     },
-    "optimizer": {
-      "prompt": "/agents/cro/recommendations/optimizer.prompt.txt",
-      "function": "cro-optimizer"
+    "revenueMoves": {
+      "prompt": "/agents/cro/optimization/revenueMoves.prompt.txt",
+      "function": "cro-revenue-moves"
     }
   },
   "_status": "active"
