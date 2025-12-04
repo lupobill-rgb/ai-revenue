@@ -1,0 +1,54 @@
+{
+  "id": "ai_cro",
+  "name": "AI CRO Module",
+  "version": "2.0.0",
+  "description": "AI-powered Conversion Rate Optimization module for experiment design, A/B testing, and conversion analysis.",
+  "entry_agent": "CRO Orchestrator",
+  "orchestrator_prompt": "/agents/cro/orchestrator.system.prompt.txt",
+  "modes": ["setup", "experiments", "analysis", "recommendations"],
+  "requires": ["supabase", "kernel", "ai_gateway"],
+  "docs": [
+    "/knowledge/cro/backend_requirements.md",
+    "/knowledge/cro/frontend_requirements.md"
+  ],
+  "schemas": [
+    "cro_experiments",
+    "cro_variants",
+    "cro_hypotheses",
+    "cro_metrics",
+    "cro_segments",
+    "cro_recommendations"
+  ],
+  "ui": {
+    "basePath": "/cro",
+    "primaryScreens": [
+      "Dashboard",
+      "Experiments",
+      "Analysis",
+      "Recommendations"
+    ]
+  },
+  "permissions": {
+    "tenant": true,
+    "role": ["admin", "analyst"]
+  },
+  "agents": {
+    "setup": {
+      "prompt": "/agents/cro/setup/intake.prompt.txt",
+      "function": "cro-setup"
+    },
+    "experimentDesigner": {
+      "prompt": "/agents/cro/experiments/designer.prompt.txt",
+      "function": "cro-experiment-designer"
+    },
+    "analyst": {
+      "prompt": "/agents/cro/analysis/analyst.prompt.txt",
+      "function": "cro-analyst"
+    },
+    "optimizer": {
+      "prompt": "/agents/cro/recommendations/optimizer.prompt.txt",
+      "function": "cro-optimizer"
+    }
+  },
+  "_status": "planned"
+}
