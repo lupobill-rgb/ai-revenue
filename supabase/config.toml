@@ -42,7 +42,16 @@ verify_jwt = false
 [functions.cmo-brand-intake]
 verify_jwt = true
 
+[functions.cmo-campaign-designer]
+verify_jwt = true
+
+[functions.cmo-content-engine]
+verify_jwt = true
+
 [functions.cmo-funnel-architect]
+verify_jwt = true
+
+[functions.cmo-optimization-analyst]
 verify_jwt = true
 
 [functions.cmo-plan-90day]
