@@ -51,6 +51,9 @@ verify_jwt = true
 [functions.cmo-create-plan]
 verify_jwt = true
 
+[functions.cmo-cron-weekly]
+verify_jwt = false
+
 [functions.cmo-funnel-architect]
 verify_jwt = true
 
@@ -58,6 +61,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.cmo-generate-funnel]
+verify_jwt = true
+
+[functions.cmo-kernel]
 verify_jwt = true
 
 [functions.cmo-launch-campaign]
@@ -73,6 +79,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.cmo-summarize-weekly]
+verify_jwt = true
+
+[functions.cmo-webhook-outbound]
 verify_jwt = true
 
 [functions.content-generate]
