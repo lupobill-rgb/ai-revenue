@@ -13,7 +13,7 @@ import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AIQuickActions from "@/components/AIQuickActions";
 import WorkflowProgress from "@/components/WorkflowProgress";
-import ProductTour from "@/components/ProductTour";
+import AIWalkthrough from "@/components/AIWalkthrough";
 import { LineChart as RechartsLineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 interface CampaignMetrics {
@@ -239,12 +239,12 @@ const Dashboard = () => {
               <Button 
                 variant="outline" 
                 onClick={() => {
-                  localStorage.removeItem("ubigrowth-tour-completed");
+                  localStorage.removeItem("ubigrowth-ai-walkthrough-seen");
                   setShowTour(true);
                 }}
               >
                 <HelpCircle className="mr-2 h-4 w-4" />
-                Take Tour
+                AI Guide
               </Button>
               <Button onClick={() => navigate("/new-campaign")} size="lg">
                 <Plus className="mr-2 h-4 w-4" />
@@ -592,7 +592,7 @@ const Dashboard = () => {
           )}
         </main>
         <Footer />
-        <ProductTour forceShow={showTour} onComplete={() => setShowTour(false)} />
+        <AIWalkthrough forceShow={showTour} onClose={() => setShowTour(false)} />
       </div>
     </ProtectedRoute>
   );

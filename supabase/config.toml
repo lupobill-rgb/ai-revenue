@@ -30,6 +30,9 @@ verify_jwt = true
 [functions.ai-lead-nurturing]
 verify_jwt = true
 
+[functions.ai-walkthrough]
+verify_jwt = false
+
 [functions.campaign-orchestrator]
 verify_jwt = true
 
