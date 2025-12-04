@@ -48,13 +48,31 @@ verify_jwt = true
 [functions.cmo-content-engine]
 verify_jwt = true
 
+[functions.cmo-create-plan]
+verify_jwt = true
+
 [functions.cmo-funnel-architect]
+verify_jwt = true
+
+[functions.cmo-generate-content]
+verify_jwt = true
+
+[functions.cmo-generate-funnel]
+verify_jwt = true
+
+[functions.cmo-launch-campaign]
 verify_jwt = true
 
 [functions.cmo-optimization-analyst]
 verify_jwt = true
 
 [functions.cmo-plan-90day]
+verify_jwt = true
+
+[functions.cmo-record-metrics]
+verify_jwt = true
+
+[functions.cmo-summarize-weekly]
 verify_jwt = true
 
 [functions.content-generate]
