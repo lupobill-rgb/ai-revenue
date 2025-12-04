@@ -6,6 +6,11 @@
   "entry_agent": "CMO Orchestrator",
   "modes": ["setup", "strategy", "funnels", "campaigns", "content", "optimization"],
   "requires": ["supabase", "kernel", "ai_gateway"],
+  "docs": [
+    "/knowledge/cmo/backend_requirements.md",
+    "/knowledge/cmo/frontend_requirements.md",
+    "/agents/cmo/orchestrator.prompt.txt"
+  ],
   "schemas": [
     "cmo_brand_profiles",
     "cmo_icp_segments",
