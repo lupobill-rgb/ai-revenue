@@ -15,23 +15,37 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     
-    // Use anon key + user's JWT for RLS enforcement
+    // Get auth header and extract JWT
     const authHeader = req.headers.get('Authorization');
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader || '' } }
-    });
-
-    // Verify user is authenticated
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      console.error('Authentication error:', authError);
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('Missing or invalid Authorization header');
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`[sync-campaign-metrics] User ${user.id} syncing campaign metrics...`);
+    // Extract user ID from JWT (verify_jwt=true means Supabase already validated the token)
+    const jwt = authHeader.replace('Bearer ', '');
+    let userId: string;
+    try {
+      const payload = JSON.parse(atob(jwt.split('.')[1]));
+      userId = payload.sub;
+      if (!userId) throw new Error('No user ID in token');
+    } catch (e) {
+      console.error('Failed to parse JWT:', e);
+      return new Response(
+        JSON.stringify({ error: 'Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create client with user's JWT for RLS enforcement
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    console.log(`[sync-campaign-metrics] User ${userId} syncing campaign metrics...`);
 
     // RLS will automatically filter to only campaigns the user has access to
     const { data: campaigns, error: campaignsError } = await supabase
