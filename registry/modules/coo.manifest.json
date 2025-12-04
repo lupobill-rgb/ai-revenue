@@ -8,8 +8,7 @@
   "modes": ["setup", "workflows", "processes", "optimization"],
   "requires": ["supabase", "kernel", "ai_gateway"],
   "docs": [
-    "/knowledge/coo/backend_requirements.md",
-    "/knowledge/coo/frontend_requirements.md"
+    "/knowledge/coo/module.md"
   ],
   "schemas": [
     "coo_workflows",

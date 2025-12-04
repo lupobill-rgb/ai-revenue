@@ -8,8 +8,7 @@
   "modes": ["setup", "forecast", "deal_review", "optimization"],
   "requires": ["supabase", "kernel", "ai_gateway"],
   "docs": [
-    "/knowledge/cro/backend_requirements.md",
-    "/knowledge/cro/frontend_requirements.md"
+    "/knowledge/cro/module.md"
   ],
   "schemas": [
     "cro_targets",

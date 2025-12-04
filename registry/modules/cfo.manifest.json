@@ -8,8 +8,7 @@
   "modes": ["setup", "budgeting", "forecasting", "reporting"],
   "requires": ["supabase", "kernel", "ai_gateway"],
   "docs": [
-    "/knowledge/cfo/backend_requirements.md",
-    "/knowledge/cfo/frontend_requirements.md"
+    "/knowledge/cfo/module.md"
   ],
   "schemas": [
     "cfo_budgets",

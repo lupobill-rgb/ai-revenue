@@ -8,6 +8,7 @@
   "modes": ["setup", "strategy", "funnels", "campaigns", "content", "optimization"],
   "requires": ["supabase", "kernel", "ai_gateway"],
   "docs": [
+    "/knowledge/cmo/module.md",
     "/knowledge/cmo/backend_requirements.md",
     "/knowledge/cmo/frontend_requirements.md"
   ],
