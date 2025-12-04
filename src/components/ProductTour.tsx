@@ -14,7 +14,7 @@ interface TourStep {
 
 const tourSteps: TourStep[] = [
   {
-    title: "Welcome to Playkout",
+    title: "Welcome to UbiGrowth AI",
     description: "Your AI-powered marketing automation platform. Let's take a quick tour to help you get started and create your first campaign.",
     icon: <Sparkles className="h-8 w-8 text-primary" />,
     action: "Let's go!"
@@ -86,7 +86,7 @@ const ProductTour = ({ onComplete, forceShow = false }: ProductTourProps) => {
     }
 
     // Check if user has seen the tour
-    const hasSeenTour = localStorage.getItem("playkout-tour-completed");
+    const hasSeenTour = localStorage.getItem("ubigrowth-tour-completed");
     if (!hasSeenTour) {
       // Small delay to let the page load first
       const timer = setTimeout(() => setIsVisible(true), 1000);
@@ -109,13 +109,13 @@ const ProductTour = ({ onComplete, forceShow = false }: ProductTourProps) => {
   };
 
   const handleSkip = () => {
-    localStorage.setItem("playkout-tour-completed", "true");
+    localStorage.setItem("ubigrowth-tour-completed", "true");
     setIsVisible(false);
     onComplete?.();
   };
 
   const handleComplete = () => {
-    localStorage.setItem("playkout-tour-completed", "true");
+    localStorage.setItem("ubigrowth-tour-completed", "true");
     setIsVisible(false);
     onComplete?.();
   };

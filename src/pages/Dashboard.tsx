@@ -239,7 +239,7 @@ const Dashboard = () => {
               <Button 
                 variant="outline" 
                 onClick={() => {
-                  localStorage.removeItem("playkout-tour-completed");
+                  localStorage.removeItem("ubigrowth-tour-completed");
                   setShowTour(true);
                 }}
               >
