@@ -12,6 +12,12 @@ verify_jwt = true
 [functions.ai-campaign-planner]
 verify_jwt = true
 
+[functions.ai-lead-nurturing]
+verify_jwt = true
+
+[functions.ai-walkthrough]
+verify_jwt = false
+
 [functions.analyze-leads]
 verify_jwt = true
 
@@ -27,19 +33,19 @@ verify_jwt = true
 [functions.campaign-optimizer]
 verify_jwt = true
 
-[functions.ai-lead-nurturing]
-verify_jwt = true
-
-[functions.ai-walkthrough]
-verify_jwt = false
-
 [functions.campaign-orchestrator]
 verify_jwt = true
 
 [functions.capture-screenshot]
 verify_jwt = false
 
+[functions.cmo-brand-intake]
+verify_jwt = true
+
 [functions.content-generate]
+verify_jwt = true
+
+[functions.conversation-intelligence]
 verify_jwt = true
 
 [functions.cron-daily-automation]
@@ -47,9 +53,6 @@ verify_jwt = false
 
 [functions.daily-automation]
 verify_jwt = false
-
-[functions.trigger-user-automation]
-verify_jwt = true
 
 [functions.email-deploy]
 verify_jwt = true
@@ -96,6 +99,9 @@ verify_jwt = true
 [functions.playkout-assets-update]
 verify_jwt = true
 
+[functions.predictive-analytics]
+verify_jwt = true
+
 [functions.publish-scheduled-content]
 verify_jwt = true
 
@@ -117,6 +123,9 @@ verify_jwt = true
 [functions.sync-campaign-metrics]
 verify_jwt = true
 
+[functions.trigger-user-automation]
+verify_jwt = true
+
 [functions.vapi-analytics]
 verify_jwt = true
 
@@ -133,10 +142,4 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.vapi-outbound-call]
-verify_jwt = true
-
-[functions.predictive-analytics]
-verify_jwt = true
-
-[functions.conversation-intelligence]
 verify_jwt = true
