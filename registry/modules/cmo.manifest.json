@@ -4,39 +4,42 @@
   "version": "2.0.0",
   "description": "Standalone UbiGrowth AI CMO module for marketing automation, funnel, campaign, and optimization.",
   "entry_agent": "CMO Orchestrator",
+  "orchestrator_prompt": "/agents/cmo/orchestrator.system.prompt.txt",
   "modes": ["setup", "strategy", "funnels", "campaigns", "content", "optimization"],
   "requires": ["supabase", "kernel", "ai_gateway"],
   "docs": [
     "/knowledge/cmo/backend_requirements.md",
-    "/knowledge/cmo/frontend_requirements.md",
-    "/agents/cmo/orchestrator.prompt.txt"
+    "/knowledge/cmo/frontend_requirements.md"
   ],
   "schemas": [
     "cmo_brand_profiles",
     "cmo_icp_segments",
     "cmo_offers",
     "cmo_marketing_plans",
+    "cmo_plan_milestones",
     "cmo_funnels",
     "cmo_funnel_stages",
     "cmo_campaigns",
     "cmo_campaign_channels",
     "cmo_content_assets",
     "cmo_content_variants",
+    "cmo_calendar_events",
     "cmo_metrics_snapshots",
-    "cmo_recommendations",
     "cmo_weekly_summaries",
-    "cmo_calendar_events"
+    "cmo_recommendations"
   ],
   "ui": {
     "basePath": "/cmo",
     "primaryScreens": [
       "Dashboard",
-      "BrandSetup",
-      "Plan90Day",
+      "Setup",
+      "Plan",
       "Funnels",
       "Campaigns",
-      "ContentStudio",
-      "Analytics"
+      "Content",
+      "Calendar",
+      "Analytics",
+      "Settings"
     ]
   },
   "permissions": {
@@ -45,27 +48,27 @@
   },
   "agents": {
     "brandIntake": {
-      "prompt": "agents/cmo/setup/brandIntake.prompt.txt",
+      "prompt": "/agents/cmo/setup/brandIntake.prompt.txt",
       "function": "cmo-brand-intake"
     },
     "plan90Day": {
-      "prompt": "agents/cmo/strategy/plan90d.prompt.txt",
+      "prompt": "/agents/cmo/strategy/plan90d.prompt.txt",
       "function": "cmo-plan-90day"
     },
     "funnelArchitect": {
-      "prompt": "agents/cmo/funnels/funnelArchitect.prompt.txt",
+      "prompt": "/agents/cmo/funnels/funnelArchitect.prompt.txt",
       "function": "cmo-funnel-architect"
     },
     "campaignDesigner": {
-      "prompt": "agents/cmo/campaigns/campaignDesigner.prompt.txt",
+      "prompt": "/agents/cmo/campaigns/campaignDesigner.prompt.txt",
       "function": "cmo-campaign-designer"
     },
     "contentEngine": {
-      "prompt": "agents/cmo/content/contentEngine.prompt.txt",
+      "prompt": "/agents/cmo/content/contentEngine.prompt.txt",
       "function": "cmo-content-engine"
     },
     "optimizationAnalyst": {
-      "prompt": "agents/cmo/analytics/optimizationAnalyst.prompt.txt",
+      "prompt": "/agents/cmo/analytics/optimizationAnalyst.prompt.txt",
       "function": "cmo-optimization-analyst"
     }
   }
