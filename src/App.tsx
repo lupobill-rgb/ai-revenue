@@ -28,6 +28,11 @@ import UserManagement from "./pages/UserManagement";
 import Automation from "./pages/Automation";
 import OSDashboard from "./pages/OSDashboard";
 import NotFound from "./pages/NotFound";
+import CRODashboard from "./pages/cro/CRODashboard";
+import CROForecast from "./pages/cro/CROForecast";
+import CROPipeline from "./pages/cro/CROPipeline";
+import CRODealDetail from "./pages/cro/CRODealDetail";
+import CRORecommendations from "./pages/cro/CRORecommendations";
 
 const queryClient = new QueryClient();
 
@@ -60,6 +65,12 @@ const App = () => (
             <Route path="/crm/:id" element={<LeadDetail />} />
             <Route path="/automation" element={<Automation />} />
             <Route path="/os" element={<OSDashboard />} />
+            <Route path="/cro" element={<CRODashboard />} />
+            <Route path="/cro/dashboard" element={<CRODashboard />} />
+            <Route path="/cro/forecast" element={<CROForecast />} />
+            <Route path="/cro/pipeline" element={<CROPipeline />} />
+            <Route path="/cro/deals/:id" element={<CRODealDetail />} />
+            <Route path="/cro/recommendations" element={<CRORecommendations />} />
             <Route path="/settings" element={<Settings />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
