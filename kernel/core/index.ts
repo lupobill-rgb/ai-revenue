@@ -66,7 +66,8 @@ export function getAgentForMode(moduleId: string, mode: string): AgentConfig | u
   const module = modules.get(moduleId);
   if (!module?.agents) return undefined;
 
-  const modeToAgent: Record<string, string> = {
+  // CMO mode mappings
+  const cmoModeToAgent: Record<string, string> = {
     setup: 'brandIntake',
     strategy: 'plan90Day',
     funnels: 'funnelArchitect',
@@ -74,6 +75,49 @@ export function getAgentForMode(moduleId: string, mode: string): AgentConfig | u
     content: 'contentEngine',
     optimization: 'optimizationAnalyst'
   };
+
+  // CRO mode mappings
+  const croModeToAgent: Record<string, string> = {
+    setup: 'setup',
+    experiments: 'experimentDesigner',
+    analysis: 'analyst',
+    recommendations: 'optimizer'
+  };
+
+  // CFO mode mappings
+  const cfoModeToAgent: Record<string, string> = {
+    setup: 'setup',
+    budgeting: 'budgetPlanner',
+    forecasting: 'forecaster',
+    reporting: 'reporter'
+  };
+
+  // COO mode mappings
+  const cooModeToAgent: Record<string, string> = {
+    setup: 'setup',
+    workflows: 'workflowDesigner',
+    processes: 'processOptimizer',
+    optimization: 'analyst'
+  };
+
+  // Select mapping based on module
+  let modeToAgent: Record<string, string>;
+  switch (moduleId) {
+    case 'ai_cmo':
+      modeToAgent = cmoModeToAgent;
+      break;
+    case 'ai_cro':
+      modeToAgent = croModeToAgent;
+      break;
+    case 'ai_cfo':
+      modeToAgent = cfoModeToAgent;
+      break;
+    case 'ai_coo':
+      modeToAgent = cooModeToAgent;
+      break;
+    default:
+      return undefined;
+  }
 
   const agentKey = modeToAgent[mode];
   return agentKey ? module.agents[agentKey] : undefined;

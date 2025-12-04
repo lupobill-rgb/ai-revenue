@@ -1,0 +1,54 @@
+{
+  "id": "ai_cfo",
+  "name": "AI CFO Module",
+  "version": "2.0.0",
+  "description": "AI-powered Financial Operations module for budgeting, forecasting, and financial reporting.",
+  "entry_agent": "CFO Orchestrator",
+  "orchestrator_prompt": "/agents/cfo/orchestrator.system.prompt.txt",
+  "modes": ["setup", "budgeting", "forecasting", "reporting"],
+  "requires": ["supabase", "kernel", "ai_gateway"],
+  "docs": [
+    "/knowledge/cfo/backend_requirements.md",
+    "/knowledge/cfo/frontend_requirements.md"
+  ],
+  "schemas": [
+    "cfo_budgets",
+    "cfo_forecasts",
+    "cfo_transactions",
+    "cfo_reports",
+    "cfo_metrics",
+    "cfo_recommendations"
+  ],
+  "ui": {
+    "basePath": "/cfo",
+    "primaryScreens": [
+      "Dashboard",
+      "Budgets",
+      "Forecasts",
+      "Reports"
+    ]
+  },
+  "permissions": {
+    "tenant": true,
+    "role": ["admin", "finance"]
+  },
+  "agents": {
+    "setup": {
+      "prompt": "/agents/cfo/setup/intake.prompt.txt",
+      "function": "cfo-setup"
+    },
+    "budgetPlanner": {
+      "prompt": "/agents/cfo/budgeting/planner.prompt.txt",
+      "function": "cfo-budget-planner"
+    },
+    "forecaster": {
+      "prompt": "/agents/cfo/forecasting/forecaster.prompt.txt",
+      "function": "cfo-forecaster"
+    },
+    "reporter": {
+      "prompt": "/agents/cfo/reporting/reporter.prompt.txt",
+      "function": "cfo-reporter"
+    }
+  },
+  "_status": "planned"
+}

@@ -5,10 +5,16 @@
 
 import { registerModule } from '../core';
 import cmoManifest from '../../registry/modules/cmo.manifest.json';
+import croManifest from '../../registry/modules/cro.manifest.json';
+import cfoManifest from '../../registry/modules/cfo.manifest.json';
+import cooManifest from '../../registry/modules/coo.manifest.json';
 
-// Register CMO module
+// Register all exec modules
 registerModule(cmoManifest);
+registerModule(croManifest);
+registerModule(cfoManifest);
+registerModule(cooManifest);
 
-// Re-export for convenience
-export { cmoManifest };
+// Re-export manifests
+export { cmoManifest, croManifest, cfoManifest, cooManifest };
 export * from '../core';

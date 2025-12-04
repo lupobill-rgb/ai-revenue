@@ -1,0 +1,54 @@
+{
+  "id": "ai_coo",
+  "name": "AI COO Module",
+  "version": "2.0.0",
+  "description": "AI-powered Operations module for workflow automation, process optimization, and operational efficiency.",
+  "entry_agent": "COO Orchestrator",
+  "orchestrator_prompt": "/agents/coo/orchestrator.system.prompt.txt",
+  "modes": ["setup", "workflows", "processes", "optimization"],
+  "requires": ["supabase", "kernel", "ai_gateway"],
+  "docs": [
+    "/knowledge/coo/backend_requirements.md",
+    "/knowledge/coo/frontend_requirements.md"
+  ],
+  "schemas": [
+    "coo_workflows",
+    "coo_processes",
+    "coo_tasks",
+    "coo_metrics",
+    "coo_reports",
+    "coo_recommendations"
+  ],
+  "ui": {
+    "basePath": "/coo",
+    "primaryScreens": [
+      "Dashboard",
+      "Workflows",
+      "Processes",
+      "Reports"
+    ]
+  },
+  "permissions": {
+    "tenant": true,
+    "role": ["admin", "operations"]
+  },
+  "agents": {
+    "setup": {
+      "prompt": "/agents/coo/setup/intake.prompt.txt",
+      "function": "coo-setup"
+    },
+    "workflowDesigner": {
+      "prompt": "/agents/coo/workflows/designer.prompt.txt",
+      "function": "coo-workflow-designer"
+    },
+    "processOptimizer": {
+      "prompt": "/agents/coo/processes/optimizer.prompt.txt",
+      "function": "coo-process-optimizer"
+    },
+    "analyst": {
+      "prompt": "/agents/coo/optimization/analyst.prompt.txt",
+      "function": "coo-analyst"
+    }
+  },
+  "_status": "planned"
+}
