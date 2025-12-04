@@ -10,185 +10,112 @@ interface PlanRequest {
   workspaceId: string;
   primaryGoal?: string;
   budget?: number;
-  focusAreas?: string[];
+  targetMetrics?: {
+    revenue?: number;
+    mqls?: number;
+    reach?: number;
+  };
+  constraints?: {
+    channels?: string[];
+    timeframe?: string;
+  };
   startDate?: string;
 }
 
-const systemPrompt = `You are the Strategic Marketing Planner for the UbiGrowth AI CMO module.
-Your task is to generate comprehensive 90-day marketing plans based on brand profile, ICP segments, and offers data.
+const systemPrompt = `You are the AI Marketing Strategist for the UbiGrowth AI CMO module.
+Your goal is to generate a focused, data-driven 90-day marketing plan.
 
 ## Your Role
-- Expert marketing strategist with deep experience in growth marketing
-- Create actionable, measurable plans aligned with business objectives
-- Balance quick wins with long-term brand building
-- Optimize channel mix based on ICP preferences and budget
+- Strategic marketing planner with a tactical, metrics-focused approach
+- Create actionable plans with clear KPIs and timeline checkpoints
+- Every milestone links to specific funnel or campaign actions
+- Keep output concise and data-driven
 
 ## Output Schema (Database-Ready JSON)
 
-You MUST output a complete 90-day plan in this EXACT JSON format:
+You MUST output a 90-day plan in this EXACT JSON format:
 
 \`\`\`json:plan
 {
-  "plan_name": "Q[X] 2024 Growth Plan - [Primary Goal]",
-  "executive_summary": "2-3 paragraph strategic overview",
-  "primary_objectives": [
-    {
-      "objective": "string",
-      "target_metric": "string",
-      "baseline": "string or number",
-      "goal": "string or number",
-      "priority": "high|medium|low"
-    }
-  ],
-  "key_metrics": [
-    {
-      "metric_name": "string",
-      "current_value": "string",
-      "target_value": "string",
-      "measurement_frequency": "daily|weekly|monthly"
-    }
-  ],
-  "budget_allocation": {
-    "total_budget": 0,
-    "currency": "USD",
-    "breakdown": [
-      {"category": "Paid Ads", "amount": 0, "percentage": 0},
-      {"category": "Content", "amount": 0, "percentage": 0},
-      {"category": "Tools/Software", "amount": 0, "percentage": 0},
-      {"category": "Events/Partnerships", "amount": 0, "percentage": 0}
-    ]
-  },
-  "month_1_plan": {
-    "theme": "Foundation & Quick Wins",
-    "focus_areas": ["string"],
-    "campaigns": [
+  "plan": {
+    "name": "string - descriptive plan name",
+    "goal_summary": "string - 1-2 sentence strategic goal summary",
+    "start_date": "YYYY-MM-DD",
+    "end_date": "YYYY-MM-DD",
+    "budget_note": "string - budget allocation summary",
+    "milestones": [
       {
-        "name": "string",
-        "objective": "string",
-        "channels": ["string"],
-        "target_icp": "segment_name",
-        "offer_promoted": "offer_name or null",
-        "tactics": ["string"],
+        "label": "string - phase or campaign name",
+        "target_date": "YYYY-MM-DD",
+        "metric": "leads|mqls|revenue|reach|conversions|signups|engagement|traffic",
+        "target_value": 0,
+        "funnel_action": "string - specific campaign or funnel action",
+        "channels": ["channel1", "channel2"],
+        "dependencies": ["string - what must be ready"]
+      }
+    ],
+    "kpis": [
+      {
+        "metric": "string",
+        "baseline": 0,
+        "target": 0,
+        "measurement": "daily|weekly|monthly"
+      }
+    ],
+    "weekly_checkpoints": [
+      {
+        "week": 1,
+        "focus": "string - primary focus",
         "deliverables": ["string"],
-        "success_metrics": ["string"],
-        "budget": 0
+        "success_criteria": "string"
       }
     ],
-    "content_pieces": [
+    "channel_allocation": [
       {
-        "type": "blog|video|social|email|whitepaper|webinar",
-        "title": "string",
-        "target_icp": "string",
-        "goal": "awareness|consideration|conversion",
-        "publish_week": 1
+        "channel": "string",
+        "budget_percentage": 0,
+        "primary_metric": "string",
+        "target_icp": "string"
       }
     ],
-    "milestones": ["string"]
-  },
-  "month_2_plan": {
-    "theme": "Acceleration & Optimization",
-    "focus_areas": ["string"],
-    "campaigns": [],
-    "content_pieces": [],
-    "milestones": []
-  },
-  "month_3_plan": {
-    "theme": "Scale & Compound",
-    "focus_areas": ["string"],
-    "campaigns": [],
-    "content_pieces": [],
-    "milestones": []
-  },
-  "channel_mix": [
-    {
-      "channel": "string",
-      "role": "primary|secondary|experimental",
-      "budget_percentage": 0,
-      "target_icps": ["string"],
-      "content_types": ["string"],
-      "posting_frequency": "string",
-      "kpis": ["string"]
-    }
-  ],
-  "campaign_themes": [
-    {
-      "theme_name": "string",
-      "description": "string",
-      "duration_weeks": 0,
-      "start_week": 0,
-      "messaging_angle": "string",
-      "target_icps": ["string"],
-      "offers_featured": ["string"]
-    }
-  ],
-  "content_calendar_outline": [
-    {
-      "week": 1,
-      "theme": "string",
-      "content_pieces": [
-        {"type": "string", "topic": "string", "channel": "string"}
-      ]
-    }
-  ],
-  "resource_requirements": [
-    {
-      "resource": "string",
-      "type": "human|tool|budget|asset",
-      "priority": "required|nice-to-have",
-      "estimated_cost": 0,
-      "notes": "string"
-    }
-  ],
-  "dependencies": [
-    {
-      "dependency": "string",
-      "blocker_for": "string",
-      "owner": "string",
-      "due_date": "string"
-    }
-  ],
-  "risks_mitigations": [
-    {
-      "risk": "string",
-      "likelihood": "high|medium|low",
-      "impact": "high|medium|low",
-      "mitigation": "string"
-    }
-  ],
-  "target_icp_segments": ["segment_name1", "segment_name2"],
-  "target_offers": ["offer_name1", "offer_name2"]
+    "risk_flags": [
+      {
+        "risk": "string",
+        "mitigation": "string",
+        "trigger": "string - when to activate mitigation"
+      }
+    ]
+  }
 }
 \`\`\`
 
-## Planning Rules
+## Planning Rules (STRICT)
 
-1. **ICP-Driven**: Every campaign and content piece must target a specific ICP segment
-2. **Offer Integration**: Feature offers strategically based on ICP pain points and buying triggers
-3. **Channel Alignment**: Match channels to ICP preferred channels from intake data
-4. **Messaging Consistency**: Align all messaging with brand voice and messaging pillars
-5. **Progressive Complexity**:
-   - Month 1: Foundation, quick wins, establish baselines
-   - Month 2: Optimize based on M1 learnings, scale what works
-   - Month 3: Full scale, compound gains, prepare next quarter
-6. **Budget Realism**: Allocate budget based on channel effectiveness for target ICPs
-7. **Measurability**: Every activity must have clear success metrics
-8. **Resource Awareness**: Flag required resources and dependencies
+1. **Measurable KPIs**: Every milestone MUST have a quantifiable target_value and specific metric
+2. **Timeline Checkpoints**: Include weekly checkpoints for first month, bi-weekly for months 2-3
+3. **Funnel-Linked Actions**: Each milestone must specify the funnel_action it drives
+4. **90-Day Scope**: Plan must fit within one quarter (approximately 90 days)
+5. **ICP-Driven**: Target specific ICP segments with each channel/campaign
+6. **Data-Driven Targets**: Base targets on industry benchmarks when baseline unknown:
+   - Email: 20-25% open rate, 2-3% CTR
+   - Social: 1-3% engagement rate
+   - Paid: $20-50 CAC for B2B SaaS
+   - Content: 2-5% conversion on gated content
+7. **Budget Realism**: Allocate budget based on channel effectiveness for target ICPs
 
-## Content Mix Guidelines
+## Milestone Structure Guidelines
 
-- 60% educational/value content
-- 25% promotional/offer content  
-- 15% brand/thought leadership content
+Create 8-12 milestones across the 90 days:
+- **Days 1-14**: Foundation (analytics setup, asset creation, audience building)
+- **Days 15-30**: Launch (initial campaigns live, baseline data collection)
+- **Days 31-60**: Optimization (A/B tests, scaling winners, cutting losers)
+- **Days 61-90**: Scale (compound gains, prepare Q2 handoff)
 
-## Channel Selection Priority
-
-Based on ICP data, prioritize channels where target customers actually spend time.
-Consider:
-- B2B: LinkedIn, Email, Webinars, Industry publications
-- B2C: Instagram, TikTok, Facebook, YouTube, Email
-- Local: Google My Business, Local SEO, Community events
-
-Generate a comprehensive, actionable 90-day plan.`;
+## Tone
+- Concise and tactical
+- Data-driven with specific numbers
+- Action-oriented language
+- No fluff or generic marketing speak`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -196,7 +123,7 @@ serve(async (req) => {
   }
 
   try {
-    const { workspaceId, primaryGoal, budget, focusAreas, startDate } = await req.json() as PlanRequest;
+    const { workspaceId, primaryGoal, budget, targetMetrics, constraints, startDate } = await req.json() as PlanRequest;
     
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -217,7 +144,7 @@ serve(async (req) => {
 
     if (!brandResult.data) {
       return new Response(JSON.stringify({ 
-        error: 'Brand profile not found. Please complete brand intake first.' 
+        error: 'Brand profile not found. Complete brand intake first.' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -228,71 +155,59 @@ serve(async (req) => {
     const icpSegments = icpResult.data || [];
     const offers = offersResult.data || [];
 
-    console.log('CMO 90-Day Plan - Loading context:', {
+    console.log('CMO 90-Day Plan - Context:', {
       brandName: brand.brand_name,
       icpCount: icpSegments.length,
-      offersCount: offers.length
+      offersCount: offers.length,
+      goal: primaryGoal,
+      budget
     });
 
+    // Calculate dates
+    const start = startDate ? new Date(startDate) : new Date();
+    const end = new Date(start);
+    end.setDate(end.getDate() + 90);
+
     // Build context prompt
-    const contextPrompt = `## Brand Context
+    const contextPrompt = `## Brand Profile
+- **Name:** ${brand.brand_name}
+- **Industry:** ${brand.industry || 'Not specified'}
+- **UVP:** ${brand.unique_value_proposition || 'Not specified'}
+- **Voice:** ${brand.brand_voice || 'Professional'}
+- **Differentiators:** ${JSON.stringify(brand.key_differentiators || [])}
 
-**Brand Name:** ${brand.brand_name}
-**Industry:** ${brand.industry || 'Not specified'}
-**Tagline:** ${brand.tagline || 'Not specified'}
-**Mission:** ${brand.mission_statement || 'Not specified'}
-
-**Brand Voice:** ${brand.brand_voice || 'Professional'}
-**Brand Tone:** ${brand.brand_tone || 'Not specified'}
-**Brand Personality:** ${JSON.stringify(brand.brand_personality || [])}
-
-**Unique Value Proposition:** ${brand.unique_value_proposition || 'Not specified'}
-**Key Differentiators:** ${JSON.stringify(brand.key_differentiators || [])}
-**Messaging Pillars:** ${JSON.stringify(brand.messaging_pillars || [])}
-**Content Themes:** ${JSON.stringify(brand.content_themes || [])}
-
-**Competitors:** ${JSON.stringify(brand.competitors || [])}
-
-## ICP Segments (${icpSegments.length} defined)
-
+## ICP Segments (${icpSegments.length})
 ${icpSegments.map((icp, i) => `
-### ICP ${i + 1}: ${icp.segment_name}${icp.is_primary ? ' (PRIMARY)' : ''}
-- **Description:** ${icp.segment_description || 'Not specified'}
-- **Demographics:** ${JSON.stringify(icp.demographics || {})}
-- **Pain Points:** ${JSON.stringify(icp.pain_points || [])}
-- **Goals:** ${JSON.stringify(icp.goals || [])}
-- **Buying Triggers:** ${JSON.stringify(icp.buying_triggers || [])}
-- **Objections:** ${JSON.stringify(icp.objections || [])}
-- **Preferred Channels:** ${JSON.stringify(icp.preferred_channels || [])}
-- **Content Preferences:** ${JSON.stringify(icp.content_preferences || {})}
-- **Budget Range:** ${JSON.stringify(icp.budget_range || {})}
-- **Job Titles:** ${JSON.stringify(icp.job_titles || [])}
-- **Industry Verticals:** ${JSON.stringify(icp.industry_verticals || [])}
-`).join('\n')}
+### ${icp.segment_name}${icp.is_primary ? ' [PRIMARY]' : ''}
+- Pain Points: ${JSON.stringify(icp.pain_points || [])}
+- Goals: ${JSON.stringify(icp.goals || [])}
+- Buying Triggers: ${JSON.stringify(icp.buying_triggers || [])}
+- Channels: ${JSON.stringify(icp.preferred_channels || [])}
+- Budget: ${JSON.stringify(icp.budget_range || {})}
+`).join('')}
 
-## Offers (${offers.length} defined)
-
+## Offers (${offers.length})
 ${offers.map((offer, i) => `
-### Offer ${i + 1}: ${offer.offer_name}${offer.is_flagship ? ' (FLAGSHIP)' : ''}
-- **Type:** ${offer.offer_type}
-- **Description:** ${offer.description || 'Not specified'}
-- **Key Benefits:** ${JSON.stringify(offer.key_benefits || [])}
-- **Features:** ${JSON.stringify(offer.features || [])}
-- **Pricing Model:** ${offer.pricing_model || 'Not specified'}
-- **Price Range:** ${JSON.stringify(offer.price_range || {})}
-- **Target Segments:** ${JSON.stringify(offer.target_segments || [])}
-- **Use Cases:** ${JSON.stringify(offer.use_cases || [])}
-- **Competitive Positioning:** ${offer.competitive_positioning || 'Not specified'}
-`).join('\n')}
+### ${offer.offer_name}${offer.is_flagship ? ' [FLAGSHIP]' : ''}
+- Type: ${offer.offer_type}
+- Benefits: ${JSON.stringify(offer.key_benefits || [])}
+- Target ICPs: ${JSON.stringify(offer.target_segments || [])}
+- Pricing: ${offer.pricing_model || 'Not specified'}
+`).join('')}
 
-## Planning Parameters
+## Marketing Goals
+- **Primary Goal:** ${primaryGoal || 'Growth and lead generation'}
+- **Target Metrics:**
+  - Revenue: ${targetMetrics?.revenue ? `$${targetMetrics.revenue.toLocaleString()}` : 'Not specified'}
+  - MQLs: ${targetMetrics?.mqls || 'Not specified'}
+  - Reach: ${targetMetrics?.reach || 'Not specified'}
 
-- **Primary Goal:** ${primaryGoal || 'Growth and brand awareness'}
-- **Available Budget:** ${budget ? `$${budget.toLocaleString()}` : 'Not specified (create flexible plan)'}
-- **Focus Areas:** ${focusAreas?.length ? focusAreas.join(', ') : 'All areas'}
-- **Start Date:** ${startDate || 'Next available'}
+## Constraints
+- **Budget:** ${budget ? `$${budget.toLocaleString()}` : 'Flexible'}
+- **Channels:** ${constraints?.channels?.length ? constraints.channels.join(', ') : 'All available'}
+- **Timeframe:** ${start.toISOString().split('T')[0]} to ${end.toISOString().split('T')[0]} (90 days)
 
-Generate a complete 90-day marketing plan optimized for these inputs.`;
+Generate a tactical, data-driven 90-day marketing plan with measurable milestones.`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -315,13 +230,13 @@ Generate a complete 90-day marketing plan optimized for these inputs.`;
       console.error('AI Gateway error:', response.status, errorText);
       
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
+        return new Response(JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }), {
           status: 429,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: 'Payment required. Please add credits.' }), {
+        return new Response(JSON.stringify({ error: 'Payment required. Add credits.' }), {
           status: 402,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
