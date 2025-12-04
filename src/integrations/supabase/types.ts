@@ -14,6 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_runs: {
+        Row: {
+          agent: string
+          completed_at: string | null
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          input: Json | null
+          mode: string | null
+          output: Json | null
+          status: string | null
+          workspace_id: string
+        }
+        Insert: {
+          agent: string
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          input?: Json | null
+          mode?: string | null
+          output?: Json | null
+          status?: string | null
+          workspace_id: string
+        }
+        Update: {
+          agent?: string
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          input?: Json | null
+          mode?: string | null
+          output?: Json | null
+          status?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       asset_approvals: {
         Row: {
           approved_by: string | null
@@ -482,6 +532,366 @@ export type Database = {
           },
         ]
       }
+      cmo_calendar_events: {
+        Row: {
+          asset_id: string | null
+          campaign_id: string | null
+          channel: string | null
+          created_at: string
+          description: string | null
+          event_type: string
+          id: string
+          metadata: Json | null
+          scheduled_at: string
+          status: string | null
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          asset_id?: string | null
+          campaign_id?: string | null
+          channel?: string | null
+          created_at?: string
+          description?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          scheduled_at: string
+          status?: string | null
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          asset_id?: string | null
+          campaign_id?: string | null
+          channel?: string | null
+          created_at?: string
+          description?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          scheduled_at?: string
+          status?: string | null
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_calendar_events_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_content_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cmo_calendar_events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cmo_calendar_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cmo_campaign_channels: {
+        Row: {
+          budget_percentage: number | null
+          campaign_id: string
+          channel_name: string
+          channel_type: string | null
+          content_types: Json | null
+          created_at: string
+          expected_metrics: Json | null
+          id: string
+          posting_frequency: string | null
+          priority: string | null
+          targeting_notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          budget_percentage?: number | null
+          campaign_id: string
+          channel_name: string
+          channel_type?: string | null
+          content_types?: Json | null
+          created_at?: string
+          expected_metrics?: Json | null
+          id?: string
+          posting_frequency?: string | null
+          priority?: string | null
+          targeting_notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          budget_percentage?: number | null
+          campaign_id?: string
+          channel_name?: string
+          channel_type?: string | null
+          content_types?: Json | null
+          created_at?: string
+          expected_metrics?: Json | null
+          id?: string
+          posting_frequency?: string | null
+          priority?: string | null
+          targeting_notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_campaign_channels_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cmo_campaigns: {
+        Row: {
+          budget_allocation: number | null
+          campaign_name: string
+          campaign_type: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string | null
+          funnel_id: string | null
+          funnel_stage: string | null
+          id: string
+          objective: string | null
+          plan_id: string | null
+          primary_kpi: Json | null
+          secondary_kpis: Json | null
+          start_date: string | null
+          status: string | null
+          success_criteria: string | null
+          target_icp: string | null
+          target_offer: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          budget_allocation?: number | null
+          campaign_name: string
+          campaign_type: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_date?: string | null
+          funnel_id?: string | null
+          funnel_stage?: string | null
+          id?: string
+          objective?: string | null
+          plan_id?: string | null
+          primary_kpi?: Json | null
+          secondary_kpis?: Json | null
+          start_date?: string | null
+          status?: string | null
+          success_criteria?: string | null
+          target_icp?: string | null
+          target_offer?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          budget_allocation?: number | null
+          campaign_name?: string
+          campaign_type?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_date?: string | null
+          funnel_id?: string | null
+          funnel_stage?: string | null
+          id?: string
+          objective?: string | null
+          plan_id?: string | null
+          primary_kpi?: Json | null
+          secondary_kpis?: Json | null
+          start_date?: string | null
+          status?: string | null
+          success_criteria?: string | null
+          target_icp?: string | null
+          target_offer?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_campaigns_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_funnels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cmo_campaigns_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_marketing_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cmo_campaigns_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cmo_content_assets: {
+        Row: {
+          campaign_id: string | null
+          channel: string | null
+          content_id: string | null
+          content_type: string
+          created_at: string
+          created_by: string | null
+          cta: string | null
+          dependencies: Json | null
+          estimated_production_time: string | null
+          funnel_stage: string | null
+          id: string
+          key_message: string | null
+          publish_date: string | null
+          status: string | null
+          supporting_points: Json | null
+          target_icp: string | null
+          title: string
+          tone: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          channel?: string | null
+          content_id?: string | null
+          content_type: string
+          created_at?: string
+          created_by?: string | null
+          cta?: string | null
+          dependencies?: Json | null
+          estimated_production_time?: string | null
+          funnel_stage?: string | null
+          id?: string
+          key_message?: string | null
+          publish_date?: string | null
+          status?: string | null
+          supporting_points?: Json | null
+          target_icp?: string | null
+          title: string
+          tone?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          channel?: string | null
+          content_id?: string | null
+          content_type?: string
+          created_at?: string
+          created_by?: string | null
+          cta?: string | null
+          dependencies?: Json | null
+          estimated_production_time?: string | null
+          funnel_stage?: string | null
+          id?: string
+          key_message?: string | null
+          publish_date?: string | null
+          status?: string | null
+          supporting_points?: Json | null
+          target_icp?: string | null
+          title?: string
+          tone?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_content_assets_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cmo_content_assets_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cmo_content_variants: {
+        Row: {
+          asset_id: string
+          body_content: string | null
+          created_at: string
+          cta_text: string | null
+          headline: string | null
+          id: string
+          is_winner: boolean | null
+          metadata: Json | null
+          performance_metrics: Json | null
+          subject_line: string | null
+          updated_at: string
+          variant_name: string
+          variant_type: string | null
+          visual_description: string | null
+        }
+        Insert: {
+          asset_id: string
+          body_content?: string | null
+          created_at?: string
+          cta_text?: string | null
+          headline?: string | null
+          id?: string
+          is_winner?: boolean | null
+          metadata?: Json | null
+          performance_metrics?: Json | null
+          subject_line?: string | null
+          updated_at?: string
+          variant_name: string
+          variant_type?: string | null
+          visual_description?: string | null
+        }
+        Update: {
+          asset_id?: string
+          body_content?: string | null
+          created_at?: string
+          cta_text?: string | null
+          headline?: string | null
+          id?: string
+          is_winner?: boolean | null
+          metadata?: Json | null
+          performance_metrics?: Json | null
+          subject_line?: string | null
+          updated_at?: string
+          variant_name?: string
+          variant_type?: string | null
+          visual_description?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_content_variants_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_content_assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cmo_funnel_stages: {
         Row: {
           budget_allocation: number | null
@@ -806,6 +1216,85 @@ export type Database = {
           },
         ]
       }
+      cmo_metrics_snapshots: {
+        Row: {
+          campaign_id: string | null
+          channel_id: string | null
+          clicks: number | null
+          conversion_rate: number | null
+          conversions: number | null
+          cost: number | null
+          created_at: string
+          custom_metrics: Json | null
+          engagement_rate: number | null
+          id: string
+          impressions: number | null
+          metric_type: string
+          revenue: number | null
+          roi: number | null
+          snapshot_date: string
+          workspace_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          channel_id?: string | null
+          clicks?: number | null
+          conversion_rate?: number | null
+          conversions?: number | null
+          cost?: number | null
+          created_at?: string
+          custom_metrics?: Json | null
+          engagement_rate?: number | null
+          id?: string
+          impressions?: number | null
+          metric_type: string
+          revenue?: number | null
+          roi?: number | null
+          snapshot_date: string
+          workspace_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          channel_id?: string | null
+          clicks?: number | null
+          conversion_rate?: number | null
+          conversions?: number | null
+          cost?: number | null
+          created_at?: string
+          custom_metrics?: Json | null
+          engagement_rate?: number | null
+          id?: string
+          impressions?: number | null
+          metric_type?: string
+          revenue?: number | null
+          roi?: number | null
+          snapshot_date?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_metrics_snapshots_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cmo_metrics_snapshots_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_campaign_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cmo_metrics_snapshots_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cmo_offers: {
         Row: {
           case_studies: Json | null
@@ -885,6 +1374,131 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "cmo_offers_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cmo_recommendations: {
+        Row: {
+          action_items: Json | null
+          campaign_id: string | null
+          created_at: string
+          description: string | null
+          effort_level: string | null
+          expected_impact: string | null
+          id: string
+          implemented_at: string | null
+          priority: string | null
+          rationale: string | null
+          recommendation_type: string
+          status: string | null
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          action_items?: Json | null
+          campaign_id?: string | null
+          created_at?: string
+          description?: string | null
+          effort_level?: string | null
+          expected_impact?: string | null
+          id?: string
+          implemented_at?: string | null
+          priority?: string | null
+          rationale?: string | null
+          recommendation_type: string
+          status?: string | null
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          action_items?: Json | null
+          campaign_id?: string | null
+          created_at?: string
+          description?: string | null
+          effort_level?: string | null
+          expected_impact?: string | null
+          id?: string
+          implemented_at?: string | null
+          priority?: string | null
+          rationale?: string | null
+          recommendation_type?: string
+          status?: string | null
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_recommendations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cmo_recommendations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cmo_weekly_summaries: {
+        Row: {
+          challenges: Json | null
+          created_at: string
+          executive_summary: string | null
+          id: string
+          key_wins: Json | null
+          metrics_summary: Json | null
+          next_week_priorities: Json | null
+          recommendations: Json | null
+          top_performing_content: Json | null
+          updated_at: string
+          week_end: string
+          week_start: string
+          workspace_id: string
+        }
+        Insert: {
+          challenges?: Json | null
+          created_at?: string
+          executive_summary?: string | null
+          id?: string
+          key_wins?: Json | null
+          metrics_summary?: Json | null
+          next_week_priorities?: Json | null
+          recommendations?: Json | null
+          top_performing_content?: Json | null
+          updated_at?: string
+          week_end: string
+          week_start: string
+          workspace_id: string
+        }
+        Update: {
+          challenges?: Json | null
+          created_at?: string
+          executive_summary?: string | null
+          id?: string
+          key_wins?: Json | null
+          metrics_summary?: Json | null
+          next_week_priorities?: Json | null
+          recommendations?: Json | null
+          top_performing_content?: Json | null
+          updated_at?: string
+          week_end?: string
+          week_start?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cmo_weekly_summaries_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -1688,6 +2302,10 @@ export type Database = {
         Args: { approval_asset_id: string }
         Returns: boolean
       }
+      campaign_channel_workspace_access: {
+        Args: { channel_campaign_id: string }
+        Returns: boolean
+      }
       check_and_increment_rate_limit:
         | {
             Args: {
@@ -1708,6 +2326,10 @@ export type Database = {
           }
       check_workspace_form_password: {
         Args: { _password: string; _workspace_id: string }
+        Returns: boolean
+      }
+      content_variant_workspace_access: {
+        Args: { variant_asset_id: string }
         Returns: boolean
       }
       funnel_stage_workspace_access: {
