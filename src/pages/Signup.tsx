@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import Logo from "@/components/Logo";
+import { Building2 } from "lucide-react";
 import { z } from "zod";
 
 type AppRole = 'admin' | 'sales' | 'manager';
@@ -90,7 +90,7 @@ const Signup = () => {
         }
 
         toast({
-          title: "Welcome to UbiGrowth AI!",
+          title: "Welcome!",
           description: "Let's set up your business profile.",
         });
         navigate("/onboarding");
@@ -111,12 +111,14 @@ const Signup = () => {
       <Card className="w-full max-w-md animate-fade-in border-border bg-card">
         <CardHeader className="space-y-4 text-center">
           <div className="flex justify-center">
-            <Logo className="h-10" />
+            <div className="h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center">
+              <Building2 className="h-6 w-6 text-primary" />
+            </div>
           </div>
           <div>
             <CardTitle className="text-3xl font-bold tracking-tight">Get Started</CardTitle>
             <CardDescription className="text-base text-muted-foreground">
-              Create your <span className="text-ubigrowth">UbiGrowth AI</span> account
+              Create your marketing platform account
             </CardDescription>
           </div>
         </CardHeader>

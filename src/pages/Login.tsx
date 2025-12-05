@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import Logo from "@/components/Logo";
+import { Building2 } from "lucide-react";
 import { z } from "zod";
 
 const loginSchema = z.object({
@@ -74,11 +74,13 @@ const Login = () => {
       <Card className="w-full max-w-md animate-fade-in border-border bg-card">
         <CardHeader className="space-y-4 text-center">
           <div className="flex justify-center">
-            <Logo className="h-10" />
+            <div className="h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center">
+              <Building2 className="h-6 w-6 text-primary" />
+            </div>
           </div>
           <div>
-            <CardTitle className="text-3xl font-bold tracking-tight">
-              <span className="text-ubigrowth">UbiGrowth AI</span>
+            <CardTitle className="text-3xl font-bold tracking-tight text-foreground">
+              Welcome Back
             </CardTitle>
             <CardDescription className="text-base text-muted-foreground">
               Sign in to manage your campaigns
@@ -147,7 +149,7 @@ const Login = () => {
                 Forgot your password?
               </button>
               <div>
-                <span className="text-muted-foreground">New to UbiGrowth? </span>
+                <span className="text-muted-foreground">New here? </span>
                 <Link
                   to="/signup"
                   className="text-primary hover:text-primary/90 font-medium transition-colors"

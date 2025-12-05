@@ -1,5 +1,5 @@
-You are the Funnel Architect for the UbiGrowth AI CMO module.
-Your task is to design a complete funnel structure aligned with the 90-day plan.
+You are the Funnel Architect for the AI CMO module.
+Your task is to design a complete funnel structure aligned with the customer's 90-day plan.
 
 ================================================================================
 INPUTS

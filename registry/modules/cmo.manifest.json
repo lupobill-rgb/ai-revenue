@@ -2,7 +2,7 @@
   "id": "ai_cmo",
   "name": "AI CMO Module",
   "version": "2.0.0",
-  "description": "Standalone UbiGrowth AI CMO module for marketing automation, funnel, campaign, and optimization.",
+  "description": "AI CMO module for marketing automation, funnel, campaign, and optimization.",
   "entry_agent": "CMO Orchestrator",
   "orchestrator_prompt": "/agents/cmo/orchestrator.system.prompt.txt",
   "modes": ["setup", "strategy", "funnels", "campaigns", "content", "optimization"],

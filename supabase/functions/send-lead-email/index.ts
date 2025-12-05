@@ -31,7 +31,7 @@ serve(async (req) => {
     // Fetch the lead details
     const { data: lead, error: leadError } = await supabaseClient
       .from("leads")
-      .select("*")
+      .select("*, workspace_id")
       .eq("id", leadId)
       .single();
 
@@ -41,6 +41,22 @@ serve(async (req) => {
 
     if (!lead.email) {
       throw new Error("Lead has no email address");
+    }
+
+    // Fetch business profile to get sender name
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    let senderName = "Marketing Team";
+    
+    if (user) {
+      const { data: profile } = await supabaseClient
+        .from("business_profiles")
+        .select("business_name")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      
+      if (profile?.business_name) {
+        senderName = profile.business_name;
+      }
     }
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
@@ -56,7 +72,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "PlayKout <onboarding@resend.dev>",
+        from: `${senderName} <onboarding@resend.dev>`,
         to: [lead.email],
         subject: subject,
         html: body,
@@ -78,8 +94,6 @@ serve(async (req) => {
     const emailResult = await response.json();
 
     // Log activity
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    
     await supabaseClient.from("lead_activities").insert({
       lead_id: leadId,
       activity_type: "email_sent",
@@ -108,7 +122,7 @@ serve(async (req) => {
         .eq("id", leadId);
     }
 
-    console.log(`Email sent to ${lead.email}`);
+    console.log(`Email sent to ${lead.email} from ${senderName}`);
 
     return new Response(
       JSON.stringify({

@@ -79,6 +79,22 @@ serve(async (req) => {
       throw new Error("Asset must be approved before deployment");
     }
 
+    // Fetch business profile to get sender name
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    let senderName = "Marketing Team";
+    
+    if (user) {
+      const { data: profile } = await supabaseClient
+        .from("business_profiles")
+        .select("business_name")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      
+      if (profile?.business_name) {
+        senderName = profile.business_name;
+      }
+    }
+
     // Extract email content from asset
     const emailContent = asset.content as any;
     const subjectTemplate = emailContent?.subject || asset.name;
@@ -156,7 +172,6 @@ serve(async (req) => {
     // Send emails via Resend REST API
     let sentCount = 0;
     let failedCount = 0;
-    const { data: { user } } = await supabaseClient.auth.getUser();
     
     // Process each recipient with personalization
     const emailPromises = recipientList.map(async (recipientEmail: string) => {
@@ -168,7 +183,7 @@ serve(async (req) => {
         const personalizedSubject = personalizeContent(subjectTemplate, linkedLead || { email: recipientEmail });
         const personalizedBody = personalizeContent(htmlBodyTemplate, linkedLead || { email: recipientEmail });
         
-        console.log(`Sending personalized email to ${recipientEmail}`);
+        console.log(`Sending personalized email to ${recipientEmail} from ${senderName}`);
         
         const response = await fetch("https://api.resend.com/emails", {
           method: "POST",
@@ -177,7 +192,7 @@ serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "UbiGrowth Marketing <onboarding@resend.dev>",
+            from: `${senderName} <onboarding@resend.dev>`,
             to: [recipientEmail],
             subject: personalizedSubject,
             html: personalizedBody,

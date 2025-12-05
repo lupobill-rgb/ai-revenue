@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import Logo from "@/components/Logo";
+import { Building2 } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -18,10 +18,14 @@ const Index = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="text-center space-y-6 animate-fade-in">
-        <Logo className="h-12 mx-auto" showTagline />
+        <div className="flex justify-center">
+          <div className="h-16 w-16 bg-primary/10 rounded-xl flex items-center justify-center">
+            <Building2 className="h-8 w-8 text-primary" />
+          </div>
+        </div>
         <div>
           <h1 className="mb-4 text-4xl font-bold text-foreground">
-            Welcome to <span className="text-ubigrowth">UbiGrowth AI</span>
+            AI Marketing Platform
           </h1>
           <p className="text-xl text-muted-foreground mb-8">
             AI-powered marketing automation for your business
@@ -35,7 +39,7 @@ const Index = () => {
           Sign In
         </Button>
         <div className="text-sm text-muted-foreground">
-          New to UbiGrowth?{" "}
+          New here?{" "}
           <button
             onClick={() => navigate("/signup")}
             className="text-primary hover:text-primary/90 font-medium transition-colors"
