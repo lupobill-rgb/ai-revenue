@@ -36,7 +36,7 @@ const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
       return;
     }
 
-    const hasSeenWalkthrough = localStorage.getItem("ubigrowth-ai-walkthrough-seen");
+    const hasSeenWalkthrough = localStorage.getItem("ai-walkthrough-seen");
     if (!hasSeenWalkthrough) {
       const timer = setTimeout(() => {
         setIsVisible(true);
@@ -76,7 +76,7 @@ const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
       console.error("Walkthrough error:", error);
       setMessages([{
         role: "assistant",
-        content: "👋 Welcome to UbiGrowth AI! I'm here to help you navigate the platform. What would you like to accomplish with your marketing today?"
+        content: "👋 Welcome! I'm here to help you navigate the platform. What would you like to accomplish with your marketing today?"
       }]);
     } finally {
       setIsLoading(false);
@@ -168,7 +168,7 @@ const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
   };
 
   const handleClose = () => {
-    localStorage.setItem("ubigrowth-ai-walkthrough-seen", "true");
+    localStorage.setItem("ai-walkthrough-seen", "true");
     setIsVisible(false);
     onClose?.();
   };
@@ -222,7 +222,7 @@ const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
                 <Sparkles className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <CardTitle className="text-lg">UbiGrowth AI Guide</CardTitle>
+                <CardTitle className="text-lg">AI Guide</CardTitle>
                 <p className="text-xs text-muted-foreground">Your personal platform assistant</p>
               </div>
             </div>
@@ -298,7 +298,7 @@ const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-2 text-center">
-              Ask me anything about UbiGrowth AI
+              Ask me anything about the platform
             </p>
           </div>
         </CardContent>

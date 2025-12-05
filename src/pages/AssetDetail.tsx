@@ -384,12 +384,26 @@ const AssetDetail = () => {
 
     setGenerating(true);
     try {
+      // Fetch business profile to pass to content generation
+      const { data: { user } } = await supabase.auth.getUser();
+      let businessProfile = null;
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('business_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        businessProfile = profile;
+      }
+      
       const { data, error } = await supabase.functions.invoke('content-generate', {
         body: {
           vertical: channel,
-          contentType: asset.type === 'landing_page' ? 'landing_page' : asset.type === 'email' ? 'email' : 'social',
+          contentType: asset.type === 'voice' ? 'voice' : asset.type === 'video' ? 'video' : asset.type === 'landing_page' ? 'landing_page' : asset.type === 'email' ? 'email' : 'social',
           assetGoal: goal || undefined,
-          tone: 'professional'
+          tone: businessProfile?.content_tone || 'professional',
+          businessProfile
         }
       });
 

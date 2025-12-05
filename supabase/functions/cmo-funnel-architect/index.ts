@@ -12,7 +12,7 @@ interface FunnelRequest {
   funnelType?: 'marketing' | 'sales' | 'product';
 }
 
-const systemPrompt = `You are the Funnel Architect for the UbiGrowth AI CMO module.
+const systemPrompt = `You are the Funnel Architect for the AI CMO module.
 Your task is to design complete funnel structures aligned with the 90-day marketing plan.
 
 ## Your Role

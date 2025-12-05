@@ -15,7 +15,7 @@ interface ContentEngineRequest {
   contentTypes?: string[];
 }
 
-const systemPrompt = `You are the Content Engine for the UbiGrowth AI CMO module.
+const systemPrompt = `You are the Content Engine for the AI CMO module.
 Your task is to produce brand-consistent, performance-oriented assets for each campaign.
 
 ## Your Role

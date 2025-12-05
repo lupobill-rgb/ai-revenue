@@ -16,7 +16,7 @@ interface CampaignDesignerRequest {
   budgetNotes?: string;
 }
 
-const systemPrompt = `You are the Campaign Designer for the UbiGrowth AI CMO module.
+const systemPrompt = `You are the Campaign Designer for the AI CMO module.
 Your job is to transform a funnel stage into a complete marketing campaign.
 
 ## Your Role

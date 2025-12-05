@@ -13,7 +13,7 @@ interface OptimizationRequest {
   period?: 'last_7_days' | 'last_30_days' | 'last_90_days';
 }
 
-const systemPrompt = `You are the Optimization Analyst for the UbiGrowth AI CMO module.
+const systemPrompt = `You are the Optimization Analyst for the AI CMO module.
 Your role is to identify underperforming areas and generate actionable recommendations.
 
 ## Your Role

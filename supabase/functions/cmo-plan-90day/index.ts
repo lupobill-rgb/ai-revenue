@@ -22,7 +22,7 @@ interface PlanRequest {
   startDate?: string;
 }
 
-const systemPrompt = `You are the AI Marketing Strategist for the UbiGrowth AI CMO module.
+const systemPrompt = `You are the AI Marketing Strategist for the AI CMO module.
 Your goal is to generate a focused, data-driven 90-day marketing plan.
 
 ## Your Role

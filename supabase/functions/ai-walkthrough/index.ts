@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const systemPrompt = `You are the UbiGrowth AI platform assistant - a friendly, knowledgeable guide helping users discover and use the marketing automation platform.
+const systemPrompt = `You are an AI platform assistant - a friendly, knowledgeable guide helping users discover and use the marketing automation platform.
 
 ## Platform Features You Can Guide Users Through:
 

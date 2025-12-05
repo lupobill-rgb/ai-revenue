@@ -150,7 +150,7 @@ IMPORTANT RULES:
 - Make it sound natural and conversational (this will be read by AI voice)
 - Include personalization: use {{first_name}} and {{company}} placeholders
 - Keep sentences short and easy to speak
-- Do NOT mention UbiGrowth or any generic company - this is for ${businessName}
+- Make all content specific to ${businessName} - never use generic company names
 
 Structure your response in THREE SECTIONS separated by double newlines:
 

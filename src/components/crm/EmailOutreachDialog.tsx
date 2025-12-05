@@ -32,44 +32,45 @@ interface EmailTemplate {
   body: string;
 }
 
-const EMAIL_TEMPLATES: EmailTemplate[] = [
+// Dynamic templates that will use business name from profile
+const getEmailTemplates = (businessName: string = "Our Team"): EmailTemplate[] => [
   {
     id: "intro",
     name: "Introduction",
     subject: "Quick question about {{company}}",
     body: `Hi {{first_name}},
 
-I came across {{company}} and was impressed by what you're building. I wanted to reach out because we help businesses like yours increase customer engagement through innovative AI-powered marketing experiences.
+I came across {{company}} and was impressed by what you're building. I wanted to reach out because we help businesses like yours increase customer engagement through innovative marketing experiences.
 
 Would you be open to a quick 15-minute call this week to explore if there's a fit?
 
 Best regards,
-The UbiGrowth Team`,
+${businessName}`,
   },
   {
     id: "follow-up",
     name: "Follow Up",
-    subject: "Following up - UbiGrowth for {{company}}",
+    subject: "Following up on {{company}}",
     body: `Hi {{first_name}},
 
-I wanted to follow up on my previous message. I know you're busy, but I truly believe we can help {{company}} stand out with our AI-powered marketing automation.
+I wanted to follow up on my previous message. I know you're busy, but I truly believe we can help {{company}} stand out with our marketing automation solutions.
 
 Our clients typically see a 40% increase in campaign performance within the first 3 months.
 
 Do you have 10 minutes for a quick chat?
 
 Best,
-The UbiGrowth Team`,
+${businessName}`,
   },
   {
     id: "value-prop",
     name: "Value Proposition",
-    subject: "Boost engagement at {{company}} with UbiGrowth AI",
+    subject: "Boost engagement at {{company}}",
     body: `Hi {{first_name}},
 
 Did you know that AI-powered marketing drives 3x more conversions than traditional methods?
 
-At UbiGrowth, we specialize in creating intelligent marketing automation that:
+We specialize in creating intelligent marketing automation that:
 • Increases campaign ROI by up to 50%
 • Boosts customer engagement rates
 • Generates authentic multi-channel reach
@@ -77,7 +78,7 @@ At UbiGrowth, we specialize in creating intelligent marketing automation that:
 I'd love to show you how {{company}} could benefit. Are you available for a brief demo this week?
 
 Cheers,
-The UbiGrowth Team`,
+${businessName}`,
   },
   {
     id: "special-offer",
@@ -95,7 +96,7 @@ For a limited time, we're offering new partners:
 This offer expires at the end of the month. Want to learn more?
 
 Best,
-The UbiGrowth Team`,
+${businessName}`,
   },
 ];
 
@@ -104,6 +105,25 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(getEmailTemplates());
+
+  // Fetch business profile on mount to customize templates
+  useState(() => {
+    const fetchProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('business_profiles')
+          .select('business_name')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (profile?.business_name) {
+          setEmailTemplates(getEmailTemplates(profile.business_name));
+        }
+      }
+    };
+    fetchProfile();
+  });
 
   const replaceVariables = (text: string): string => {
     if (!lead) return text;
@@ -116,7 +136,7 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplate(templateId);
-    const template = EMAIL_TEMPLATES.find(t => t.id === templateId);
+    const template = emailTemplates.find(t => t.id === templateId);
     if (template) {
       setSubject(replaceVariables(template.subject));
       setBody(replaceVariables(template.body));
@@ -189,7 +209,7 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
               Quick Templates
             </Label>
             <div className="flex flex-wrap gap-2">
-              {EMAIL_TEMPLATES.map((template) => (
+              {emailTemplates.map((template) => (
                 <Badge
                   key={template.id}
                   variant={selectedTemplate === template.id ? "default" : "outline"}
