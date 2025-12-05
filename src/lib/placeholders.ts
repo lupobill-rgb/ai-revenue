@@ -1,20 +1,17 @@
 // Generic placeholder images for different asset types
 export const VERTICAL_CONTEXTS: Record<string, string> = {
-  "Hotels & Resorts": "luxury resort amenities and guest experiences",
-  "Multifamily Real Estate": "modern apartment community lifestyle",
-  "Entertainment Venues": "vibrant entertainment and events",
-  "Physical Therapy": "healthcare and wellness services",
-  "Corporate Offices": "professional business environment",
-  "Education": "educational programs and learning",
-  "Gyms": "fitness and health facilities",
-  "Restaurants": "dining experiences and culinary delights",
-  "Retail": "shopping and retail experiences",
-  "Healthcare": "medical services and patient care",
-  "Technology": "innovative tech solutions",
-  "Finance": "financial services and solutions",
+  "Biotechnology & Pharmaceuticals": "pharmaceutical research and medical innovation",
+  "Healthcare & Medical": "healthcare services and patient care",
+  "Technology & SaaS": "innovative tech solutions and software",
+  "Financial Services": "financial advisory and wealth management",
+  "Professional Services": "consulting and business solutions",
+  "Manufacturing": "precision manufacturing and production",
+  "Retail & E-commerce": "retail experiences and online shopping",
   "Real Estate": "property and real estate services",
-  "Automotive": "automotive sales and services",
-  "Travel": "travel and tourism experiences",
+  "Education & Training": "educational programs and learning",
+  "Hospitality & Travel": "hospitality and travel experiences",
+  "Media & Entertainment": "media and entertainment content",
+  "Non-Profit": "community impact and social good",
 } as const;
 
 // Generate unique placeholder based on campaign context

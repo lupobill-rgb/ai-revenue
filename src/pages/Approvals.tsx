@@ -183,11 +183,11 @@ const Approvals = () => {
   const generateThumbnail = async (asset: PendingAsset) => {
     setGeneratingThumbnails(prev => new Set(prev).add(asset.id));
     try {
-      const vertical = asset.content?.vertical || "Pickleball Clubs & Country Clubs";
+      const vertical = asset.content?.vertical || "Business Services";
       
       toast({
         title: "Generating Thumbnail",
-        description: `Creating pickleball-themed image for ${asset.name}...`,
+        description: `Creating branded image for ${asset.name}...`,
       });
 
       const { data, error } = await supabase.functions.invoke("generate-campaign-thumbnail", {
@@ -204,7 +204,7 @@ const Approvals = () => {
 
       toast({
         title: "Thumbnail Generated",
-        description: `Pickleball image created for ${asset.name}`,
+        description: `Image created for ${asset.name}`,
       });
 
       fetchPendingAssets();
@@ -245,7 +245,7 @@ const Approvals = () => {
 
     toast({
       title: "Generating Thumbnails",
-      description: `Creating ${assetsNeedingThumbnails.length} unique pickleball thumbnails...`,
+      description: `Creating ${assetsNeedingThumbnails.length} branded thumbnails...`,
     });
 
     for (let i = 0; i < assetsNeedingThumbnails.length; i++) {
@@ -254,7 +254,7 @@ const Approvals = () => {
       setGeneratingThumbnails(prev => new Set(prev).add(asset.id));
 
       try {
-        const vertical = asset.content?.vertical || "Pickleball Clubs & Country Clubs";
+        const vertical = asset.content?.vertical || "Business Services";
         
         await supabase.functions.invoke("generate-campaign-thumbnail", {
           body: {
@@ -286,7 +286,7 @@ const Approvals = () => {
     
     toast({
       title: "Thumbnails Complete",
-      description: `Generated ${assetsNeedingThumbnails.length} unique pickleball images.`,
+      description: `Generated ${assetsNeedingThumbnails.length} branded images.`,
     });
 
     fetchPendingAssets();

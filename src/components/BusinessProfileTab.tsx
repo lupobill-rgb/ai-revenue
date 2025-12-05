@@ -199,7 +199,7 @@ export default function BusinessProfileTab() {
             <Label htmlFor="industry">Industry</Label>
             <Input
               id="industry"
-              placeholder="e.g., Pickleball Facilities, Hospitality, Fitness"
+              placeholder="e.g., Biotechnology, Healthcare, Technology, Finance"
               value={profile.industry}
               onChange={(e) => setProfile({ ...profile, industry: e.target.value })}
             />

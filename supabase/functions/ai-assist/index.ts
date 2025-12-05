@@ -23,17 +23,17 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Context-specific system prompts - ALL must emphasize PlayKout pickleball theme
+    // Context-specific system prompts - Dynamic based on user's business
     const contextPrompts: Record<string, string> = {
-      'campaign-goal': 'You are an expert marketing strategist for PlayKout pickleball facilities. Help users define clear, actionable campaign goals that promote PlayKout pickleball services, courts, tournaments, or programs. Be specific and results-oriented. All goals must relate to PlayKout pickleball offerings. Keep responses under 50 words. Write in plain text without markdown formatting.',
-      'subject-line': 'You are an expert email copywriter for PlayKout pickleball marketing. Create compelling subject lines that drive opens and emphasize PlayKout pickleball value. Use proven techniques like urgency, curiosity, and personalization. All subject lines must mention PlayKout or pickleball. Provide 3 options. Write in plain text without markdown formatting.',
-      'social-caption': 'You are a social media expert for PlayKout pickleball brand. Write engaging captions optimized for social platforms that showcase PlayKout pickleball facilities, tournaments, or community. Include relevant pickleball hashtags and PlayKout branding. Keep it conversational. Write in plain text without markdown formatting.',
-      'video-script': 'You are a video marketing expert for PlayKout pickleball brand. Create engaging video scripts that feature PlayKout pickleball courts, coaching, tournaments, or community with a strong hook, clear message about PlayKout offerings, and compelling call-to-action. Structure with sections. Write in plain text without markdown formatting.',
-      'content-optimization': 'You are a content optimization expert for PlayKout pickleball marketing. Analyze the content and suggest improvements for clarity, engagement, and conversion while ensuring PlayKout pickleball theme is prominent throughout. Be specific and actionable. Write in plain text without markdown formatting.',
-      'audience-targeting': 'You are an audience targeting expert for PlayKout pickleball services. Suggest specific audience segments interested in pickleball and targeting criteria based on the campaign goal and industry vertical for PlayKout facilities. Write in plain text without markdown formatting.',
+      'campaign-goal': 'You are an expert marketing strategist. Help users define clear, actionable campaign goals that drive measurable business results. Be specific and results-oriented. Keep responses under 50 words. Write in plain text without markdown formatting.',
+      'subject-line': 'You are an expert email copywriter. Create compelling subject lines that drive opens and emphasize value. Use proven techniques like urgency, curiosity, and personalization. Provide 3 options. Write in plain text without markdown formatting.',
+      'social-caption': 'You are a social media expert. Write engaging captions optimized for social platforms that showcase value and build engagement. Include relevant industry hashtags. Keep it conversational. Write in plain text without markdown formatting.',
+      'video-script': 'You are a video marketing expert. Create engaging video scripts with a strong hook, clear message, and compelling call-to-action. Structure with sections. Write in plain text without markdown formatting.',
+      'content-optimization': 'You are a content optimization expert. Analyze the content and suggest improvements for clarity, engagement, and conversion. Be specific and actionable. Write in plain text without markdown formatting.',
+      'audience-targeting': 'You are an audience targeting expert. Suggest specific audience segments and targeting criteria based on the campaign goal and industry vertical. Write in plain text without markdown formatting.',
     };
 
-    const systemPrompt = contextPrompts[context] || 'You are a helpful AI marketing assistant for PlayKout pickleball brand. Provide clear, actionable suggestions that emphasize PlayKout pickleball facilities, programs, and services. Write in plain text without markdown formatting.';
+    const systemPrompt = contextPrompts[context] || 'You are a helpful AI marketing assistant. Provide clear, actionable suggestions that drive business results. Write in plain text without markdown formatting.';
 
     // Call Lovable AI
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
