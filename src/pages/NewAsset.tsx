@@ -231,14 +231,18 @@ const NewAsset = () => {
                       <SelectValue placeholder="Select vertical" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Hotels & Resorts">Hotels & Resorts</SelectItem>
-                      <SelectItem value="Multifamily Real Estate">Multifamily Real Estate</SelectItem>
-                      <SelectItem value="Pickleball Clubs & Country Clubs">Pickleball Clubs & Country Clubs</SelectItem>
-                      <SelectItem value="Entertainment Venues">Entertainment Venues</SelectItem>
-                      <SelectItem value="Physical Therapy">Physical Therapy</SelectItem>
-                      <SelectItem value="Corporate Offices & Co-Working Spaces">Corporate Offices & Co-Working Spaces</SelectItem>
-                      <SelectItem value="Education">Education</SelectItem>
-                      <SelectItem value="Gyms">Gyms</SelectItem>
+                      <SelectItem value="Biotechnology & Pharmaceuticals">Biotechnology & Pharmaceuticals</SelectItem>
+                      <SelectItem value="Healthcare & Medical">Healthcare & Medical</SelectItem>
+                      <SelectItem value="Technology & SaaS">Technology & SaaS</SelectItem>
+                      <SelectItem value="Financial Services">Financial Services</SelectItem>
+                      <SelectItem value="Professional Services">Professional Services</SelectItem>
+                      <SelectItem value="Manufacturing">Manufacturing</SelectItem>
+                      <SelectItem value="Retail & E-commerce">Retail & E-commerce</SelectItem>
+                      <SelectItem value="Real Estate">Real Estate</SelectItem>
+                      <SelectItem value="Education & Training">Education & Training</SelectItem>
+                      <SelectItem value="Hospitality & Travel">Hospitality & Travel</SelectItem>
+                      <SelectItem value="Media & Entertainment">Media & Entertainment</SelectItem>
+                      <SelectItem value="Non-Profit">Non-Profit</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -267,14 +271,18 @@ const NewAsset = () => {
                   value={goal}
                   onChange={(e) => setGoal(e.target.value)}
                   placeholder={
-                    vertical === "Hotels & Resorts" ? "Increase direct bookings, drive seasonal occupancy" :
-                    vertical === "Multifamily Real Estate" ? "Generate qualified lease inquiries, boost tour bookings" :
-                    vertical === "Pickleball Clubs & Country Clubs" ? "Increase membership signups, promote events" :
-                    vertical === "Entertainment Venues" ? "Drive ticket sales, promote upcoming shows" :
-                    vertical === "Physical Therapy" ? "Generate new patient appointments, promote wellness programs" :
-                    vertical === "Corporate Offices & Co-Working Spaces" ? "Book consultations, increase space rentals" :
-                    vertical === "Education" ? "Drive enrollment inquiries, promote programs" :
-                    vertical === "Gyms" ? "Increase membership signups, promote class bookings" :
+                    vertical === "Biotechnology & Pharmaceuticals" ? "Generate qualified leads, increase market awareness" :
+                    vertical === "Healthcare & Medical" ? "Drive patient appointments, promote services" :
+                    vertical === "Technology & SaaS" ? "Generate demos, increase trial signups" :
+                    vertical === "Financial Services" ? "Book consultations, generate qualified leads" :
+                    vertical === "Professional Services" ? "Schedule discovery calls, increase inquiries" :
+                    vertical === "Manufacturing" ? "Generate RFQs, increase sales pipeline" :
+                    vertical === "Retail & E-commerce" ? "Drive sales, increase conversions" :
+                    vertical === "Real Estate" ? "Generate property inquiries, schedule viewings" :
+                    vertical === "Education & Training" ? "Drive enrollments, increase course signups" :
+                    vertical === "Hospitality & Travel" ? "Increase bookings, drive reservations" :
+                    vertical === "Media & Entertainment" ? "Grow audience, increase engagement" :
+                    vertical === "Non-Profit" ? "Increase donations, grow supporter base" :
                     "Define your campaign goal"
                   }
                   className="bg-background border-input"

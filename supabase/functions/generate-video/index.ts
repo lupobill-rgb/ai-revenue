@@ -110,6 +110,25 @@ serve(async (req) => {
       console.log("No optimized templates found, using default prompts");
     }
 
+    // Fetch customer's business profile for dynamic branding
+    let businessName = "Your Company";
+    let industry = vertical || "Business Services";
+    
+    try {
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('business_name, industry')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (profile) {
+        businessName = profile.business_name || businessName;
+        industry = profile.industry || vertical || industry;
+      }
+    } catch (profileError) {
+      console.log("Could not fetch business profile, using defaults");
+    }
+
     // Build context-aware prompt from user inputs
     let contextParts = [];
     
@@ -121,41 +140,37 @@ serve(async (req) => {
       contextParts.push(description);
     }
 
-    // PICKLEBALL DEFINITION FOR AI MODELS
-    const pickleballDefinition = `CRITICAL PICKLEBALL EQUIPMENT REQUIREMENTS - THIS IS NOT TENNIS:
-    1. PADDLES: Players hold SOLID RECTANGULAR PADDLES (like large ping-pong paddles) - absolutely NO stringed tennis rackets
-    2. BALL: Small PERFORATED PLASTIC BALL with visible HOLES (wiffle ball style) - absolutely NO fuzzy yellow tennis balls
-    3. COURT: SMALL court approximately 20x44 feet with "kitchen" non-volley zone - NOT a large tennis court
-    4. NET: Lower net at 34 inches - shorter than tennis
-    NEGATIVE: Do NOT show tennis rackets, tennis balls, tennis courts, or any tennis equipment.`;
-
-    // Create vertical-specific video prompts
+    // Create industry-specific video prompts (dynamic based on customer's business)
     const verticalPrompts: Record<string, string> = {
-      'Hotels & Resorts': `${pickleballDefinition}. SCENE: Luxury resort hotel with dedicated PICKLEBALL courts (small courts with kitchen zones), guests holding SOLID PADDLES playing with PERFORATED PLASTIC BALLS, PlayKout branded facilities, oceanfront clubhouse.`,
-      'Multifamily Real Estate': `${pickleballDefinition}. SCENE: Modern apartment complex with community PICKLEBALL courts, residents using SOLID PADDLES and WIFFLE-STYLE BALLS, PlayKout branded court markings, apartment amenity area.`,
-      'Pickleball Clubs & Country Clubs': `${pickleballDefinition}. SCENE: Championship PICKLEBALL facility with green courts showing kitchen zones, players with SOLID PADDLES hitting PERFORATED BALLS, PlayKout signage, professional clubhouse.`,
-      'Entertainment Venues': `${pickleballDefinition}. SCENE: Professional PICKLEBALL tournament venue, stadium seating, players with SOLID PADDLES and WIFFLE BALLS under dramatic lighting, PlayKout sponsorship banners.`,
-      'Physical Therapy': `${pickleballDefinition}. SCENE: Sports therapy clinic, therapist working with PICKLEBALL player, SOLID PADDLES and PERFORATED BALLS visible, PlayKout rehabilitation branding.`,
-      'Corporate Offices & Co-Working Spaces': `${pickleballDefinition}. SCENE: Modern office with rooftop PICKLEBALL court, professionals using SOLID PADDLES and WIFFLE BALLS during break, PlayKout branded workspace.`,
-      'Education': `${pickleballDefinition}. SCENE: Campus PICKLEBALL courts, students learning with SOLID PADDLES and PERFORATED BALLS in PE class, PlayKout educational program signage.`,
-      'Gyms': `${pickleballDefinition}. SCENE: Fitness center with indoor PICKLEBALL courts, athletes training with SOLID PADDLES and WIFFLE BALLS, PlayKout fitness branding.`
+      'Biotechnology & Pharmaceuticals': `SCENE: Modern pharmaceutical research laboratory, scientists in professional attire, advanced equipment, data visualization screens showing analytics, clean clinical environment.`,
+      'Healthcare & Medical': `SCENE: Modern healthcare facility, caring medical professionals with patients, state-of-the-art medical equipment, warm and welcoming clinical environment.`,
+      'Technology & SaaS': `SCENE: Modern tech office with collaborative workspace, professionals using cutting-edge software, digital screens displaying product interfaces, innovative atmosphere.`,
+      'Financial Services': `SCENE: Professional financial office, advisors meeting with clients, market data on screens, trustworthy and sophisticated business environment.`,
+      'Professional Services': `SCENE: Modern consulting office, professionals in strategic meetings, presentation materials, collaborative workspace with city views.`,
+      'Manufacturing': `SCENE: Advanced manufacturing facility, precision equipment, quality control processes, skilled workers demonstrating expertise.`,
+      'Retail & E-commerce': `SCENE: Modern retail environment, happy customers, product showcases, seamless shopping experience, branded packaging.`,
+      'Real Estate': `SCENE: Stunning property showcase, modern interiors, architectural details, lifestyle amenities, aspirational living spaces.`,
+      'Education & Training': `SCENE: Modern learning environment, engaged students and instructors, interactive technology, collaborative learning spaces.`,
+      'Hospitality & Travel': `SCENE: Luxury hospitality venue, exceptional guest experiences, premium amenities, stunning locations.`,
+      'Media & Entertainment': `SCENE: Creative studio environment, content production, engaged audiences, dynamic entertainment experiences.`,
+      'Non-Profit': `SCENE: Community impact in action, volunteers making a difference, beneficiaries being helped, positive social change.`,
     };
 
     // Use optimized template if available, otherwise fall back to vertical prompts
     let verticalPrompt: string;
     if (optimizedTemplate) {
-      verticalPrompt = `${pickleballDefinition}. ${optimizedTemplate.content}. ${verticalPrompts[vertical] || 'Professional PlayKout pickleball facility'}`;
+      verticalPrompt = `${optimizedTemplate.content}. ${verticalPrompts[vertical] || 'Professional business environment showcasing excellence and innovation.'}`;
     } else {
-      verticalPrompt = verticalPrompts[vertical] || `${pickleballDefinition}. Professional PlayKout pickleball facility`;
+      verticalPrompt = verticalPrompts[vertical] || `Professional business environment for ${industry} showcasing excellence, innovation, and customer success.`;
     }
     
-    // Construct final prompt
+    // Construct final prompt with customer's brand
     let videoPrompt = verticalPrompt;
     
     if (contextParts.length > 0) {
       videoPrompt = `${videoPrompt}. Additional context: ${contextParts.join('. ')}`;
     }
-    videoPrompt = `${videoPrompt}. Professional cinematic marketing footage. PlayKout branding visible. REMEMBER: SOLID PADDLES and PERFORATED BALLS only - absolutely NO tennis rackets or tennis balls.`;
+    videoPrompt = `${videoPrompt}. Professional cinematic marketing footage for ${businessName}. High production value, engaging visuals, modern aesthetic.`;
 
     console.log("Generating video with Veo 3.1 using prompt:", videoPrompt);
 

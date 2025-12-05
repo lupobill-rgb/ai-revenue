@@ -604,14 +604,16 @@ const AssetDetail = () => {
   const renderContentFields = () => {
     switch (asset?.type) {
       case "email":
-        const emailPlaceholder = channel === "Hotels & Resorts" ? "Exclusive offer: Save on your next luxury getaway" :
-                                channel === "Multifamily Real Estate" ? "Your dream apartment is waiting - Schedule a tour today" :
-                                channel === "Pickleball Clubs & Country Clubs" ? "Join us for exclusive member benefits and events" :
-                                channel === "Entertainment Venues" ? "Don't miss out - Get your tickets now" :
-                                channel === "Physical Therapy" ? "Take the first step toward pain-free living" :
-                                channel === "Corporate Offices & Co-Working Spaces" ? "Elevate your workspace - Book a consultation" :
-                                channel === "Education" ? "Discover programs designed for your future success" :
-                                channel === "Gyms" ? "Transform your fitness journey - Special membership offer" :
+        const emailPlaceholder = channel === "Biotechnology & Pharmaceuticals" ? "Breakthrough insights: See our latest research findings" :
+                                channel === "Healthcare & Medical" ? "Your health matters - Schedule your consultation today" :
+                                channel === "Technology & SaaS" ? "See how our solution transforms your workflow" :
+                                channel === "Financial Services" ? "Secure your financial future - Expert guidance awaits" :
+                                channel === "Professional Services" ? "Elevate your business - Book a strategy session" :
+                                channel === "Manufacturing" ? "Optimize your production - Request a quote today" :
+                                channel === "Retail & E-commerce" ? "Exclusive offer just for you - Shop now" :
+                                channel === "Real Estate" ? "Your dream property awaits - Schedule a viewing" :
+                                channel === "Education & Training" ? "Transform your career - Enroll today" :
+                                channel === "Hospitality & Travel" ? "Exclusive escape awaits - Book your getaway" :
                                 "Compelling email subject line";
         return (
           <div className="space-y-4">
@@ -640,14 +642,16 @@ const AssetDetail = () => {
         );
       
       case "voice":
-        const voiceOpening = channel === "Hotels & Resorts" ? "Thank you for your interest in [Property Name]. I'm calling to share an exclusive offer..." :
-                            channel === "Multifamily Real Estate" ? "I'm reaching out about your inquiry at [Community Name]. We have availability that matches your needs..." :
-                            channel === "Pickleball Clubs & Country Clubs" ? "Thank you for your interest in [Club Name]. I'd love to tell you about our membership benefits..." :
-                            channel === "Entertainment Venues" ? "Calling about upcoming events at [Venue Name]. We have something special for you..." :
-                            channel === "Physical Therapy" ? "Thank you for contacting [Practice Name]. I want to help you on your recovery journey..." :
-                            channel === "Corporate Offices & Co-Working Spaces" ? "Following up on your workspace inquiry at [Location Name]..." :
-                            channel === "Education" ? "Thank you for your interest in [Program Name]. Let me share how we can help you succeed..." :
-                            channel === "Gyms" ? "Calling about your fitness goals at [Gym Name]. We have programs designed for you..." :
+        const voiceOpening = channel === "Biotechnology & Pharmaceuticals" ? "Thank you for your interest. I'm calling to share some exciting developments..." :
+                            channel === "Healthcare & Medical" ? "I'm reaching out regarding your healthcare inquiry. We're here to help..." :
+                            channel === "Technology & SaaS" ? "Following up on your interest in our solution. I'd love to show you how we can help..." :
+                            channel === "Financial Services" ? "Thank you for reaching out. I'd like to discuss how we can help secure your financial goals..." :
+                            channel === "Professional Services" ? "Following up on your inquiry. I'd love to discuss how we can support your business..." :
+                            channel === "Manufacturing" ? "Calling about your production needs. We have solutions that can help..." :
+                            channel === "Retail & E-commerce" ? "Thank you for your interest. I have some great options to share with you..." :
+                            channel === "Real Estate" ? "Following up on your property inquiry. I have some perfect options for you..." :
+                            channel === "Education & Training" ? "Thank you for your interest in our programs. Let me share how we can help you succeed..." :
+                            channel === "Hospitality & Travel" ? "Calling about your upcoming trip. We have some special offers for you..." :
                             "Personalized opening that builds rapport";
         return (
           <div className="space-y-4">
@@ -688,14 +692,16 @@ const AssetDetail = () => {
         );
       
       case "video":
-        const videoCTA = channel === "Hotels & Resorts" ? "Book Your Stay" :
-                        channel === "Multifamily Real Estate" ? "Schedule a Tour" :
-                        channel === "Pickleball Clubs & Country Clubs" ? "Join Our Club" :
-                        channel === "Entertainment Venues" ? "Get Tickets Now" :
-                        channel === "Physical Therapy" ? "Book Your Consultation" :
-                        channel === "Corporate Offices & Co-Working Spaces" ? "Schedule a Visit" :
-                        channel === "Education" ? "Apply Now" :
-                        channel === "Gyms" ? "Start Your Free Trial" :
+        const videoCTA = channel === "Biotechnology & Pharmaceuticals" ? "Learn More" :
+                        channel === "Healthcare & Medical" ? "Book Consultation" :
+                        channel === "Technology & SaaS" ? "Start Free Trial" :
+                        channel === "Financial Services" ? "Get Started" :
+                        channel === "Professional Services" ? "Schedule Call" :
+                        channel === "Manufacturing" ? "Request Quote" :
+                        channel === "Retail & E-commerce" ? "Shop Now" :
+                        channel === "Real Estate" ? "Schedule Viewing" :
+                        channel === "Education & Training" ? "Enroll Now" :
+                        channel === "Hospitality & Travel" ? "Book Now" :
                         "Take Action";
         return (
           <div className="space-y-4">
@@ -724,23 +730,27 @@ const AssetDetail = () => {
         );
       
       case "landing_page":
-        const landingHeadline = channel === "Hotels & Resorts" ? "Experience Unforgettable Luxury" :
-                               channel === "Multifamily Real Estate" ? "Welcome Home to Your Perfect Space" :
-                               channel === "Pickleball Clubs & Country Clubs" ? "Where Community Meets Competition" :
-                               channel === "Entertainment Venues" ? "Unforgettable Experiences Await" :
-                               channel === "Physical Therapy" ? "Your Path to Pain-Free Living" :
-                               channel === "Corporate Offices & Co-Working Spaces" ? "Where Great Work Happens" :
-                               channel === "Education" ? "Your Future Starts Here" :
-                               channel === "Gyms" ? "Transform Your Fitness Journey" :
+        const landingHeadline = channel === "Biotechnology & Pharmaceuticals" ? "Advancing Science, Improving Lives" :
+                               channel === "Healthcare & Medical" ? "Your Health, Our Priority" :
+                               channel === "Technology & SaaS" ? "Transform Your Business Today" :
+                               channel === "Financial Services" ? "Secure Your Financial Future" :
+                               channel === "Professional Services" ? "Expert Solutions for Your Success" :
+                               channel === "Manufacturing" ? "Precision Engineering Excellence" :
+                               channel === "Retail & E-commerce" ? "Discover What You've Been Missing" :
+                               channel === "Real Estate" ? "Find Your Perfect Property" :
+                               channel === "Education & Training" ? "Unlock Your Potential" :
+                               channel === "Hospitality & Travel" ? "Unforgettable Experiences Await" :
                                "Compelling value proposition";
-        const landingCTA = channel === "Hotels & Resorts" ? "Reserve Now" :
-                          channel === "Multifamily Real Estate" ? "Schedule Your Tour" :
-                          channel === "Pickleball Clubs & Country Clubs" ? "Become a Member" :
-                          channel === "Entertainment Venues" ? "Buy Tickets" :
-                          channel === "Physical Therapy" ? "Book Consultation" :
-                          channel === "Corporate Offices & Co-Working Spaces" ? "Book a Tour" :
-                          channel === "Education" ? "Enroll Today" :
-                          channel === "Gyms" ? "Join Now" :
+        const landingCTA = channel === "Biotechnology & Pharmaceuticals" ? "Contact Us" :
+                          channel === "Healthcare & Medical" ? "Book Appointment" :
+                          channel === "Technology & SaaS" ? "Start Free Trial" :
+                          channel === "Financial Services" ? "Schedule Consultation" :
+                          channel === "Professional Services" ? "Get Started" :
+                          channel === "Manufacturing" ? "Request Quote" :
+                          channel === "Retail & E-commerce" ? "Shop Now" :
+                          channel === "Real Estate" ? "View Properties" :
+                          channel === "Education & Training" ? "Enroll Today" :
+                          channel === "Hospitality & Travel" ? "Book Now" :
                           "Get Started";
         return (
           <div className="space-y-4">
