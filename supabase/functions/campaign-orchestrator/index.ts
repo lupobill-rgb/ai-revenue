@@ -26,30 +26,41 @@ serve(async (req) => {
 
     console.log("Starting campaign orchestration:", { campaignName, vertical, goal });
 
-    // Get user's workspace
-    const { data: workspaceData } = await supabaseClient
-      .from("workspace_users")
-      .select("workspace_id")
-      .eq("user_id", user.id)
+    // Get user's workspace - try to find an existing workspace first
+    let workspaceId: string | null = null;
+
+    // First check if user owns a workspace
+    const { data: ownedWorkspace, error: ownedError } = await supabaseClient
+      .from("workspaces")
+      .select("id")
+      .eq("owner_id", user.id)
       .limit(1)
       .maybeSingle();
+    
+    if (ownedError) {
+      console.error("Error fetching owned workspace:", ownedError);
+    }
+    
+    workspaceId = ownedWorkspace?.id || null;
 
-    let workspaceId = workspaceData?.workspace_id;
-
-    // If no workspace found, try to get from workspaces table directly
+    // If no owned workspace, check for any workspace the user has access to
     if (!workspaceId) {
-      const { data: ownedWorkspace } = await supabaseClient
+      const { data: anyWorkspace, error: anyError } = await supabaseClient
         .from("workspaces")
         .select("id")
-        .eq("owner_id", user.id)
         .limit(1)
         .maybeSingle();
       
-      workspaceId = ownedWorkspace?.id;
+      if (anyError) {
+        console.error("Error fetching any workspace:", anyError);
+      }
+      
+      workspaceId = anyWorkspace?.id || null;
     }
 
     // Create a default workspace if none exists
     if (!workspaceId) {
+      console.log("No workspace found, creating default workspace...");
       const { data: newWorkspace, error: wsError } = await supabaseClient
         .from("workspaces")
         .insert({
@@ -61,7 +72,7 @@ serve(async (req) => {
       
       if (wsError) {
         console.error("Error creating workspace:", wsError);
-        throw new Error("Failed to create workspace");
+        throw new Error(`Failed to create workspace: ${wsError.message}`);
       }
       workspaceId = newWorkspace.id;
       console.log("Created new workspace:", workspaceId);
