@@ -427,9 +427,10 @@ const AssetDetail = () => {
           // Split content into sections for voice scripts
           const paragraphs = data.content.split('\n\n').filter((p: string) => p.trim());
           setContent({
-            opening_script: paragraphs[0] || 'Thank you for your interest...',
-            pitch_script: paragraphs[1] || 'Here\'s what makes us special...',
-            objection_handling: paragraphs[2] || 'I understand your concerns...'
+            opening_script: paragraphs[0] || '',
+            pitch_script: paragraphs[1] || paragraphs[0] || '',
+            objection_handling: paragraphs[2] || '',
+            full_script: data.content
           });
         }
 
