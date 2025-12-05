@@ -102,7 +102,7 @@ serve(async (req) => {
     
     // Get recipients from explicit list or from linked CRM leads
     let recipientList = emailContent?.recipients || [];
-    const targetLeads = emailContent?.target_leads || [];
+    let targetLeads = emailContent?.target_leads || [];
     
     // If no explicit recipients, use email addresses from linked CRM leads
     if (recipientList.length === 0 && targetLeads.length > 0) {
@@ -112,8 +112,30 @@ serve(async (req) => {
       console.log(`Using ${recipientList.length} emails from linked CRM leads`);
     }
 
+    // If still no recipients, fetch all leads from the workspace with email addresses
+    if (recipientList.length === 0 && asset.workspace_id) {
+      console.log(`No recipients specified, fetching leads from workspace ${asset.workspace_id}`);
+      
+      const { data: workspaceLeads, error: leadsError } = await supabaseClient
+        .from("leads")
+        .select("id, first_name, last_name, email, company, industry, job_title, phone, status")
+        .eq("workspace_id", asset.workspace_id)
+        .not("email", "is", null)
+        .in("status", ["new", "contacted", "qualified"]); // Only send to active leads
+
+      if (leadsError) {
+        console.error("Error fetching workspace leads:", leadsError);
+      } else if (workspaceLeads && workspaceLeads.length > 0) {
+        targetLeads = workspaceLeads;
+        recipientList = workspaceLeads
+          .filter((lead: any) => lead.email)
+          .map((lead: any) => lead.email);
+        console.log(`Found ${recipientList.length} leads with emails in workspace`);
+      }
+    }
+
     if (!recipientList.length) {
-      throw new Error("No recipients specified - add recipients or link CRM leads with email addresses");
+      throw new Error("No recipients found - add leads to your CRM with email addresses first");
     }
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
