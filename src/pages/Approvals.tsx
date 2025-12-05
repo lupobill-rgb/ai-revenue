@@ -29,6 +29,7 @@ interface PendingAsset {
 interface BusinessProfile {
   business_name: string | null;
   industry: string | null;
+  logo_url: string | null;
 }
 
 type VideoStatus = 'pending' | 'generating' | 'completed' | 'failed' | 'rate-limited';
@@ -81,7 +82,7 @@ const Approvals = () => {
 
       const { data } = await supabase
         .from("business_profiles")
-        .select("business_name, industry")
+        .select("business_name, industry, logo_url")
         .eq("user_id", user.id)
         .single();
 
@@ -837,8 +838,13 @@ const Approvals = () => {
                       
                       // Get preview image URL based on asset type - unique per campaign
                       const getPreviewImage = () => {
-                        // For email assets, prioritize customer logo
+                        // For email assets, prioritize customer logo from business profile
                         if (asset.type === "email") {
+                          // First check business profile logo
+                          if (businessProfile?.logo_url) {
+                            return businessProfile.logo_url;
+                          }
+                          // Then check asset content logo
                           if (asset.content?.logo_url) {
                             return asset.content.logo_url;
                           }
@@ -847,6 +853,8 @@ const Approvals = () => {
                               !asset.preview_url.includes("example.com")) {
                             return asset.preview_url;
                           }
+                          // Email-specific placeholder
+                          return getCampaignPlaceholder("email", asset.content?.vertical, asset.name);
                         }
                         // Check for AI-generated images first
                         if (asset.content?.hero_image_url) {
