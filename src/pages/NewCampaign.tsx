@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
@@ -67,6 +67,28 @@ const NewCampaign = () => {
   const [activeTab, setActiveTab] = useState("create");
   const [draftedEmailSubject, setDraftedEmailSubject] = useState("");
   const [draftedEmailContent, setDraftedEmailContent] = useState("");
+  const emailContentRef = useRef<HTMLTextAreaElement>(null);
+
+  const insertTagAtCursor = (tag: string) => {
+    const textarea = emailContentRef.current;
+    if (!textarea) {
+      setDraftedEmailContent(prev => prev + tag);
+      return;
+    }
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = draftedEmailContent;
+    
+    const newText = text.substring(0, start) + tag + text.substring(end);
+    setDraftedEmailContent(newText);
+    
+    // Restore cursor position after the inserted tag
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, start + tag.length);
+    }, 0);
+  };
 
   const handlePlanGenerated = (plan: any) => {
     setAiPlan(plan);
@@ -344,9 +366,7 @@ const NewCampaign = () => {
                             <button
                               key={item.tag}
                               type="button"
-                              onClick={() => {
-                                setDraftedEmailContent(prev => prev + item.tag);
-                              }}
+                              onClick={() => insertTagAtCursor(item.tag)}
                               className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary/10 text-primary rounded-md hover:bg-primary/20 transition-colors border border-primary/20"
                             >
                               <code className="font-mono">{item.tag}</code>
@@ -355,7 +375,7 @@ const NewCampaign = () => {
                           ))}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Click a tag to insert it, or type directly. Tags will be replaced with lead data when sending.
+                          Click a tag to insert it at cursor position. Tags will be replaced with lead data when sending.
                         </p>
                       </div>
 
@@ -372,6 +392,7 @@ const NewCampaign = () => {
                         <div className="space-y-2">
                           <Label htmlFor="draftedEmailContent">Email Body Content</Label>
                           <Textarea
+                            ref={emailContentRef}
                             id="draftedEmailContent"
                             value={draftedEmailContent}
                             onChange={(e) => setDraftedEmailContent(e.target.value)}
