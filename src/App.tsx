@@ -29,6 +29,7 @@ import Automation from "./pages/Automation";
 import OSDashboard from "./pages/OSDashboard";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import ForcePasswordChange from "./pages/ForcePasswordChange";
 import CRODashboard from "./pages/cro/CRODashboard";
 import CROForecast from "./pages/cro/CROForecast";
 import CROPipeline from "./pages/cro/CROPipeline";
@@ -48,6 +49,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/change-password" element={<ForcePasswordChange />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/approvals" element={<Approvals />} />

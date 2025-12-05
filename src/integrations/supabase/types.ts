@@ -2571,6 +2571,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_password_resets: {
+        Row: {
+          created_at: string
+          force_change: boolean
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          force_change?: boolean
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          force_change?: boolean
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -2736,6 +2760,7 @@ export type Database = {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
       }
+      must_change_password: { Args: { _user_id: string }; Returns: boolean }
       sequence_step_workspace_access: {
         Args: { step_sequence_id: string }
         Returns: boolean

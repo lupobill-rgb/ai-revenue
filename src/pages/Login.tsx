@@ -52,11 +52,24 @@ const Login = () => {
           description: error.message,
         });
       } else if (data.user) {
-        toast({
-          title: "Welcome back!",
-          description: "You've successfully signed in.",
+        // Check if user must change password
+        const { data: mustChange } = await supabase.rpc('must_change_password', {
+          _user_id: data.user.id
         });
-        navigate("/");
+
+        if (mustChange) {
+          toast({
+            title: "Password change required",
+            description: "Please set a new password to continue.",
+          });
+          navigate("/change-password");
+        } else {
+          toast({
+            title: "Welcome back!",
+            description: "You've successfully signed in.",
+          });
+          navigate("/");
+        }
       }
     } catch (error) {
       toast({
