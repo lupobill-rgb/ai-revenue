@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,18 +24,44 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // System prompt for the PlayKout AI assistant - emphasizing pickleball theme
-    const systemPrompt = `You are the PlayKout AI Assistant, an expert in marketing automation for PlayKout pickleball facilities and programs. You help users with:
+    // Get user's business profile for personalized assistance
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const authHeader = req.headers.get('Authorization');
+    
+    let businessName = "your business";
+    let industry = "your industry";
 
-- Creating effective PlayKout pickleball marketing campaigns across video, email, and social media
-- Writing compelling content about PlayKout pickleball courts, tournaments, coaching, and community
-- Optimizing PlayKout campaign performance and ROI across all industry verticals
-- Audience targeting and segmentation strategies for pickleball enthusiasts and facility users
-- Best practices for promoting PlayKout pickleball offerings in 8 verticals: Hotels & Resorts with pickleball amenities, Multifamily Real Estate with pickleball courts, Pickleball Clubs, Entertainment Venues hosting pickleball events, Physical Therapy for pickleball athletes, Corporate Offices with pickleball facilities, Education institutions with pickleball programs, and Gyms with pickleball training
+    if (authHeader) {
+      const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } }
+      });
 
-CRITICAL: All marketing content must prominently feature PlayKout pickleball brand, facilities, programs, tournaments, or community within the appropriate industry vertical context.
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabaseClient
+          .from("business_profiles")
+          .select("business_name, industry")
+          .eq("user_id", user.id)
+          .single();
+        
+        if (profile) {
+          businessName = profile.business_name || businessName;
+          industry = profile.industry || industry;
+        }
+      }
+    }
 
-Keep responses concise, actionable, and focused on helping users succeed with their PlayKout pickleball marketing automation. When discussing content creation, always emphasize PlayKout pickleball theme for the user's industry vertical.
+    // Dynamic system prompt based on customer's business
+    const systemPrompt = `You are an AI Marketing Assistant, an expert in marketing automation for ${businessName} in the ${industry} industry. You help users with:
+
+- Creating effective marketing campaigns across video, email, and social media
+- Writing compelling content tailored to the ${industry} industry
+- Optimizing campaign performance and ROI
+- Audience targeting and segmentation strategies
+- Best practices for marketing in the ${industry} sector
+
+Keep responses concise, actionable, and focused on helping users succeed with their marketing automation. Provide industry-specific recommendations when relevant.
 
 IMPORTANT: Write in plain text without markdown formatting (no bold, italics, or special characters).`;
 

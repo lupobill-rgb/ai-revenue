@@ -26,6 +26,11 @@ interface PendingAsset {
   goal: string | null;
 }
 
+interface BusinessProfile {
+  business_name: string | null;
+  industry: string | null;
+}
+
 type VideoStatus = 'pending' | 'generating' | 'completed' | 'failed' | 'rate-limited';
 
 const Approvals = () => {
@@ -41,8 +46,10 @@ const Approvals = () => {
   const [creatingABTest, setCreatingABTest] = useState<Set<string>>(new Set());
   const [bulkGeneratingThumbnails, setBulkGeneratingThumbnails] = useState(false);
   const [thumbnailProgress, setThumbnailProgress] = useState({ current: 0, total: 0 });
+  const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
 
   useEffect(() => {
+    fetchBusinessProfile();
     fetchPendingAssets();
     
     // Subscribe to asset updates for real-time video generation completion
@@ -66,6 +73,25 @@ const Approvals = () => {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const fetchBusinessProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("business_profiles")
+        .select("business_name, industry")
+        .eq("user_id", user.id)
+        .single();
+
+      if (data) {
+        setBusinessProfile(data);
+      }
+    } catch (error) {
+      console.error("Error fetching business profile:", error);
+    }
+  };
 
   const fetchPendingAssets = async () => {
     try {
@@ -114,7 +140,7 @@ const Approvals = () => {
     setVideoStatuses(prev => new Map(prev).set(asset.id, 'generating'));
     
     try {
-      const vertical = asset.content?.vertical || "Entertainment Venues";
+      const vertical = asset.content?.vertical || businessProfile?.industry || "Professional Services";
       
       toast({
         title: "Generating Video",
@@ -183,7 +209,7 @@ const Approvals = () => {
   const generateThumbnail = async (asset: PendingAsset) => {
     setGeneratingThumbnails(prev => new Set(prev).add(asset.id));
     try {
-      const vertical = asset.content?.vertical || "Business Services";
+      const vertical = asset.content?.vertical || businessProfile?.industry || "Professional Services";
       
       toast({
         title: "Generating Thumbnail",
@@ -254,7 +280,7 @@ const Approvals = () => {
       setGeneratingThumbnails(prev => new Set(prev).add(asset.id));
 
       try {
-        const vertical = asset.content?.vertical || "Business Services";
+        const vertical = asset.content?.vertical || businessProfile?.industry || "Professional Services";
         
         await supabase.functions.invoke("generate-campaign-thumbnail", {
           body: {
@@ -821,7 +847,7 @@ const Approvals = () => {
                             !asset.preview_url.includes("example.com")) {
                           return asset.preview_url;
                         }
-                        // Use campaign-specific pickleball placeholder
+                        // Use campaign-specific placeholder
                         return getCampaignPlaceholder(asset.type, asset.content?.vertical, asset.name);
                       };
 
@@ -838,14 +864,8 @@ const Approvals = () => {
                               className="w-full h-full object-cover"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
-                                // Fallback to type-specific pickleball placeholder
-                                const typeMap: Record<string, string> = {
-                                  video: "/placeholders/pickleball-video.jpg",
-                                  email: "/placeholders/pickleball-email.jpg",
-                                  landing_page: "/placeholders/pickleball-landing.jpg",
-                                  voice: "/placeholders/pickleball-social.jpg",
-                                };
-                                target.src = typeMap[asset.type] || "/placeholders/pickleball-social.jpg";
+                                // Fallback to generic placeholder
+                                target.src = "https://images.unsplash.com/photo-1551434678-e076c223a692?w=400&h=300&fit=crop";
                               }}
                             />
                           </div>
@@ -917,7 +937,7 @@ const Approvals = () => {
                                       onClick={() => generateThumbnail(asset)}
                                       disabled={generatingThumbnails.has(asset.id)}
                                       className="flex items-center gap-1"
-                                      title="Generate pickleball thumbnail"
+                                      title="Generate branded thumbnail"
                                     >
                                       {generatingThumbnails.has(asset.id) ? (
                                         <Loader2 className="h-4 w-4 animate-spin" />

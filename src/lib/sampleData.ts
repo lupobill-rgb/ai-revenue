@@ -1,31 +1,31 @@
 // Centralized sample data for demo purposes across the platform
 
 export const SAMPLE_LEADS = [
-  { id: "sample-1", first_name: "Sarah", last_name: "Johnson", email: "sarah.johnson@luxuryresorts.com", phone: "+1-555-0101", company: "Luxury Resorts International", job_title: "VP of Marketing", location: "Miami, FL", industry: "Hospitality", status: "qualified", score: 92, source: "website", vertical: "Hotels & Resorts", created_at: "2024-11-20T10:00:00Z", tags: ["high-value", "enterprise"] },
-  { id: "sample-2", first_name: "Michael", last_name: "Chen", email: "mchen@urbanproperties.com", phone: "+1-555-0102", company: "Urban Properties Group", job_title: "Marketing Director", location: "Los Angeles, CA", industry: "Real Estate", status: "contacted", score: 78, source: "linkedin", vertical: "Multifamily Real Estate", created_at: "2024-11-22T14:30:00Z", tags: ["warm-lead"] },
-  { id: "sample-3", first_name: "Emily", last_name: "Rodriguez", email: "emily@pickleballnation.com", phone: "+1-555-0103", company: "Pickleball Nation Club", job_title: "General Manager", location: "Dallas, TX", industry: "Sports & Recreation", status: "new", score: 65, source: "referral", vertical: "Pickleball Clubs & Country Clubs", created_at: "2024-11-25T09:15:00Z", tags: ["new-market"] },
-  { id: "sample-4", first_name: "David", last_name: "Thompson", email: "dthompson@entertainmentplus.com", phone: "+1-555-0104", company: "Entertainment Plus Venues", job_title: "CMO", location: "New York, NY", industry: "Entertainment", status: "qualified", score: 88, source: "email", vertical: "Entertainment Venues", created_at: "2024-11-18T16:45:00Z", tags: ["enterprise", "decision-maker"] },
-  { id: "sample-5", first_name: "Jennifer", last_name: "Martinez", email: "jmartinez@healwell.com", phone: "+1-555-0105", company: "HealWell Physical Therapy", job_title: "Practice Owner", location: "Phoenix, AZ", industry: "Healthcare", status: "converted", score: 95, source: "google_ads", vertical: "Physical Therapy", created_at: "2024-11-10T11:20:00Z", tags: ["converted", "upsell-potential"] },
-  { id: "sample-6", first_name: "Robert", last_name: "Wilson", email: "rwilson@coworkspace.io", phone: "+1-555-0106", company: "CoWorkSpace Premium", job_title: "Head of Growth", location: "Chicago, IL", industry: "Commercial Real Estate", status: "contacted", score: 72, source: "webinar", vertical: "Corporate Offices & Co-Working Spaces", created_at: "2024-11-23T13:00:00Z", tags: ["mid-market"] },
-  { id: "sample-7", first_name: "Amanda", last_name: "Lee", email: "alee@fitnesspro.com", phone: "+1-555-0107", company: "Fitness Pro Gyms", job_title: "Regional Manager", location: "Denver, CO", industry: "Fitness", status: "new", score: 58, source: "trade_show", vertical: "Gyms", created_at: "2024-11-28T08:30:00Z", tags: ["follow-up"] },
-  { id: "sample-8", first_name: "James", last_name: "Brown", email: "jbrown@edulearn.edu", phone: "+1-555-0108", company: "EduLearn Academy", job_title: "Director of Admissions", location: "Boston, MA", industry: "Education", status: "lost", score: 45, source: "cold_outreach", vertical: "Education", created_at: "2024-11-05T15:00:00Z", tags: ["lost-competitor"] },
+  { id: "sample-1", first_name: "Sarah", last_name: "Johnson", email: "sarah.johnson@techcorp.com", phone: "+1-555-0101", company: "TechCorp Solutions", job_title: "VP of Marketing", location: "Miami, FL", industry: "Technology", status: "qualified", score: 92, source: "website", vertical: "Technology & SaaS", created_at: "2024-11-20T10:00:00Z", tags: ["high-value", "enterprise"] },
+  { id: "sample-2", first_name: "Michael", last_name: "Chen", email: "mchen@healthsystems.com", phone: "+1-555-0102", company: "Health Systems Inc", job_title: "Marketing Director", location: "Los Angeles, CA", industry: "Healthcare", status: "contacted", score: 78, source: "linkedin", vertical: "Healthcare & Medical", created_at: "2024-11-22T14:30:00Z", tags: ["warm-lead"] },
+  { id: "sample-3", first_name: "Emily", last_name: "Rodriguez", email: "emily@biogenlab.com", phone: "+1-555-0103", company: "BioGen Laboratories", job_title: "General Manager", location: "Dallas, TX", industry: "Biotechnology", status: "new", score: 65, source: "referral", vertical: "Biotechnology & Pharmaceuticals", created_at: "2024-11-25T09:15:00Z", tags: ["new-market"] },
+  { id: "sample-4", first_name: "David", last_name: "Thompson", email: "dthompson@financeplus.com", phone: "+1-555-0104", company: "Finance Plus Advisory", job_title: "CMO", location: "New York, NY", industry: "Finance", status: "qualified", score: 88, source: "email", vertical: "Finance & Banking", created_at: "2024-11-18T16:45:00Z", tags: ["enterprise", "decision-maker"] },
+  { id: "sample-5", first_name: "Jennifer", last_name: "Martinez", email: "jmartinez@consultpro.com", phone: "+1-555-0105", company: "ConsultPro Group", job_title: "Practice Owner", location: "Phoenix, AZ", industry: "Consulting", status: "converted", score: 95, source: "google_ads", vertical: "Consulting & Professional Services", created_at: "2024-11-10T11:20:00Z", tags: ["converted", "upsell-potential"] },
+  { id: "sample-6", first_name: "Robert", last_name: "Wilson", email: "rwilson@manufacturemax.io", phone: "+1-555-0106", company: "ManufactureMax", job_title: "Head of Growth", location: "Chicago, IL", industry: "Manufacturing", status: "contacted", score: 72, source: "webinar", vertical: "Manufacturing", created_at: "2024-11-23T13:00:00Z", tags: ["mid-market"] },
+  { id: "sample-7", first_name: "Amanda", last_name: "Lee", email: "alee@edulearnacademy.com", phone: "+1-555-0107", company: "EduLearn Academy", job_title: "Regional Manager", location: "Denver, CO", industry: "Education", status: "new", score: 58, source: "trade_show", vertical: "Education & Training", created_at: "2024-11-28T08:30:00Z", tags: ["follow-up"] },
+  { id: "sample-8", first_name: "James", last_name: "Brown", email: "jbrown@realtyprime.com", phone: "+1-555-0108", company: "Realty Prime Properties", job_title: "Director of Admissions", location: "Boston, MA", industry: "Real Estate", status: "lost", score: 45, source: "cold_outreach", vertical: "Real Estate & Property", created_at: "2024-11-05T15:00:00Z", tags: ["lost-competitor"] },
 ];
 
 // Sample CSV content for download - includes all personalization fields
 export const SAMPLE_CSV_CONTENT = `first_name,last_name,email,phone,company,job_title,location,industry
-Sarah,Johnson,sarah.johnson@luxuryresorts.com,+1-555-0101,Luxury Resorts International,VP of Marketing,"Miami, FL",Hospitality
-Michael,Chen,mchen@urbanproperties.com,+1-555-0102,Urban Properties Group,Marketing Director,"Los Angeles, CA",Real Estate
-Emily,Rodriguez,emily@pickleballnation.com,+1-555-0103,Pickleball Nation Club,General Manager,"Dallas, TX",Sports & Recreation
-David,Thompson,dthompson@entertainmentplus.com,+1-555-0104,Entertainment Plus Venues,CMO,"New York, NY",Entertainment
-Jennifer,Martinez,jmartinez@healwell.com,+1-555-0105,HealWell Physical Therapy,Practice Owner,"Phoenix, AZ",Healthcare`;
+Sarah,Johnson,sarah.johnson@techcorp.com,+1-555-0101,TechCorp Solutions,VP of Marketing,"Miami, FL",Technology
+Michael,Chen,mchen@healthsystems.com,+1-555-0102,Health Systems Inc,Marketing Director,"Los Angeles, CA",Healthcare
+Emily,Rodriguez,emily@biogenlab.com,+1-555-0103,BioGen Laboratories,General Manager,"Dallas, TX",Biotechnology
+David,Thompson,dthompson@financeplus.com,+1-555-0104,Finance Plus Advisory,CMO,"New York, NY",Finance
+Jennifer,Martinez,jmartinez@consultpro.com,+1-555-0105,ConsultPro Group,Practice Owner,"Phoenix, AZ",Consulting`;
 
 export const SAMPLE_ASSETS = [
-  { id: "asset-1", name: "Summer Pickleball Championship Video", description: "High-energy promotional video showcasing the annual summer championship event with pro players.", type: "video", status: "live", channel: "Pickleball Clubs & Country Clubs", created_at: "2024-11-20T10:00:00Z", preview_url: "/placeholders/pickleball-video.jpg", views: 12500 },
-  { id: "asset-2", name: "Luxury Resort Welcome Email Series", description: "5-part email sequence for new resort guests with personalized recommendations.", type: "email", status: "approved", channel: "Hotels & Resorts", created_at: "2024-11-18T14:30:00Z", preview_url: "/placeholders/pickleball-email.jpg", views: 8200 },
-  { id: "asset-3", name: "Urban Living Landing Page", description: "Modern landing page highlighting premium apartment amenities and virtual tours.", type: "landing_page", status: "live", channel: "Multifamily Real Estate", created_at: "2024-11-15T09:00:00Z", preview_url: "/placeholders/pickleball-landing.jpg", views: 15600 },
-  { id: "asset-4", name: "Physical Therapy Consultation Voice Agent", description: "AI voice agent for scheduling initial consultations and answering FAQs.", type: "voice", status: "review", channel: "Physical Therapy", created_at: "2024-11-22T16:45:00Z", preview_url: null, views: 340 },
-  { id: "asset-5", name: "Entertainment Venue Social Campaign", description: "Multi-platform social media campaign for upcoming concert series.", type: "landing_page", status: "draft", channel: "Entertainment Venues", created_at: "2024-11-25T11:20:00Z", preview_url: "/placeholders/pickleball-social.jpg", views: 0 },
-  { id: "asset-6", name: "Gym Membership Promo Email", description: "New Year promotion email with special membership offers.", type: "email", status: "approved", channel: "Gyms", created_at: "2024-11-24T08:00:00Z", preview_url: "/placeholders/pickleball-email.jpg", views: 4300 },
+  { id: "asset-1", name: "Q4 Product Launch Video", description: "High-energy promotional video showcasing the latest product features and benefits.", type: "video", status: "live", channel: "Technology & SaaS", created_at: "2024-11-20T10:00:00Z", preview_url: "https://images.unsplash.com/photo-1551434678-e076c223a692?w=400&h=300&fit=crop", views: 12500 },
+  { id: "asset-2", name: "Healthcare Welcome Email Series", description: "5-part email sequence for new clients with personalized recommendations.", type: "email", status: "approved", channel: "Healthcare & Medical", created_at: "2024-11-18T14:30:00Z", preview_url: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=400&h=300&fit=crop", views: 8200 },
+  { id: "asset-3", name: "Innovation Landing Page", description: "Modern landing page highlighting premium services and case studies.", type: "landing_page", status: "live", channel: "Biotechnology & Pharmaceuticals", created_at: "2024-11-15T09:00:00Z", preview_url: "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=400&h=300&fit=crop", views: 15600 },
+  { id: "asset-4", name: "Financial Consultation Voice Agent", description: "AI voice agent for scheduling initial consultations and answering FAQs.", type: "voice", status: "review", channel: "Finance & Banking", created_at: "2024-11-22T16:45:00Z", preview_url: null, views: 340 },
+  { id: "asset-5", name: "Manufacturing Social Campaign", description: "Multi-platform social media campaign for upcoming industry conference.", type: "landing_page", status: "draft", channel: "Manufacturing", created_at: "2024-11-25T11:20:00Z", preview_url: "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=400&h=300&fit=crop", views: 0 },
+  { id: "asset-6", name: "Education Enrollment Email", description: "New semester promotion email with special enrollment offers.", type: "email", status: "approved", channel: "Education & Training", created_at: "2024-11-24T08:00:00Z", preview_url: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=400&h=300&fit=crop", views: 4300 },
 ];
 
 export const SAMPLE_AUTOMATION_JOBS = [
@@ -47,17 +47,17 @@ export const SAMPLE_CONTENT_CALENDAR = [
 ];
 
 export const SAMPLE_DEALS = [
-  { id: "deal-1", name: "Luxury Resorts Enterprise Deal", value: 125000, stage: "negotiation", lead_id: "sample-1", expected_close_date: "2024-12-15", probability: 75, created_at: "2024-11-15T10:00:00Z" },
-  { id: "deal-2", name: "Urban Properties Annual Contract", value: 48000, stage: "qualified", lead_id: "sample-2", expected_close_date: "2024-12-28", probability: 50, created_at: "2024-11-20T14:30:00Z" },
-  { id: "deal-3", name: "Pickleball Nation Membership", value: 24000, stage: "prospecting", lead_id: "sample-3", expected_close_date: "2025-01-15", probability: 25, created_at: "2024-11-25T09:15:00Z" },
-  { id: "deal-4", name: "Entertainment Plus Multi-Year", value: 250000, stage: "proposal", lead_id: "sample-4", expected_close_date: "2024-12-20", probability: 65, created_at: "2024-11-18T16:45:00Z" },
-  { id: "deal-5", name: "HealWell Expansion", value: 36000, stage: "won", lead_id: "sample-5", expected_close_date: "2024-11-30", probability: 100, created_at: "2024-11-10T11:20:00Z", actual_close_date: "2024-11-28" },
+  { id: "deal-1", name: "TechCorp Enterprise Deal", value: 125000, stage: "negotiation", lead_id: "sample-1", expected_close_date: "2024-12-15", probability: 75, created_at: "2024-11-15T10:00:00Z" },
+  { id: "deal-2", name: "Health Systems Annual Contract", value: 48000, stage: "qualified", lead_id: "sample-2", expected_close_date: "2024-12-28", probability: 50, created_at: "2024-11-20T14:30:00Z" },
+  { id: "deal-3", name: "BioGen Lab Partnership", value: 24000, stage: "prospecting", lead_id: "sample-3", expected_close_date: "2025-01-15", probability: 25, created_at: "2024-11-25T09:15:00Z" },
+  { id: "deal-4", name: "Finance Plus Multi-Year", value: 250000, stage: "proposal", lead_id: "sample-4", expected_close_date: "2024-12-20", probability: 65, created_at: "2024-11-18T16:45:00Z" },
+  { id: "deal-5", name: "ConsultPro Expansion", value: 36000, stage: "won", lead_id: "sample-5", expected_close_date: "2024-11-30", probability: 100, created_at: "2024-11-10T11:20:00Z", actual_close_date: "2024-11-28" },
 ];
 
 export const SAMPLE_TASKS = [
   { id: "task-1", title: "Follow up with Sarah Johnson", description: "Discuss enterprise pricing options", due_date: new Date(Date.now() + 86400000).toISOString(), priority: "high", status: "pending", lead_id: "sample-1", task_type: "follow_up" },
-  { id: "task-2", title: "Send proposal to Entertainment Plus", description: "Include multi-year discount options", due_date: new Date(Date.now() + 172800000).toISOString(), priority: "high", status: "pending", lead_id: "sample-4", task_type: "proposal" },
-  { id: "task-3", title: "Schedule demo with Urban Properties", description: "Product walkthrough for marketing team", due_date: new Date(Date.now() + 259200000).toISOString(), priority: "medium", status: "pending", lead_id: "sample-2", task_type: "demo" },
+  { id: "task-2", title: "Send proposal to Finance Plus", description: "Include multi-year discount options", due_date: new Date(Date.now() + 172800000).toISOString(), priority: "high", status: "pending", lead_id: "sample-4", task_type: "proposal" },
+  { id: "task-3", title: "Schedule demo with Health Systems", description: "Product walkthrough for marketing team", due_date: new Date(Date.now() + 259200000).toISOString(), priority: "medium", status: "pending", lead_id: "sample-2", task_type: "demo" },
   { id: "task-4", title: "Call back Robert Wilson", description: "Answer questions about integrations", due_date: new Date().toISOString(), priority: "medium", status: "completed", lead_id: "sample-6", task_type: "call" },
   { id: "task-5", title: "Send case study to Jennifer", description: "Include ROI metrics from similar clients", due_date: new Date(Date.now() - 86400000).toISOString(), priority: "low", status: "completed", lead_id: "sample-5", task_type: "email" },
 ];
@@ -78,9 +78,9 @@ export const SAMPLE_DASHBOARD_METRICS = {
 };
 
 export const SAMPLE_CAMPAIGN_PERFORMANCE = [
-  { id: "camp-1", name: "Summer Pickleball Championship", channel: "Video", views: 45200, clicks: 3820, revenue: 28450, cost: 2400, roi: 1085.4, status: "active" },
-  { id: "camp-2", name: "Luxury Resort Email Blast", channel: "Email", views: 125000, clicks: 18750, revenue: 156780, cost: 8500, roi: 1744.5, status: "active" },
-  { id: "camp-3", name: "Urban Living Social Campaign", channel: "Social", views: 89400, clicks: 7150, revenue: 42800, cost: 5200, roi: 723.1, status: "active" },
-  { id: "camp-4", name: "Gym Membership Promo", channel: "Email", views: 67300, clicks: 4890, revenue: 18720, cost: 3100, roi: 503.9, status: "active" },
-  { id: "camp-5", name: "Entertainment Venue Ads", channel: "Social", views: 234500, clicks: 9870, revenue: 34020, cost: 4800, roi: 608.8, status: "active" },
+  { id: "camp-1", name: "Q4 Product Launch", channel: "Video", views: 45200, clicks: 3820, revenue: 28450, cost: 2400, roi: 1085.4, status: "active" },
+  { id: "camp-2", name: "Healthcare Email Campaign", channel: "Email", views: 125000, clicks: 18750, revenue: 156780, cost: 8500, roi: 1744.5, status: "active" },
+  { id: "camp-3", name: "Innovation Social Campaign", channel: "Social", views: 89400, clicks: 7150, revenue: 42800, cost: 5200, roi: 723.1, status: "active" },
+  { id: "camp-4", name: "Education Enrollment Promo", channel: "Email", views: 67300, clicks: 4890, revenue: 18720, cost: 3100, roi: 503.9, status: "active" },
+  { id: "camp-5", name: "Manufacturing Awareness Ads", channel: "Social", views: 234500, clicks: 9870, revenue: 34020, cost: 4800, roi: 608.8, status: "active" },
 ];

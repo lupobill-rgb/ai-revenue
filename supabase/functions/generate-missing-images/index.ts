@@ -26,6 +26,25 @@ Deno.serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
+    // Get authenticated user
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fetch the customer's business profile for dynamic branding
+    const { data: businessProfile } = await supabaseClient
+      .from("business_profiles")
+      .select("business_name, industry")
+      .eq("user_id", user.id)
+      .single();
+
+    const businessName = businessProfile?.business_name || "Your Business";
+    const businessIndustry = businessProfile?.industry || "Professional Services";
+
     // Fetch assets without preview images
     const { data: assets, error: fetchError } = await supabaseClient
       .from('assets')
@@ -41,7 +60,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Found ${assets.length} assets needing images`);
+    console.log(`Found ${assets.length} assets needing images for ${businessName}`);
     const results = [];
 
     for (const asset of assets) {
@@ -52,19 +71,19 @@ Deno.serve(async (req) => {
         
         if (!needsImage) continue;
 
-        // Generate appropriate prompt based on asset type and content
+        // Generate appropriate prompt based on asset type and customer's business
         let prompt = '';
-        const vertical = asset.channel || 'Pickleball Clubs & Country Clubs';
+        const vertical = asset.channel || businessIndustry;
         
         if (asset.type === 'landing_page') {
           const headline = asset.content?.hero_headline || asset.content?.headline || asset.name;
-          prompt = `Create a professional, high-quality hero image for a PlayKout pickleball ${vertical.toLowerCase()} landing page. Theme: "${headline}". Style: Modern, clean, energetic. Must prominently feature PlayKout pickleball branding, indoor pickleball courts with professional lighting, and an upscale athletic facility atmosphere. Photorealistic, 16:9 aspect ratio, ultra high resolution.`;
+          prompt = `Create a professional, high-quality hero image for ${businessName} - a ${vertical.toLowerCase()} business landing page. Theme: "${headline}". Style: Modern, clean, professional. Feature authentic business environment, premium quality, welcoming atmosphere. Photorealistic, 16:9 aspect ratio, ultra high resolution.`;
         } else if (asset.type === 'video') {
           const description = asset.content?.description || asset.name;
-          prompt = `Create a professional thumbnail image for a PlayKout pickleball video about "${description}" for ${vertical}. Style: Vibrant, action-oriented, cinematic. Must show PlayKout pickleball courts, players in action, professional athletic facility. Include visible PlayKout branding. Photorealistic, 16:9 aspect ratio, ultra sharp focus.`;
+          prompt = `Create a professional thumbnail image for ${businessName} video about "${description}" for ${vertical}. Style: Vibrant, action-oriented, cinematic. Professional business environment, engaged team members. Photorealistic, 16:9 aspect ratio, ultra sharp focus.`;
         } else if (asset.type === 'email') {
           const subject = asset.content?.subject || asset.name;
-          prompt = `Create an email header image for PlayKout pickleball marketing about "${subject}" targeting ${vertical}. Style: Professional, inviting, premium. Feature PlayKout pickleball facilities, modern indoor courts, athletic atmosphere. Include PlayKout branding naturally integrated. Photorealistic, 16:9 aspect ratio.`;
+          prompt = `Create an email header image for ${businessName} marketing about "${subject}" targeting ${vertical}. Style: Professional, inviting, premium. Feature modern business environment, welcoming atmosphere. Photorealistic, 16:9 aspect ratio.`;
         }
 
         console.log(`Generating image for asset ${asset.id}: ${asset.name}`);

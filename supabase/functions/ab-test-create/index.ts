@@ -62,12 +62,20 @@ serve(async (req) => {
     }
 
     const content = asset.content as any;
-    const vertical = content?.vertical || "Pickleball Clubs & Country Clubs";
+    const vertical = content?.vertical || "Professional Services";
+
+    // Fetch customer's business profile for dynamic branding
+    const { data: businessProfile } = await supabaseClient
+      .from("business_profiles")
+      .select("business_name, industry")
+      .eq("user_id", user.id)
+      .single();
+
+    const businessName = businessProfile?.business_name || "Your Business";
+    const industry = businessProfile?.industry || vertical;
 
     // Generate A/B variations using AI
-    const systemPrompt = `You are an expert marketing A/B test designer for PlayKout, the leading pickleball marketing platform. Generate compelling content variations for split testing.
-
-CRITICAL: All content MUST be pickleball-themed. PlayKout specializes in bringing pickleball to various venues.
+    const systemPrompt = `You are an expert marketing A/B test designer. Generate compelling content variations for split testing for ${businessName} in the ${industry} industry.
 
 The vertical is: ${vertical}
 Asset type: ${asset.type}
