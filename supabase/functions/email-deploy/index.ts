@@ -203,15 +203,7 @@ serve(async (req) => {
         
         // Personalize subject and body with lead data
         const personalizedSubject = personalizeContent(subjectTemplate, linkedLead || { email: recipientEmail });
-        let personalizedBody = personalizeContent(htmlBodyTemplate, linkedLead || { email: recipientEmail });
-        
-        // Add email reporting dashboard link to footer
-        const reportingFooter = `
-          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; text-align: center;">
-            <a href="https://email-dashboard.brainsurgeryteam.com/" style="color: #0066cc; text-decoration: none;">View Email Dashboard</a>
-          </div>
-        `;
-        personalizedBody = personalizedBody + reportingFooter;
+        const personalizedBody = personalizeContent(htmlBodyTemplate, linkedLead || { email: recipientEmail });
         
         console.log(`Sending personalized email to ${recipientEmail} from ${senderName}`);
         
