@@ -7,7 +7,10 @@ const corsHeaders = {
 
 interface ImageRequest {
   vertical: string;
+  contentType?: string;
+  goal?: string;
   assetGoal?: string;
+  businessName?: string;
 }
 
 serve(async (req) => {
@@ -16,43 +19,58 @@ serve(async (req) => {
   }
 
   try {
-    const { vertical, assetGoal }: ImageRequest = await req.json();
+    const { vertical, contentType, goal, assetGoal, businessName }: ImageRequest = await req.json();
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // PICKLEBALL DEFINITION FOR AI MODELS - THIS IS NOT TENNIS:
-    // - PADDLES: Solid rectangular paddles (like oversized ping-pong paddles), NOT stringed tennis rackets
-    // - BALL: Perforated plastic wiffle ball with holes, NOT fuzzy yellow tennis ball
-    // - COURT: Smaller court (20x44 feet) with "kitchen" zone, NOT large tennis court
-    // - NET: Lower net (34 inches), NOT tennis height
-    
-    const pickleballDefinition = `CRITICAL: This is PICKLEBALL, NOT tennis. Visual requirements:
-    - Players holding SOLID RECTANGULAR PADDLES (like large ping-pong paddles) - NO stringed tennis rackets
-    - PERFORATED PLASTIC BALLS with visible holes (wiffle ball style) - NO fuzzy yellow tennis balls  
-    - SMALL courts (20x44 ft) with kitchen/non-volley zones - NOT large tennis courts
-    - Lower nets (34 inches) - NOT tennis height
-    NEGATIVE: Absolutely NO tennis rackets, NO tennis balls, NO tennis courts.`;
-
-    // Create vertical-specific image prompts with explicit pickleball requirements
+    // Dynamic image prompts based on vertical/industry
     const verticalPrompts: Record<string, string> = {
-      'Hotels & Resorts': `${pickleballDefinition}. PlayKout luxury resort with PICKLEBALL courts (small courts with kitchen zones), guests holding SOLID PADDLES, PERFORATED BALLS visible, ocean view, PlayKout signage, sunset lighting, ultra high resolution`,
-      'Multifamily Real Estate': `${pickleballDefinition}. PlayKout apartment complex with community PICKLEBALL courts, residents with SOLID PADDLES and WIFFLE BALLS, PlayKout branded facilities, modern architecture, golden hour, ultra high resolution`,
-      'Pickleball Clubs & Country Clubs': `${pickleballDefinition}. PlayKout championship PICKLEBALL facility, green courts with kitchen zones, players holding SOLID PADDLES hitting PERFORATED BALLS, PlayKout clubhouse, professional photography, ultra high resolution`,
-      'Entertainment Venues': `${pickleballDefinition}. PlayKout PICKLEBALL tournament venue, stadium seating, players with SOLID PADDLES and WIFFLE BALLS, dramatic lighting, PlayKout sponsorship banners, ultra high resolution`,
-      'Physical Therapy': `${pickleballDefinition}. PlayKout sports therapy clinic, therapist with PICKLEBALL player, SOLID PADDLES and PERFORATED BALLS visible, modern healthcare facility, professional photography, ultra high resolution`,
-      'Corporate Offices & Co-Working Spaces': `${pickleballDefinition}. PlayKout corporate rooftop PICKLEBALL court, professionals with SOLID PADDLES and WIFFLE BALLS, modern office building, PlayKout branded workspace, natural light, ultra high resolution`,
-      'Education': `${pickleballDefinition}. PlayKout campus PICKLEBALL courts, students learning with SOLID PADDLES and PERFORATED BALLS, modern athletic facility, PlayKout educational signage, bright lighting, ultra high resolution`,
-      'Gyms': `${pickleballDefinition}. PlayKout fitness center with indoor PICKLEBALL courts, athletes training with SOLID PADDLES and WIFFLE BALLS, modern gym equipment, PlayKout branding, dynamic lighting, ultra high resolution`
+      'Hotels & Resorts': `Luxury hotel resort with premium amenities, elegant pool area, guests enjoying services, professional hospitality photography, warm lighting, ultra high resolution`,
+      'Multifamily Real Estate': `Modern apartment complex with community amenities, residents enjoying lifestyle, contemporary architecture, professional real estate photography, golden hour, ultra high resolution`,
+      'Entertainment Venues': `Vibrant entertainment venue, exciting atmosphere, happy guests, dynamic event photography, dramatic lighting, ultra high resolution`,
+      'Physical Therapy': `Modern physical therapy clinic, professional healthcare setting, patient care, clean medical facility, professional healthcare photography, ultra high resolution`,
+      'Corporate Offices': `Modern corporate office space, professional business environment, team collaboration, contemporary design, professional photography, ultra high resolution`,
+      'Education': `Modern educational campus, students learning, professional academic environment, bright lighting, educational photography, ultra high resolution`,
+      'Gyms': `Premium fitness center, modern gym equipment, athletes training, dynamic fitness photography, energetic lighting, ultra high resolution`,
+      'Restaurants': `Upscale restaurant interior, delicious cuisine presentation, dining atmosphere, professional food photography, warm ambiance, ultra high resolution`,
+      'Retail': `Modern retail store, premium shopping experience, product displays, professional retail photography, inviting atmosphere, ultra high resolution`,
+      'Healthcare': `Modern healthcare facility, professional medical services, patient care environment, clean clinical setting, professional photography, ultra high resolution`,
+      'Technology': `Innovative tech company workspace, modern technology environment, digital innovation, professional tech photography, contemporary design, ultra high resolution`,
+      'Finance': `Professional financial services office, modern business environment, trust and reliability, professional corporate photography, sophisticated atmosphere, ultra high resolution`,
+      'Real Estate': `Beautiful property exterior and interior, real estate showcase, professional property photography, inviting atmosphere, ultra high resolution`,
+      'Automotive': `Premium automotive showroom, vehicles on display, professional automotive photography, sleek design, ultra high resolution`,
+      'Travel': `Stunning travel destination, tourism experience, adventure and exploration, professional travel photography, beautiful scenery, ultra high resolution`,
     };
 
-    let imagePrompt = verticalPrompts[vertical] || `${pickleballDefinition}. PlayKout pickleball facility with SOLID PADDLES and PERFORATED BALLS, professional marketing hero image, PlayKout branding, ultra high resolution`;
+    // Content type specific modifiers
+    const contentTypeModifiers: Record<string, string> = {
+      'email': 'marketing email hero image, engaging and professional',
+      'social': 'social media post, eye-catching and shareable',
+      'video': 'video thumbnail, dynamic and attention-grabbing',
+      'landing_page': 'website hero section, professional and converting',
+      'voice': 'professional business communication imagery',
+    };
+
+    // Build the prompt
+    let imagePrompt = verticalPrompts[vertical] || `Professional business marketing image for ${vertical} industry, high quality commercial photography, ultra high resolution`;
+    
+    // Add content type context
+    if (contentType && contentTypeModifiers[contentType]) {
+      imagePrompt = `${contentTypeModifiers[contentType]}. ${imagePrompt}`;
+    }
     
     // Add goal-specific context if provided
-    if (assetGoal) {
-      imagePrompt = `${imagePrompt}. PlayKout pickleball focus on: ${assetGoal}`;
+    const campaignGoal = goal || assetGoal;
+    if (campaignGoal) {
+      imagePrompt = `${imagePrompt}. Focus on: ${campaignGoal}`;
+    }
+
+    // Add business name if provided
+    if (businessName) {
+      imagePrompt = `${imagePrompt}. For: ${businessName}`;
     }
 
     console.log("Generating image with prompt:", imagePrompt);
