@@ -213,6 +213,20 @@ Make emails progressively more direct. First email = value-focused, last email =
         throw new Error("RESEND_API_KEY not configured");
       }
 
+      // Get business profile for sender name
+      const { data: { user: currentUser } } = await supabaseClient.auth.getUser();
+      let businessName = "Marketing";
+      if (currentUser) {
+        const { data: profile } = await supabaseClient
+          .from("business_profiles")
+          .select("business_name")
+          .eq("user_id", currentUser.id)
+          .single();
+        if (profile?.business_name) {
+          businessName = profile.business_name;
+        }
+      }
+
       // Get the sequence step from request body
       const { step } = await req.json();
       
@@ -227,7 +241,7 @@ Make emails progressively more direct. First email = value-focused, last email =
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "PlayKout <onboarding@resend.dev>",
+          from: `${businessName} <onboarding@resend.dev>`,
           to: [lead.email],
           subject: step.subject_line,
           html: step.email_body.replace(/\n/g, "<br>"),

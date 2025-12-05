@@ -963,14 +963,14 @@ const AssetDetail = () => {
                             <SelectValue placeholder="Select industry vertical" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Hotels & Resorts">Hotels & Resorts</SelectItem>
-                            <SelectItem value="Multifamily Real Estate">Multifamily Real Estate</SelectItem>
-                            <SelectItem value="Pickleball Clubs & Country Clubs">Pickleball Clubs & Country Clubs</SelectItem>
-                            <SelectItem value="Entertainment Venues">Entertainment Venues</SelectItem>
-                            <SelectItem value="Physical Therapy">Physical Therapy</SelectItem>
-                            <SelectItem value="Corporate Offices & Co-Working Spaces">Corporate Offices & Co-Working Spaces</SelectItem>
-                            <SelectItem value="Education">Education</SelectItem>
-                            <SelectItem value="Gyms">Gyms</SelectItem>
+                            <SelectItem value="Biotechnology & Pharmaceuticals">Biotechnology & Pharmaceuticals</SelectItem>
+                            <SelectItem value="Healthcare & Medical">Healthcare & Medical</SelectItem>
+                            <SelectItem value="Technology & SaaS">Technology & SaaS</SelectItem>
+                            <SelectItem value="Finance & Banking">Finance & Banking</SelectItem>
+                            <SelectItem value="Consulting & Professional Services">Consulting & Professional Services</SelectItem>
+                            <SelectItem value="Manufacturing">Manufacturing</SelectItem>
+                            <SelectItem value="Education & Training">Education & Training</SelectItem>
+                            <SelectItem value="Real Estate & Property">Real Estate & Property</SelectItem>
                           </SelectContent>
                         </Select>
                         {errors.channel && <p className="text-sm text-destructive">{errors.channel}</p>}

@@ -856,14 +856,14 @@ Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dalla
                           <SelectValue placeholder="Select vertical" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="hotels">Hotels & Resorts</SelectItem>
-                          <SelectItem value="multifamily">Multifamily Real Estate</SelectItem>
-                          <SelectItem value="clubs">Pickleball Clubs & Country Clubs</SelectItem>
-                          <SelectItem value="entertainment">Entertainment Venues</SelectItem>
-                          <SelectItem value="therapy">Physical Therapy</SelectItem>
-                          <SelectItem value="corporate">Corporate Offices & Co-Working</SelectItem>
-                          <SelectItem value="education">Education</SelectItem>
-                          <SelectItem value="gyms">Gyms</SelectItem>
+                          <SelectItem value="biotech">Biotechnology & Pharmaceuticals</SelectItem>
+                          <SelectItem value="healthcare">Healthcare & Medical</SelectItem>
+                          <SelectItem value="technology">Technology & SaaS</SelectItem>
+                          <SelectItem value="finance">Finance & Banking</SelectItem>
+                          <SelectItem value="consulting">Consulting & Professional Services</SelectItem>
+                          <SelectItem value="manufacturing">Manufacturing</SelectItem>
+                          <SelectItem value="education">Education & Training</SelectItem>
+                          <SelectItem value="realestate">Real Estate & Property</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
