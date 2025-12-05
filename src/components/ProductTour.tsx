@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { X, ChevronLeft, ChevronRight, PlayCircle, Mail, Share2, Phone, BarChart3, Users, Calendar, Sparkles } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 interface TourStep {
   title: string;
@@ -78,6 +79,7 @@ interface ProductTourProps {
 const ProductTour = ({ onComplete, forceShow = false }: ProductTourProps) => {
   const [isVisible, setIsVisible] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const { user } = useAuth();
 
   useEffect(() => {
     if (forceShow) {
@@ -85,14 +87,23 @@ const ProductTour = ({ onComplete, forceShow = false }: ProductTourProps) => {
       return;
     }
 
-    // Check if user has seen the tour
-    const hasSeenTour = localStorage.getItem("marketing-platform-tour-completed");
-    if (!hasSeenTour) {
-      // Small delay to let the page load first
-      const timer = setTimeout(() => setIsVisible(true), 1000);
-      return () => clearTimeout(timer);
+    // Check if user account is less than 30 days old
+    if (user?.created_at) {
+      const accountCreatedAt = new Date(user.created_at);
+      const now = new Date();
+      const daysSinceCreation = Math.floor((now.getTime() - accountCreatedAt.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Show tour on every login for accounts less than 30 days old
+      if (daysSinceCreation < 30) {
+        // Check if already shown this session
+        const shownThisSession = sessionStorage.getItem("tour-shown-this-session");
+        if (!shownThisSession) {
+          const timer = setTimeout(() => setIsVisible(true), 1000);
+          return () => clearTimeout(timer);
+        }
+      }
     }
-  }, [forceShow]);
+  }, [forceShow, user]);
 
   const handleNext = () => {
     if (currentStep < tourSteps.length - 1) {
@@ -109,13 +120,13 @@ const ProductTour = ({ onComplete, forceShow = false }: ProductTourProps) => {
   };
 
   const handleSkip = () => {
-    localStorage.setItem("marketing-platform-tour-completed", "true");
+    sessionStorage.setItem("tour-shown-this-session", "true");
     setIsVisible(false);
     onComplete?.();
   };
 
   const handleComplete = () => {
-    localStorage.setItem("marketing-platform-tour-completed", "true");
+    sessionStorage.setItem("tour-shown-this-session", "true");
     setIsVisible(false);
     onComplete?.();
   };
