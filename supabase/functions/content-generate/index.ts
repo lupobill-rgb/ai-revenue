@@ -143,19 +143,29 @@ IMPORTANT RULES:
       titlePrompt = `${businessName} ${vertical} Video Script`;
     } else if (contentType === 'voice') {
       systemPrompt = `You are an expert voice call script writer specializing in the ${vertical} industry.
-Create natural, conversational call scripts with a ${effectiveTone} tone.${businessContext}
+Create natural, conversational call scripts for ${businessName} with a ${effectiveTone} tone.${businessContext}
 
 IMPORTANT RULES:
 - Write in plain text without markdown formatting
 - Make it sound natural and conversational (this will be read by AI voice)
 - Include personalization: use {{first_name}} and {{company}} placeholders
-- Include handling for common objections
 - Keep sentences short and easy to speak
-- Include clear call-to-action`;
+- Do NOT mention UbiGrowth or any generic company - this is for ${businessName}
+
+Structure your response in THREE SECTIONS separated by double newlines:
+
+SECTION 1 - OPENING SCRIPT:
+A warm, professional greeting introducing ${businessName} and the purpose of the call.
+
+SECTION 2 - PITCH SCRIPT:
+The main value proposition for ${businessName}, highlighting key benefits and offers.
+
+SECTION 3 - OBJECTION HANDLING:
+Natural responses to common concerns, always relating back to ${businessName}'s strengths.`;
       
       userPrompt = assetGoal 
-        ? `Create a voice call script for ${businessName} in ${vertical} with this goal: ${assetGoal}` 
-        : `Create an outbound call script for ${businessName} in ${vertical}.`;
+        ? `Create a complete outbound voice call script for ${businessName} in ${vertical} with this goal: ${assetGoal}. Remember to make all content specific to ${businessName}, not generic.` 
+        : `Create a complete outbound call script for ${businessName} in ${vertical}. Make sure all content is specific to ${businessName} and their services.`;
       
       titlePrompt = `${businessName} ${vertical} Voice Script`;
     } else {
