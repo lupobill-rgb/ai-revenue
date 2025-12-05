@@ -10,14 +10,22 @@ const corsHeaders = {
 function personalizeContent(content: string, lead: any): string {
   if (!content || !lead) return content;
   
+  // Handle location from multiple possible sources
+  const location = lead.location || lead.city || lead.address || 
+    (lead.custom_fields?.location) || "";
+  
+  // Handle industry from multiple sources  
+  const industry = lead.industry || lead.vertical || 
+    (lead.custom_fields?.industry) || "";
+  
   const replacements: Record<string, string> = {
     "{{first_name}}": lead.first_name || lead.name?.split(" ")[0] || "there",
     "{{last_name}}": lead.last_name || lead.name?.split(" ").slice(1).join(" ") || "",
     "{{full_name}}": lead.name || `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || "there",
     "{{company}}": lead.company || "your company",
     "{{email}}": lead.email || "",
-    "{{location}}": lead.location || lead.city || lead.address || "",
-    "{{industry}}": lead.industry || lead.vertical || "",
+    "{{location}}": location,
+    "{{industry}}": industry,
     "{{title}}": lead.title || lead.job_title || "",
     "{{phone}}": lead.phone || "",
   };

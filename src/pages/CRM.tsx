@@ -332,9 +332,28 @@ const CRM = () => {
     if (['phone', 'phonenumber', 'tel', 'telephone', 'mobile', 'cell'].includes(h)) return 'phone';
     if (['company', 'companyname', 'organization', 'org', 'business'].includes(h)) return 'company';
     if (['jobtitle', 'title', 'position', 'role'].includes(h)) return 'job_title';
-    if (['vertical', 'industry', 'sector'].includes(h)) return 'vertical';
+    if (['vertical', 'sector'].includes(h)) return 'vertical';
+    if (['industry'].includes(h)) return 'industry';
+    if (['location', 'city', 'address', 'region', 'area'].includes(h)) return 'location';
     if (['name', 'fullname'].includes(h)) return 'full_name';
     return h;
+  };
+
+  const handleDownloadSampleCSV = () => {
+    const csvContent = `first_name,last_name,email,phone,company,job_title,location,industry
+Sarah,Johnson,sarah@example.com,+1-555-0101,Luxury Resorts,VP of Marketing,"Miami, FL",Hospitality
+Michael,Chen,michael@example.com,+1-555-0102,Urban Properties,Marketing Director,"Los Angeles, CA",Real Estate
+Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dallas, TX",Sports & Recreation`;
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sample_leads.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   };
 
   const handleCSVImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -369,6 +388,12 @@ const CRM = () => {
           else if (header === 'company') lead.company = value;
           else if (header === 'job_title') lead.job_title = value;
           else if (header === 'vertical') lead.vertical = value;
+          else if (header === 'industry') lead.industry = value;
+          else if (header === 'location') {
+            // Store location in custom_fields since leads table may not have location column
+            if (!lead.custom_fields) lead.custom_fields = {};
+            lead.custom_fields.location = value;
+          }
           else if (header === 'full_name' && value) {
             // Split full name into first/last
             const parts = value.split(/\s+/);
@@ -501,10 +526,11 @@ const CRM = () => {
   };
 
   const downloadCSVTemplate = () => {
-    const headers = ['first_name', 'last_name', 'email', 'phone', 'company', 'job_title', 'vertical'];
+    const headers = ['first_name', 'last_name', 'email', 'phone', 'company', 'job_title', 'location', 'industry'];
     const sampleRows = [
-      ['John', 'Doe', 'john.doe@example.com', '555-123-4567', 'Acme Corp', 'Marketing Manager', 'Hotels & Resorts'],
-      ['Jane', 'Smith', 'jane.smith@example.com', '555-987-6543', 'Widget Inc', 'Sales Director', 'Gyms'],
+      ['Sarah', 'Johnson', 'sarah@example.com', '+1-555-0101', 'Luxury Resorts', 'VP of Marketing', '"Miami, FL"', 'Hospitality'],
+      ['Michael', 'Chen', 'michael@example.com', '+1-555-0102', 'Urban Properties', 'Marketing Director', '"Los Angeles, CA"', 'Real Estate'],
+      ['Emily', 'Rodriguez', 'emily@example.com', '+1-555-0103', 'Sports Club', 'General Manager', '"Dallas, TX"', 'Sports & Recreation'],
     ];
     
     const csvContent = [headers.join(','), ...sampleRows.map(row => row.join(','))].join('\n');
@@ -576,7 +602,7 @@ const CRM = () => {
                       Download CSV Template
                     </Button>
                     <div className="text-xs text-muted-foreground">
-                      Supported columns: first_name, last_name, email, phone, company, job_title, vertical
+                      Supported columns: first_name, last_name, email, phone, company, job_title, location, industry
                     </div>
                     <div
                       className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
