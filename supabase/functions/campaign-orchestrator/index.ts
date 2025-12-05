@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { campaignName, vertical, goal, location, businessType, budget } = await req.json();
+    const { campaignName, vertical, goal, location, businessType, budget, draftedEmail } = await req.json();
 
     const authHeader = req.headers.get("Authorization");
     const supabaseClient = createClient(
@@ -172,20 +172,46 @@ serve(async (req) => {
     // Step 2: Generate email campaign - linked to CRM leads with emails
     try {
       console.log("Generating email content...");
-      const { data: emailContent, error: emailContentError } = await supabaseClient.functions.invoke("content-generate", {
-        body: { vertical, contentType: "email", assetGoal: goal, businessProfile: enrichedProfile },
-      });
+      
+      let emailSubject: string;
+      let emailBody: string;
+      let emailImageUrl: string | undefined;
 
-      if (emailContentError) {
-        console.error("Email content generation error:", emailContentError);
-      }
+      // Use customer's drafted email if provided, otherwise generate with AI
+      if (draftedEmail && draftedEmail.content) {
+        console.log("Using customer-provided drafted email content");
+        emailSubject = draftedEmail.subject || campaignName;
+        emailBody = draftedEmail.content;
+        
+        // Still generate a hero image for the drafted email
+        const { data: emailImage, error: emailImageError } = await supabaseClient.functions.invoke("generate-hero-image", {
+          body: { vertical, contentType: "email", goal },
+        });
+        if (emailImageError) {
+          console.error("Email image generation error:", emailImageError);
+        }
+        emailImageUrl = emailImage?.imageUrl;
+      } else {
+        // Generate email content with AI
+        const { data: emailContent, error: emailContentError } = await supabaseClient.functions.invoke("content-generate", {
+          body: { vertical, contentType: "email", assetGoal: goal, businessProfile: enrichedProfile },
+        });
 
-      const { data: emailImage, error: emailImageError } = await supabaseClient.functions.invoke("generate-hero-image", {
-        body: { vertical, contentType: "email", goal },
-      });
+        if (emailContentError) {
+          console.error("Email content generation error:", emailContentError);
+        }
 
-      if (emailImageError) {
-        console.error("Email image generation error:", emailImageError);
+        const { data: emailImage, error: emailImageError } = await supabaseClient.functions.invoke("generate-hero-image", {
+          body: { vertical, contentType: "email", goal },
+        });
+
+        if (emailImageError) {
+          console.error("Email image generation error:", emailImageError);
+        }
+
+        emailSubject = emailContent?.subject || campaignName;
+        emailBody = emailContent?.content || "";
+        emailImageUrl = emailImage?.imageUrl;
       }
 
       console.log("Inserting email asset...");
@@ -198,11 +224,12 @@ serve(async (req) => {
         created_by: user.id,
         workspace_id: workspaceId,
         content: {
-          subject: emailContent?.subject || `${campaignName}`,
-          body: emailContent?.content || "",
+          subject: emailSubject,
+          body: emailBody,
           vertical,
-          hero_image_url: emailImage?.imageUrl,
-          preview_url: emailImage?.imageUrl,
+          hero_image_url: emailImageUrl,
+          preview_url: emailImageUrl,
+          is_customer_drafted: !!(draftedEmail && draftedEmail.content),
           // Link to CRM leads with emails
           target_leads: leadsWithEmail.map(l => ({ 
             id: l.id, 
@@ -212,7 +239,7 @@ serve(async (req) => {
           })),
           total_recipients: leadsWithEmail.length,
         },
-        preview_url: emailImage?.imageUrl,
+        preview_url: emailImageUrl,
       }).select().single();
 
       if (emailAssetError) {

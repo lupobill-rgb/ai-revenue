@@ -65,6 +65,8 @@ const NewCampaign = () => {
   const [budget, setBudget] = useState("");
   const [aiPlan, setAiPlan] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("create");
+  const [draftedEmailSubject, setDraftedEmailSubject] = useState("");
+  const [draftedEmailContent, setDraftedEmailContent] = useState("");
 
   const handlePlanGenerated = (plan: any) => {
     setAiPlan(plan);
@@ -151,6 +153,10 @@ const NewCampaign = () => {
           location: location || undefined,
           businessType: businessType || undefined,
           budget: budget ? parseFloat(budget) : undefined,
+          draftedEmail: draftedEmailContent ? {
+            subject: draftedEmailSubject || campaignName,
+            content: draftedEmailContent,
+          } : undefined,
         },
       });
 
@@ -308,6 +314,38 @@ const NewCampaign = () => {
                           placeholder="e.g., luxury resorts, country clubs"
                         />
                         <p className="text-xs text-muted-foreground">For automated lead scraping</p>
+                      </div>
+                    </div>
+
+                    {/* Drafted Email Content Section */}
+                    <div className="border border-border rounded-lg p-4 space-y-4 bg-muted/30">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-primary" />
+                        <Label className="text-sm font-semibold">Your Drafted Email (Optional)</Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Have your own email content? Paste it here and we'll use it instead of AI-generated content.
+                      </p>
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="draftedEmailSubject">Email Subject Line</Label>
+                          <Input
+                            id="draftedEmailSubject"
+                            value={draftedEmailSubject}
+                            onChange={(e) => setDraftedEmailSubject(e.target.value)}
+                            placeholder="e.g., Exclusive Offer: Transform Your Marketing Results"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="draftedEmailContent">Email Body Content</Label>
+                          <Textarea
+                            id="draftedEmailContent"
+                            value={draftedEmailContent}
+                            onChange={(e) => setDraftedEmailContent(e.target.value)}
+                            placeholder="Paste your email content here... You can include HTML formatting."
+                            rows={6}
+                          />
+                        </div>
                       </div>
                     </div>
 
