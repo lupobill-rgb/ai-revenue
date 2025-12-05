@@ -66,9 +66,12 @@ const AssetPreview = ({ type, previewUrl, content, name }: AssetPreviewProps) =>
         </div>
         <div className="rounded-lg border border-border bg-background p-4">
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Email Body</h3>
-          <div className="prose prose-sm max-w-none text-foreground">
+          <div className="prose prose-sm max-w-none text-foreground whitespace-pre-wrap">
             {content?.body ? (
-              <div dangerouslySetInnerHTML={{ __html: content.body }} />
+              <div 
+                className="whitespace-pre-wrap" 
+                dangerouslySetInnerHTML={{ __html: content.body }} 
+              />
             ) : (
               <div>
                 <p className="mb-3">Discover how AI-powered marketing can revolutionize your customer engagement.</p>
