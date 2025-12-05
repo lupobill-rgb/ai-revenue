@@ -837,6 +837,17 @@ const Approvals = () => {
                       
                       // Get preview image URL based on asset type - unique per campaign
                       const getPreviewImage = () => {
+                        // For email assets, prioritize customer logo
+                        if (asset.type === "email") {
+                          if (asset.content?.logo_url) {
+                            return asset.content.logo_url;
+                          }
+                          if (asset.preview_url && 
+                              !asset.preview_url.startsWith("/videos/") && 
+                              !asset.preview_url.includes("example.com")) {
+                            return asset.preview_url;
+                          }
+                        }
                         // Check for AI-generated images first
                         if (asset.content?.hero_image_url) {
                           return asset.content.hero_image_url;
