@@ -82,19 +82,19 @@ const AssetPreview = ({ type, previewUrl, content, name }: AssetPreviewProps) =>
         <div className="rounded-lg border border-border bg-background p-4">
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Opening Script</h3>
           <p className="text-foreground whitespace-pre-wrap">
-            {content?.opening_script || "Hi! I'm calling from UbiGrowth about our AI-powered marketing automation platform. We've helped hundreds of businesses dramatically improve their campaign performance. Do you have a moment to learn how our technology can transform your marketing results?"}
+            {content?.opening_script || content?.script?.split('\n\n')?.[0] || "Click 'Generate Content' to create a personalized opening script for your voice campaign."}
           </p>
         </div>
         <div className="rounded-lg border border-border bg-background p-4">
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Pitch Script</h3>
           <p className="text-foreground whitespace-pre-wrap">
-            {content?.pitch_script || "UbiGrowth AI offers intelligent campaign automation with real-time performance analytics, personalized content generation, and multi-channel distribution. Our technology tracks your campaigns, provides actionable insights, and helps you achieve better results faster than traditional marketing alone."}
+            {content?.pitch_script || content?.script?.split('\n\n')?.[1] || "Click 'Generate Content' to create a personalized pitch script for your voice campaign."}
           </p>
         </div>
         <div className="rounded-lg border border-border bg-background p-4">
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Objection Handling</h3>
           <p className="text-foreground whitespace-pre-wrap">
-            {content?.objection_handling || "I understand you might prefer real court play. Our simulators actually complement your on-court training by providing targeted skill work and data-driven insights you can't get elsewhere. Many of our members use both, and they see dramatic improvements because the simulator helps them identify and fix specific weaknesses. Would you be interested in trying a complimentary session to see the difference?"}
+            {content?.objection_handling || content?.script?.split('[OBJECTION HANDLING]')?.[1]?.split('\n\n')?.[0] || "Click 'Generate Content' to create objection handling scripts for your voice campaign."}
           </p>
         </div>
       </div>
