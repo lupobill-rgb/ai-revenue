@@ -188,22 +188,15 @@ serve(async (req) => {
       
       let emailSubject: string;
       let emailBody: string;
-      let emailImageUrl: string | undefined;
+      
+      // Use company logo as placeholder for emails (no hero image generation needed)
+      const emailLogoUrl = businessProfile?.logo_url || null;
 
       // Use customer's drafted email if provided, otherwise generate with AI
       if (draftedEmail && draftedEmail.content) {
         console.log("Using customer-provided drafted email content");
         emailSubject = draftedEmail.subject || campaignName;
         emailBody = draftedEmail.content;
-        
-        // Still generate a hero image for the drafted email
-        const { data: emailImage, error: emailImageError } = await supabaseClient.functions.invoke("generate-hero-image", {
-          body: { vertical, contentType: "email", goal },
-        });
-        if (emailImageError) {
-          console.error("Email image generation error:", emailImageError);
-        }
-        emailImageUrl = emailImage?.imageUrl;
       } else {
         // Generate email content with AI
         const { data: emailContent, error: emailContentError } = await supabaseClient.functions.invoke("content-generate", {
@@ -214,17 +207,8 @@ serve(async (req) => {
           console.error("Email content generation error:", emailContentError);
         }
 
-        const { data: emailImage, error: emailImageError } = await supabaseClient.functions.invoke("generate-hero-image", {
-          body: { vertical, contentType: "email", goal },
-        });
-
-        if (emailImageError) {
-          console.error("Email image generation error:", emailImageError);
-        }
-
         emailSubject = emailContent?.subject || campaignName;
         emailBody = emailContent?.content || "";
-        emailImageUrl = emailImage?.imageUrl;
       }
 
       console.log("Inserting email asset...");
@@ -240,8 +224,7 @@ serve(async (req) => {
           subject: emailSubject,
           body: emailBody,
           vertical,
-          hero_image_url: emailImageUrl,
-          preview_url: emailImageUrl,
+          logo_url: emailLogoUrl,
           is_customer_drafted: !!(draftedEmail && draftedEmail.content),
           // Link to CRM leads with emails
           target_leads: leadsWithEmail.map(l => ({ 
@@ -252,7 +235,7 @@ serve(async (req) => {
           })),
           total_recipients: leadsWithEmail.length,
         },
-        preview_url: emailImageUrl,
+        preview_url: emailLogoUrl,
       }).select().single();
 
       if (emailAssetError) {
