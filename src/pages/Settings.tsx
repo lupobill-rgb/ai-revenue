@@ -56,6 +56,7 @@ export default function Settings() {
   // Customer business profile state
   const [businessProfile, setBusinessProfile] = useState<any>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profileRefreshKey, setProfileRefreshKey] = useState(0);
 
   useEffect(() => {
     fetchIntegrations();
@@ -828,7 +829,7 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="profile" className="space-y-6">
-          <BusinessProfileTab />
+          <BusinessProfileTab key={profileRefreshKey} />
         </TabsContent>
 
         <TabsContent value="discovery" className="space-y-6">
@@ -999,6 +1000,8 @@ export default function Settings() {
 
                           // Refresh the business profile to update Brand Guidelines tab
                           await fetchBusinessProfile();
+                          // Force BusinessProfileTab to re-mount and fetch fresh data
+                          setProfileRefreshKey(prev => prev + 1);
 
                           toast({
                             title: "Guidelines Applied",
