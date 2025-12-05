@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Search, Filter, Mail, Phone, Building, User, Calendar, PhoneCall, Loader2, LayoutGrid, List, BarChart3, Download, Building2 } from "lucide-react";
+import { Plus, Upload, Search, Filter, Mail, Phone, Building, User, Calendar, PhoneCall, Loader2, LayoutGrid, List, BarChart3, Download, Building2, ChevronDown, ExternalLink } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -938,10 +939,29 @@ Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dalla
                 <Mail className="h-4 w-4" />
                 Sequences
               </TabsTrigger>
-              <TabsTrigger value="reports" className="gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Reports
-              </TabsTrigger>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <div className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer gap-2 ${activeTab === 'reports' ? 'bg-background text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}>
+                    <BarChart3 className="h-4 w-4" />
+                    Reports
+                    <ChevronDown className="h-3 w-3" />
+                  </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="bg-popover">
+                  <DropdownMenuItem onClick={() => setActiveTab("reports")} className="gap-2 cursor-pointer">
+                    <BarChart3 className="h-4 w-4" />
+                    CRM Analytics
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => window.open("https://email-dashboard.brainsurgeryteam.com/", "_blank")}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <Mail className="h-4 w-4" />
+                    Email Reporting
+                    <ExternalLink className="h-3 w-3 ml-auto" />
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </TabsList>
 
             {/* Dashboard Tab */}

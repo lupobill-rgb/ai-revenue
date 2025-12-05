@@ -11,9 +11,8 @@ import {
 } from "recharts";
 import { 
   TrendingUp, TrendingDown, Users, DollarSign, Target, 
-  Calendar, Award, Loader2, ArrowUpRight, ArrowDownRight, ExternalLink, Mail
+  Calendar, Award, Loader2, ArrowUpRight, ArrowDownRight
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from "date-fns";
 
 interface Lead {
@@ -182,28 +181,17 @@ export function CRMReports() {
           <h2 className="text-2xl font-bold">CRM Analytics</h2>
           <p className="text-muted-foreground">Performance insights and metrics</p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.open("https://email-dashboard.brainsurgeryteam.com/", "_blank")}
-          >
-            <Mail className="h-4 w-4 mr-2" />
-            Email Reporting
-            <ExternalLink className="h-3 w-3 ml-2" />
-          </Button>
-          <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
-              <SelectItem value="365">Last year</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <Select value={dateRange} onValueChange={setDateRange}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">Last 7 days</SelectItem>
+            <SelectItem value="30">Last 30 days</SelectItem>
+            <SelectItem value="90">Last 90 days</SelectItem>
+            <SelectItem value="365">Last year</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* KPI Cards */}
