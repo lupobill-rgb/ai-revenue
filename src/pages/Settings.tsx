@@ -52,11 +52,36 @@ export default function Settings() {
   const [stripeSecretKey, setStripeSecretKey] = useState("");
   const [stripePublishableKey, setStripePublishableKey] = useState("");
   const [stripeConnected, setStripeConnected] = useState(false);
+  
+  // Customer business profile state
+  const [businessProfile, setBusinessProfile] = useState<any>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
   useEffect(() => {
     fetchIntegrations();
     fetchStripeSettings();
+    fetchBusinessProfile();
   }, []);
+
+  const fetchBusinessProfile = async () => {
+    setLoadingProfile(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoadingProfile(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("business_profiles")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!error && data) {
+      setBusinessProfile(data);
+    }
+    setLoadingProfile(false);
+  };
 
   const fetchIntegrations = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -972,6 +997,9 @@ export default function Settings() {
 
                           if (error) throw error;
 
+                          // Refresh the business profile to update Brand Guidelines tab
+                          await fetchBusinessProfile();
+
                           toast({
                             title: "Guidelines Applied",
                             description: "Brand guidelines have been saved to your business profile and will be used in campaign generation.",
@@ -996,161 +1024,166 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="brand" className="space-y-6">
-            {/* Logo Section */}
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-3">
                   <Palette className="h-6 w-6 text-primary" />
                   <div>
-                    <CardTitle className="text-2xl">UbiGrowth Brand Guidelines</CardTitle>
+                    <CardTitle className="text-2xl">
+                      {businessProfile?.business_name ? `${businessProfile.business_name} Brand Guidelines` : "Your Brand Guidelines"}
+                    </CardTitle>
                     <CardDescription className="text-base">
-                      Official logo usage guidelines and brand colors for all UbiGrowth marketing materials
+                      {businessProfile?.business_name 
+                        ? "Your brand colors, typography, and messaging for all marketing materials"
+                        : "Set up your brand guidelines using Brand Discovery"}
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-8">
-                {/* Logo Display */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">Official Logo</h3>
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium text-muted-foreground">Light Backgrounds</p>
-                      <div className="bg-white border border-border rounded-lg p-8 flex items-center justify-center">
-                        <img src={ubigrowthLogo} alt="UbiGrowth Logo" className="h-16 w-auto" />
-                      </div>
-                    </div>
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium text-muted-foreground">Dark Backgrounds</p>
-                      <div className="bg-gray-900 border border-border rounded-lg p-8 flex items-center justify-center">
-                        <img src={ubigrowthLogo} alt="UbiGrowth Logo" className="h-16 w-auto" />
-                      </div>
-                    </div>
+                {loadingProfile ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading brand guidelines...</div>
+                ) : !businessProfile?.brand_colors && !businessProfile?.brand_voice ? (
+                  <div className="text-center py-12 space-y-4">
+                    <Palette className="h-12 w-12 text-muted-foreground mx-auto" />
+                    <h3 className="text-lg font-semibold text-foreground">No Brand Guidelines Set</h3>
+                    <p className="text-muted-foreground max-w-md mx-auto">
+                      Use Brand Discovery to automatically extract your brand colors, fonts, and messaging from your website.
+                    </p>
+                    <Button onClick={() => {
+                      const discoveryTab = document.querySelector('[value="discovery"]') as HTMLElement;
+                      discoveryTab?.click();
+                    }}>
+                      Go to Brand Discovery
+                    </Button>
                   </div>
-                  <Button variant="outline" size="sm" className="mt-2">
-                    <Download className="mr-2 h-4 w-4" />
-                    Download Logo Assets
-                  </Button>
-                </div>
-
-                {/* Logo Usage Guidelines */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">Logo Usage Guidelines</h3>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex gap-3">
-                      <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-foreground">Always maintain clear space around the logo equal to the height of the "P" letter</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-foreground">Use official brand colors only - never alter logo colors</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-foreground">Ensure logo is visible and legible on all backgrounds</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-foreground">Minimum size: 120px width for digital, 1 inch for print</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Brand Colors */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">Brand Colors</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Official UbiGrowth brand color palette. Click any color code to copy.
-                  </p>
-                  <div className="grid gap-4">
-                    {brandColors.map((color) => (
-                      <div key={color.name} className="flex items-center gap-4 p-4 border border-border rounded-lg bg-card hover:bg-accent/50 transition-colors">
-                        <div
-                          className="w-16 h-16 rounded-md border-2 border-border shadow-sm flex-shrink-0"
-                          style={{ backgroundColor: color.hex }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-foreground">{color.name}</h4>
-                          <p className="text-xs text-muted-foreground mt-1">{color.description}</p>
-                          <div className="flex gap-3 mt-2 flex-wrap">
-                            <button
-                              onClick={() => copyToClipboard(color.hex, `${color.name} HEX`)}
-                              className="inline-flex items-center gap-1.5 text-xs font-mono bg-secondary px-2 py-1 rounded hover:bg-secondary/80 transition-colors"
-                            >
-                              {copiedColor === `${color.name} HEX` ? (
-                                <CheckCircle2 className="h-3 w-3 text-green-500" />
-                              ) : (
-                                <Copy className="h-3 w-3" />
-                              )}
-                              {color.hex}
-                            </button>
-                            <button
-                              onClick={() => copyToClipboard(color.rgb, `${color.name} RGB`)}
-                              className="inline-flex items-center gap-1.5 text-xs font-mono bg-secondary px-2 py-1 rounded hover:bg-secondary/80 transition-colors"
-                            >
-                              {copiedColor === `${color.name} RGB` ? (
-                                <CheckCircle2 className="h-3 w-3 text-green-500" />
-                              ) : (
-                                <Copy className="h-3 w-3" />
-                              )}
-                              {color.rgb}
-                            </button>
+                ) : (
+                  <>
+                    {/* Logo Display */}
+                    {businessProfile?.logo_url && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-foreground">Logo</h3>
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div className="space-y-3">
+                            <p className="text-sm font-medium text-muted-foreground">Light Backgrounds</p>
+                            <div className="bg-white border border-border rounded-lg p-8 flex items-center justify-center">
+                              <img src={businessProfile.logo_url} alt={`${businessProfile.business_name} Logo`} className="h-16 w-auto max-w-full object-contain" />
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <p className="text-sm font-medium text-muted-foreground">Dark Backgrounds</p>
+                            <div className="bg-gray-900 border border-border rounded-lg p-8 flex items-center justify-center">
+                              <img src={businessProfile.logo_url} alt={`${businessProfile.business_name} Logo`} className="h-16 w-auto max-w-full object-contain" />
+                            </div>
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    )}
 
-                {/* Typography Guidelines */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">Typography</h3>
-                  <div className="space-y-3">
-                    <div className="p-4 border border-border rounded-lg bg-card">
-                      <p className="text-sm font-medium text-muted-foreground mb-2">Primary Font</p>
-                      <p className="text-2xl font-bold text-foreground">Inter (Bold, Semibold, Regular)</p>
-                      <p className="text-xs text-muted-foreground mt-2">Used for headlines, titles, and body text</p>
-                    </div>
-                  </div>
-                </div>
+                    {/* Brand Colors */}
+                    {businessProfile?.brand_colors && Object.keys(businessProfile.brand_colors).length > 0 && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-foreground">Brand Colors</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Your brand color palette. Click any color code to copy.
+                        </p>
+                        <div className="grid gap-4">
+                          {Object.entries(businessProfile.brand_colors).map(([name, hex]) => (
+                            <div key={name} className="flex items-center gap-4 p-4 border border-border rounded-lg bg-card hover:bg-accent/50 transition-colors">
+                              <div
+                                className="w-16 h-16 rounded-md border-2 border-border shadow-sm flex-shrink-0"
+                                style={{ backgroundColor: hex as string }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-semibold text-foreground capitalize">{name}</h4>
+                                <div className="flex gap-3 mt-2 flex-wrap">
+                                  <button
+                                    onClick={() => copyToClipboard(hex as string, `${name} color`)}
+                                    className="inline-flex items-center gap-1.5 text-xs font-mono bg-secondary px-2 py-1 rounded hover:bg-secondary/80 transition-colors"
+                                  >
+                                    {copiedColor === `${name} color` ? (
+                                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                    {hex as string}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-                {/* Brand Voice */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">Brand Voice & Messaging</h3>
-                  <div className="space-y-3 text-sm">
-                    <div className="p-4 border border-border rounded-lg bg-card">
-                      <p className="font-medium text-foreground mb-2">AI-Powered Marketing</p>
-                      <p className="text-muted-foreground">
-                        UbiGrowth AI delivers intelligent marketing automation that adapts to your business needs. 
-                        Our platform learns from your campaigns to continuously optimize performance across all channels.
-                      </p>
+                    {/* Typography Guidelines */}
+                    {businessProfile?.brand_fonts && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-foreground">Typography</h3>
+                        <div className="space-y-3">
+                          {businessProfile.brand_fonts.primary && (
+                            <div className="p-4 border border-border rounded-lg bg-card">
+                              <p className="text-sm font-medium text-muted-foreground mb-2">Primary Font</p>
+                              <p className="text-2xl font-bold text-foreground">{businessProfile.brand_fonts.primary}</p>
+                              <p className="text-xs text-muted-foreground mt-2">Used for headlines and titles</p>
+                            </div>
+                          )}
+                          {businessProfile.brand_fonts.secondary && (
+                            <div className="p-4 border border-border rounded-lg bg-card">
+                              <p className="text-sm font-medium text-muted-foreground mb-2">Secondary Font</p>
+                              <p className="text-xl text-foreground">{businessProfile.brand_fonts.secondary}</p>
+                              <p className="text-xs text-muted-foreground mt-2">Used for body text</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Brand Voice */}
+                    {businessProfile?.brand_voice && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-foreground">Brand Voice</h3>
+                        <div className="p-4 border border-border rounded-lg bg-card">
+                          <p className="text-muted-foreground">{businessProfile.brand_voice}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Industry */}
+                    {businessProfile?.industry && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-foreground">Industry</h3>
+                        <div className="p-4 border border-border rounded-lg bg-card">
+                          <Badge variant="secondary" className="text-sm">{businessProfile.industry}</Badge>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Key Messaging */}
+                    {businessProfile?.messaging_pillars && businessProfile.messaging_pillars.length > 0 && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-foreground">Key Messaging</h3>
+                        <div className="p-4 border border-border rounded-lg bg-card">
+                          <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                            {businessProfile.messaging_pillars.map((msg: string, idx: number) => (
+                              <li key={idx}>{msg}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Update Button */}
+                    <div className="pt-4 border-t">
+                      <Button variant="outline" onClick={() => {
+                        const discoveryTab = document.querySelector('[value="discovery"]') as HTMLElement;
+                        discoveryTab?.click();
+                      }}>
+                        Update Brand Guidelines
+                      </Button>
                     </div>
-                    <div className="p-4 border border-border rounded-lg bg-card">
-                      <p className="font-medium text-foreground mb-2">Tone</p>
-                      <p className="text-muted-foreground">
-                        Professional, innovative, data-driven, and results-focused. We combine cutting-edge AI 
-                        with proven marketing strategies to deliver measurable growth for your business.
-                      </p>
-                    </div>
-                    <div className="p-4 border border-border rounded-lg bg-card">
-                      <p className="font-medium text-foreground mb-2">Key Messaging</p>
-                      <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                        <li>AI-powered marketing automation</li>
-                        <li>Multi-channel campaign orchestration</li>
-                        <li>Real-time performance analytics</li>
-                        <li>Scalable growth solutions for any business</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
