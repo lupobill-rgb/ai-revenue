@@ -452,6 +452,53 @@ export type Database = {
           },
         ]
       }
+      channel_preferences: {
+        Row: {
+          created_at: string
+          email_enabled: boolean
+          id: string
+          landing_pages_enabled: boolean
+          social_enabled: boolean
+          updated_at: string
+          user_id: string
+          video_enabled: boolean
+          voice_enabled: boolean
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email_enabled?: boolean
+          id?: string
+          landing_pages_enabled?: boolean
+          social_enabled?: boolean
+          updated_at?: string
+          user_id: string
+          video_enabled?: boolean
+          voice_enabled?: boolean
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email_enabled?: boolean
+          id?: string
+          landing_pages_enabled?: boolean
+          social_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+          video_enabled?: boolean
+          voice_enabled?: boolean
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_preferences_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cmo_brand_profiles: {
         Row: {
           brand_colors: Json | null

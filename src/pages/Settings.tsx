@@ -15,6 +15,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ModuleToggles from "@/components/ModuleToggles";
+import ChannelToggles from "@/components/ChannelToggles";
 
 interface SocialIntegration {
   id: string;
@@ -429,13 +430,18 @@ export default function Settings() {
             </div>
 
             <Tabs defaultValue="integrations" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            <TabsTrigger value="channels">Channels</TabsTrigger>
             <TabsTrigger value="modules">Modules</TabsTrigger>
             <TabsTrigger value="profile">Business Profile</TabsTrigger>
             <TabsTrigger value="discovery">Brand Discovery</TabsTrigger>
             <TabsTrigger value="brand">Brand Guidelines</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="channels" className="space-y-6">
+            <ChannelToggles />
+          </TabsContent>
 
           <TabsContent value="modules" className="space-y-6">
             <ModuleToggles />
