@@ -34,6 +34,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LeadScoring from "@/components/crm/LeadScoring";
+import { EmailOutreachDialog } from "@/components/crm/EmailOutreachDialog";
 import { LeadNurturing } from "@/components/crm/LeadNurturing";
 import { PredictiveAnalytics } from "@/components/crm/PredictiveAnalytics";
 import { ConversationIntelligence } from "@/components/crm/ConversationIntelligence";
@@ -115,6 +116,7 @@ export default function LeadDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Partial<Lead>>({});
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -277,11 +279,9 @@ export default function LeadDetail() {
                     </a>
                   </Button>
                 )}
-                <Button variant="outline" asChild>
-                  <a href={`mailto:${lead.email}`}>
-                    <Send className="mr-2 h-4 w-4" />
-                    Email
-                  </a>
+                <Button variant="outline" onClick={() => setEmailDialogOpen(true)}>
+                  <Send className="mr-2 h-4 w-4" />
+                  Send Email
                 </Button>
                 <Button variant="destructive" size="icon" onClick={handleDelete}>
                   <Trash2 className="h-4 w-4" />
@@ -531,6 +531,12 @@ export default function LeadDetail() {
           </div>
         </main>
         <Footer />
+        <EmailOutreachDialog
+          open={emailDialogOpen}
+          onOpenChange={setEmailDialogOpen}
+          lead={lead}
+          onEmailSent={fetchLead}
+        />
       </div>
     </ProtectedRoute>
   );
