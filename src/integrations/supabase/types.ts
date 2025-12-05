@@ -2638,6 +2638,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_workspace_owner_or_member: {
+        Args: { _user_id: string; _workspace_id: string }
+        Returns: boolean
+      }
       sequence_step_workspace_access: {
         Args: { step_sequence_id: string }
         Returns: boolean
