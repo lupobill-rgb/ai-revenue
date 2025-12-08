@@ -71,11 +71,11 @@ const SAMPLE_LEADS: Lead[] = [
 ];
 
 const FUNNEL_COLORS = {
-  new: "hsl(var(--chart-1))",
-  contacted: "hsl(var(--chart-2))",
-  qualified: "hsl(var(--chart-3))",
-  converted: "hsl(142 76% 36%)",
-  lost: "hsl(var(--muted))",
+  new: { bg: "hsl(217 91% 60%)", badge: "bg-blue-500", text: "text-blue-500", glow: "0 0 20px hsl(217 91% 60% / 0.5)" },
+  contacted: { bg: "hsl(271 91% 65%)", badge: "bg-purple-500", text: "text-purple-500", glow: "0 0 20px hsl(271 91% 65% / 0.5)" },
+  qualified: { bg: "hsl(142 71% 45%)", badge: "bg-green-500", text: "text-green-500", glow: "0 0 20px hsl(142 71% 45% / 0.5)" },
+  converted: { bg: "hsl(142 76% 36%)", badge: "bg-emerald-500", text: "text-emerald-500", glow: "0 0 20px hsl(142 76% 36% / 0.5)" },
+  lost: { bg: "hsl(var(--muted))", badge: "bg-muted-foreground/50", text: "text-muted-foreground", glow: "none" },
 };
 
 export default function CRMDashboard({ leads, showSampleData, onToggleSampleData }: CRMDashboardProps) {
@@ -146,10 +146,10 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
 
   // Funnel data
   const funnelStages = [
-    { stage: "New", count: newLeads, color: FUNNEL_COLORS.new },
-    { stage: "Contacted", count: contactedLeads, color: FUNNEL_COLORS.contacted },
-    { stage: "Qualified", count: qualifiedLeads, color: FUNNEL_COLORS.qualified },
-    { stage: "Converted", count: convertedLeads, color: FUNNEL_COLORS.converted },
+    { stage: "New", count: newLeads, colorKey: "new" as const },
+    { stage: "Contacted", count: contactedLeads, colorKey: "contacted" as const },
+    { stage: "Qualified", count: qualifiedLeads, colorKey: "qualified" as const },
+    { stage: "Converted", count: convertedLeads, colorKey: "converted" as const },
   ];
 
   // Activity trend (last 7 days)
@@ -276,38 +276,50 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
                 const dropoff = prevCount > 0 && index > 0 
                   ? Math.round(((prevCount - stage.count) / prevCount) * 100) 
                   : 0;
+                const colors = FUNNEL_COLORS[stage.colorKey];
+                const barWidth = Math.max(percentage, 8);
 
                 return (
                   <div key={stage.stage} className="relative">
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{stage.stage}</span>
+                        <Badge className={`${colors.badge} text-white border-0`}>
+                          {stage.stage}
+                        </Badge>
                         {index > 0 && dropoff > 0 && (
-                          <Badge variant="outline" className="text-xs text-muted-foreground">
+                          <Badge variant="outline" className="text-xs bg-red-500/10 text-red-500 border-red-500/30">
                             -{dropoff}% dropoff
                           </Badge>
                         )}
                       </div>
-                      <span className="text-sm font-bold">{stage.count}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-2xl font-bold ${colors.text}`}>{stage.count}</span>
+                        <span className="text-sm text-muted-foreground">({percentage.toFixed(0)}%)</span>
+                      </div>
                     </div>
-                    <div className="h-8 bg-muted/30 rounded-lg overflow-hidden">
+                    <div className="h-10 bg-muted/30 rounded-lg overflow-hidden">
                       <div
-                        className="h-full rounded-lg transition-all duration-500 flex items-center justify-end pr-3"
+                        className="h-full rounded-lg transition-all duration-700 ease-out flex items-center justify-end pr-3 animate-[scale-in_0.5s_ease-out]"
                         style={{ 
-                          width: `${Math.max(percentage, 5)}%`,
-                          backgroundColor: stage.color,
+                          width: `${barWidth}%`,
+                          backgroundColor: colors.bg,
+                          boxShadow: colors.glow,
                         }}
                       >
-                        {percentage >= 15 && (
-                          <span className="text-xs font-medium text-white">
-                            {percentage.toFixed(0)}%
+                        {percentage >= 20 && (
+                          <span className="text-sm font-bold text-white drop-shadow-md">
+                            {stage.count}
                           </span>
                         )}
                       </div>
                     </div>
                     {index < funnelStages.length - 1 && (
-                      <div className="flex justify-center my-1">
-                        <ArrowRight className="h-4 w-4 text-muted-foreground/50 rotate-90" />
+                      <div className="flex justify-center my-2">
+                        <div className="flex flex-col items-center">
+                          <div className="w-0.5 h-2 bg-muted-foreground/30" />
+                          <ArrowRight className="h-4 w-4 text-muted-foreground/50 rotate-90" />
+                          <div className="w-0.5 h-2 bg-muted-foreground/30" />
+                        </div>
                       </div>
                     )}
                   </div>
