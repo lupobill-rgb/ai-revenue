@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Search, Filter, Mail, Phone, Building, User, Calendar, PhoneCall, Loader2, LayoutGrid, List, BarChart3, Download, Building2, ChevronDown, ExternalLink } from "lucide-react";
+import { Plus, Upload, Search, Filter, Mail, Phone, Building, User, Calendar as CalendarIcon, PhoneCall, Loader2, LayoutGrid, List, BarChart3, Download, Building2, ChevronDown, ExternalLink } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
@@ -19,6 +19,8 @@ import { DealsPipeline } from "@/components/crm/DealsPipeline";
 import { TaskManager } from "@/components/crm/TaskManager";
 import { EmailSequences } from "@/components/crm/EmailSequences";
 import { CRMReports } from "@/components/crm/CRMReports";
+import { EmailAnalyticsDashboard } from "@/components/crm/EmailAnalyticsDashboard";
+import CampaignCalendar from "@/components/CampaignCalendar";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,7 +62,7 @@ const CRM = () => {
     localStorage.getItem("currentWorkspaceId")
   );
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "list" | "pipeline" | "deals" | "tasks" | "sequences" | "reports">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "list" | "pipeline" | "deals" | "tasks" | "sequences" | "calendar" | "reports" | "email_analytics">("dashboard");
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -72,6 +74,8 @@ const CRM = () => {
   const [scraping, setScraping] = useState(false);
   const [showSampleData, setShowSampleData] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+  const [campaignMetrics, setCampaignMetrics] = useState<any[]>([]);
 
   // Outbound calling state
   const [showCallDialog, setShowCallDialog] = useState(false);
@@ -107,8 +111,12 @@ const CRM = () => {
   useEffect(() => {
     if (workspaceId) {
       fetchLeads();
+      fetchCalendarEvents();
+      fetchCampaignMetrics();
     } else {
       setLeads([]);
+      setCalendarEvents([]);
+      setCampaignMetrics([]);
       setLoading(false);
     }
   }, [workspaceId]);
@@ -138,6 +146,38 @@ const CRM = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCalendarEvents = async () => {
+    if (!workspaceId) return;
+    try {
+      const { data, error } = await supabase
+        .from("content_calendar")
+        .select("id, title, channel, scheduled_at, status")
+        .eq("workspace_id", workspaceId)
+        .order("scheduled_at", { ascending: true });
+      if (!error && data) {
+        setCalendarEvents(data);
+      }
+    } catch (error) {
+      console.error("Error fetching calendar events:", error);
+    }
+  };
+
+  const fetchCampaignMetrics = async () => {
+    if (!workspaceId) return;
+    try {
+      const { data, error } = await supabase
+        .from("campaign_metrics")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .order("created_at", { ascending: false });
+      if (!error && data) {
+        setCampaignMetrics(data);
+      }
+    } catch (error) {
+      console.error("Error fetching campaign metrics:", error);
     }
   };
 
@@ -946,16 +986,20 @@ Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dalla
                 Deals
               </TabsTrigger>
               <TabsTrigger value="tasks" className="gap-2">
-                <Calendar className="h-4 w-4" />
+                <CalendarIcon className="h-4 w-4" />
                 Tasks
               </TabsTrigger>
               <TabsTrigger value="sequences" className="gap-2">
                 <Mail className="h-4 w-4" />
                 Sequences
               </TabsTrigger>
+              <TabsTrigger value="calendar" className="gap-2">
+                <CalendarIcon className="h-4 w-4" />
+                Calendar
+              </TabsTrigger>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <div className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer gap-2 ${activeTab === 'reports' ? 'bg-background text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}>
+                  <div className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer gap-2 ${activeTab === 'reports' || activeTab === 'email_analytics' ? 'bg-background text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}>
                     <BarChart3 className="h-4 w-4" />
                     Reports
                     <ChevronDown className="h-3 w-3" />
@@ -967,12 +1011,11 @@ Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dalla
                     CRM Analytics
                   </DropdownMenuItem>
                   <DropdownMenuItem 
-                    onClick={() => window.open("https://email-dashboard.brainsurgeryteam.com/", "_blank")}
+                    onClick={() => setActiveTab("email_analytics")}
                     className="gap-2 cursor-pointer"
                   >
                     <Mail className="h-4 w-4" />
-                    Email Reporting
-                    <ExternalLink className="h-3 w-3 ml-auto" />
+                    Email Analytics
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1226,6 +1269,19 @@ Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dalla
             {/* Reports Tab */}
             <TabsContent value="reports">
               <CRMReports />
+            </TabsContent>
+
+            {/* Calendar Tab */}
+            <TabsContent value="calendar">
+              <CampaignCalendar 
+                events={calendarEvents}
+                onEventClick={(event) => console.log("Event clicked:", event)}
+              />
+            </TabsContent>
+
+            {/* Email Analytics Tab */}
+            <TabsContent value="email_analytics">
+              <EmailAnalyticsDashboard metrics={campaignMetrics} />
             </TabsContent>
           </Tabs>
 
