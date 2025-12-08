@@ -29,6 +29,7 @@ import Automation from "./pages/Automation";
 import OSDashboard from "./pages/OSDashboard";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import MondayLeadConverter from "./pages/MondayLeadConverter";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
 import CRODashboard from "./pages/cro/CRODashboard";
 import CROForecast from "./pages/cro/CROForecast";
@@ -66,6 +67,7 @@ const App = () => (
             <Route path="/reports" element={<Reports />} />
             <Route path="/crm" element={<CRM />} />
             <Route path="/crm/:id" element={<LeadDetail />} />
+            <Route path="/crm/import/monday" element={<MondayLeadConverter />} />
             <Route path="/automation" element={<Automation />} />
             <Route path="/os" element={<OSDashboard />} />
             <Route path="/cro" element={<CRODashboard />} />

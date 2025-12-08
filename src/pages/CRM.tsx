@@ -583,13 +583,27 @@ Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dalla
               </div>
               <div className="flex items-center gap-3">
                 <WorkspaceSelector onWorkspaceChange={setWorkspaceId} />
-                <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-                  <DialogTrigger asChild>
+              <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <Button variant="outline">
                       <Upload className="mr-2 h-4 w-4" />
-                      Import CSV
+                      Import
+                      <ChevronDown className="ml-2 h-4 w-4" />
                     </Button>
-                  </DialogTrigger>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setShowImportDialog(true)}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Import CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate("/crm/import/monday")}>
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      Monday.com Import
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+              <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Import Leads from CSV</DialogTitle>
