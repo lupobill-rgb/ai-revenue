@@ -165,6 +165,27 @@ const Onboarding = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      let uploadedLogoUrl: string | null = null;
+
+      // Upload logo to storage if provided
+      if (logoFile) {
+        const fileExt = logoFile.name.split('.').pop();
+        const fileName = `${user.id}/logo.${fileExt}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('cmo-assets')
+          .upload(fileName, logoFile, { upsert: true });
+        
+        if (uploadError) {
+          console.error('Logo upload error:', uploadError);
+        } else {
+          const { data: urlData } = supabase.storage
+            .from('cmo-assets')
+            .getPublicUrl(fileName);
+          uploadedLogoUrl = urlData.publicUrl;
+        }
+      }
+
       const profileData = {
         user_id: user.id,
         business_name: businessName,
@@ -182,6 +203,7 @@ const Onboarding = () => {
         },
         messaging_pillars: brandGuidelines?.messagingPillars || [],
         business_description: `${businessName} - ${vertical}`,
+        logo_url: uploadedLogoUrl,
       };
 
       const { error } = await supabase
