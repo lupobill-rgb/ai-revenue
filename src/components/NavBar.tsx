@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Menu, X, LogOut, User, Settings, Plus, Shield } from "lucide-react";
 import Logo from "@/components/Logo";
+import NotificationBell from "@/components/NotificationBell";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useAllModulesEnabled } from "@/hooks/useModuleEnabled";
@@ -107,6 +108,7 @@ const NavBar = () => {
               <Plus className="mr-2 h-4 w-4" />
               New Campaign
             </Button>
+            <NotificationBell />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
