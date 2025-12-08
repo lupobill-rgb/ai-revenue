@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./hooks/useAuth";
+import WelcomeModal from "./components/WelcomeModal";
+import ProductTour from "./components/ProductTour";
 import AIChatWidget from "./components/AIChatWidget";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -39,53 +42,59 @@ import CRORecommendations from "./pages/cro/CRORecommendations";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/change-password" element={<ForcePasswordChange />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/approvals" element={<Approvals />} />
-            <Route path="/assets" element={<AssetCatalog />} />
-            <Route path="/assets/new" element={<NewAsset />} />
-            <Route path="/assets/:id" element={<AssetDetail />} />
-            <Route path="/websites" element={<WebsiteCatalog />} />
-            <Route path="/video" element={<Video />} />
-            <Route path="/email" element={<Email />} />
-            <Route path="/social" element={<Social />} />
-            <Route path="/new-campaign" element={<NewCampaign />} />
-            <Route path="/voice-agents" element={<VoiceAgents />} />
-            <Route path="/users" element={<UserManagement />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/crm" element={<CRM />} />
-            <Route path="/crm/:id" element={<LeadDetail />} />
-            <Route path="/crm/import/monday" element={<MondayLeadConverter />} />
-            <Route path="/automation" element={<Automation />} />
-            <Route path="/os" element={<OSDashboard />} />
-            <Route path="/cro" element={<CRODashboard />} />
-            <Route path="/cro/dashboard" element={<CRODashboard />} />
-            <Route path="/cro/forecast" element={<CROForecast />} />
-            <Route path="/cro/pipeline" element={<CROPipeline />} />
-            <Route path="/cro/deals/:id" element={<CRODealDetail />} />
-            <Route path="/cro/recommendations" element={<CRORecommendations />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/profile" element={<Profile />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          <AIChatWidget />
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  const [showTour, setShowTour] = useState(false);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/change-password" element={<ForcePasswordChange />} />
+              <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/approvals" element={<Approvals />} />
+              <Route path="/assets" element={<AssetCatalog />} />
+              <Route path="/assets/new" element={<NewAsset />} />
+              <Route path="/assets/:id" element={<AssetDetail />} />
+              <Route path="/websites" element={<WebsiteCatalog />} />
+              <Route path="/video" element={<Video />} />
+              <Route path="/email" element={<Email />} />
+              <Route path="/social" element={<Social />} />
+              <Route path="/new-campaign" element={<NewCampaign />} />
+              <Route path="/voice-agents" element={<VoiceAgents />} />
+              <Route path="/users" element={<UserManagement />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/crm" element={<CRM />} />
+              <Route path="/crm/:id" element={<LeadDetail />} />
+              <Route path="/crm/import/monday" element={<MondayLeadConverter />} />
+              <Route path="/automation" element={<Automation />} />
+              <Route path="/os" element={<OSDashboard />} />
+              <Route path="/cro" element={<CRODashboard />} />
+              <Route path="/cro/dashboard" element={<CRODashboard />} />
+              <Route path="/cro/forecast" element={<CROForecast />} />
+              <Route path="/cro/pipeline" element={<CROPipeline />} />
+              <Route path="/cro/deals/:id" element={<CRODealDetail />} />
+              <Route path="/cro/recommendations" element={<CRORecommendations />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/profile" element={<Profile />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+            <AIChatWidget />
+            <WelcomeModal onStartTour={() => setShowTour(true)} />
+            <ProductTour forceShow={showTour} onComplete={() => setShowTour(false)} />
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;
