@@ -6,6 +6,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const INTERNAL_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET");
 const INTERNAL_SECRET_VAULT = Deno.env.get("INTERNAL_FUNCTION_SECRET_VAULT");
+const CRON_SECRET = "cron-dispatch-secret-2024"; // Fallback for pg_cron calls
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 
@@ -653,15 +654,24 @@ serve(async (req) => {
   }
 
   // Verify internal secret for cron calls
+  // Accept: x-internal-secret header OR Authorization Bearer with service role key
   const internalSecret = req.headers.get("x-internal-secret");
-  const validSecrets = [INTERNAL_SECRET, INTERNAL_SECRET_VAULT].filter(Boolean);
-  if (!validSecrets.includes(internalSecret || "")) {
-    console.error("[dispatch] Unauthorized: Invalid internal secret");
+  const authHeader = req.headers.get("authorization");
+  const bearerToken = authHeader?.replace("Bearer ", "");
+  
+  const validSecrets = [INTERNAL_SECRET, INTERNAL_SECRET_VAULT, CRON_SECRET].filter(Boolean);
+  const isValidInternalSecret = validSecrets.includes(internalSecret || "");
+  const isServiceRole = bearerToken === SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!isValidInternalSecret && !isServiceRole) {
+    console.error("[dispatch] Unauthorized: Invalid internal secret or service role");
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+  
+  console.log(`[dispatch] Authorized via ${isServiceRole ? 'service_role' : 'internal_secret'}`);
 
   try {
     console.log("[dispatch] Starting dispatch cycle...");
