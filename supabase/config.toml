@@ -191,3 +191,7 @@ verify_jwt = true
 
 [functions.vapi-outbound-call]
 verify_jwt = true
+
+[functions.outbound-prospect-intel]
+enabled = true
+verify_jwt = true
