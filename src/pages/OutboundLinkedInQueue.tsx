@@ -24,14 +24,14 @@ import {
 interface LinkedInTask {
   id: string;
   tenant_id: string;
-  workspace_id: string;
   prospect_id: string;
-  sequence_run_id: string | null;
-  step_id: string | null;
+  sequence_run_id: string;
+  step_id: string;
   message_text: string;
   linkedin_url: string | null;
   status: string;
   created_at: string;
+  sent_at?: string | null;
   notes?: string | null;
   prospect?: {
     first_name: string;
@@ -58,24 +58,10 @@ export default function OutboundLinkedInQueue() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get user's workspace
-      const { data: workspace } = await supabase
-        .from("workspace_members")
-        .select("workspace_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (!workspace) {
-        setQueue([]);
-        setLoading(false);
-        return;
-      }
-
-      // Fetch pending LinkedIn tasks directly from linkedin_tasks table
+      // Fetch pending LinkedIn tasks (RLS filters by tenant_id = auth.uid())
       const { data: tasks, error } = await supabase
         .from("linkedin_tasks")
         .select("*")
-        .eq("workspace_id", workspace.workspace_id)
         .eq("status", "pending")
         .order("created_at", { ascending: false });
 
