@@ -57,6 +57,7 @@ interface CRMDashboardProps {
   leads: Lead[];
   showSampleData: boolean;
   onToggleSampleData: (show: boolean) => void;
+  workspaceId?: string | null;
 }
 
 const SAMPLE_LEADS: Lead[] = [
@@ -78,7 +79,7 @@ const FUNNEL_COLORS = {
   lost: { bg: "hsl(var(--muted))", badge: "bg-muted-foreground/50", text: "text-muted-foreground", glow: "none" },
 };
 
-export default function CRMDashboard({ leads, showSampleData, onToggleSampleData }: CRMDashboardProps) {
+export default function CRMDashboard({ leads, showSampleData, onToggleSampleData, workspaceId }: CRMDashboardProps) {
   const [dateRange, setDateRange] = useState<string>("all");
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -99,7 +100,7 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
     setAnalyzingLeads(true);
     try {
       const { data, error } = await supabase.functions.invoke("analyze-leads", {
-        body: { leads: baseLeads },
+        body: { leads: baseLeads, workspaceId },
       });
       
       if (error) throw error;

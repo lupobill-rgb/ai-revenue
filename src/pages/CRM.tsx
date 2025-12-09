@@ -980,6 +980,7 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                 leads={leads} 
                 showSampleData={showSampleData}
                 onToggleSampleData={setShowSampleData}
+                workspaceId={workspaceId}
               />
             </TabsContent>
 
