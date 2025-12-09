@@ -17,6 +17,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
+// ============================================
+// TYPES
+// ============================================
+
 type CampaignConfig = {
   max_daily_sends_email: number;
   max_daily_sends_linkedin: number;
@@ -38,6 +42,47 @@ type OutboundSequenceRun = {
   config: CampaignConfig;
 };
 
+type EmailSettings = {
+  tenant_id: string;
+  sender_name: string;
+  from_address: string;
+  reply_to_address: string;
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_username: string | null;
+  smtp_password: string | null;
+  updated_at: string | null;
+};
+
+type LinkedInSettings = {
+  tenant_id: string;
+  linkedin_profile_url: string;
+  daily_connection_limit: number;
+  daily_message_limit: number;
+  updated_at: string | null;
+};
+
+type CalendarSettings = {
+  tenant_id: string;
+  calendar_provider: string;
+  booking_url: string;
+  updated_at: string | null;
+};
+
+type CRMWebhookSettings = {
+  tenant_id: string;
+  inbound_webhook_url: string | null;
+  outbound_webhook_url: string | null;
+  updated_at: string | null;
+};
+
+type TenantSettingsCache = {
+  email: EmailSettings | null;
+  linkedin: LinkedInSettings | null;
+  calendar: CalendarSettings | null;
+  crm: CRMWebhookSettings | null;
+};
+
 const DEFAULT_CONFIG: CampaignConfig = {
   max_daily_sends_email: 200,
   max_daily_sends_linkedin: 40,
@@ -46,8 +91,173 @@ const DEFAULT_CONFIG: CampaignConfig = {
   linkedin_delivery_mode: "manual_queue",
 };
 
+// ============================================
+// SETTINGS HELPERS (with per-invocation caching)
+// ============================================
+
+const settingsCache: Record<string, TenantSettingsCache> = {};
+
+async function getEmailSettings(tenantId: string): Promise<EmailSettings | null> {
+  if (settingsCache[tenantId]?.email !== undefined) {
+    return settingsCache[tenantId].email;
+  }
+  
+  const { data, error } = await supabase
+    .from("ai_settings_email")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  
+  if (error) {
+    console.error(`[dispatch] Error fetching email settings for ${tenantId}:`, error);
+  }
+  
+  if (!settingsCache[tenantId]) {
+    settingsCache[tenantId] = { email: null, linkedin: null, calendar: null, crm: null };
+  }
+  settingsCache[tenantId].email = data;
+  return data;
+}
+
+async function getLinkedInSettings(tenantId: string): Promise<LinkedInSettings | null> {
+  if (settingsCache[tenantId]?.linkedin !== undefined) {
+    return settingsCache[tenantId].linkedin;
+  }
+  
+  const { data, error } = await supabase
+    .from("ai_settings_linkedin")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  
+  if (error) {
+    console.error(`[dispatch] Error fetching LinkedIn settings for ${tenantId}:`, error);
+  }
+  
+  if (!settingsCache[tenantId]) {
+    settingsCache[tenantId] = { email: null, linkedin: null, calendar: null, crm: null };
+  }
+  settingsCache[tenantId].linkedin = data;
+  return data;
+}
+
+async function getCalendarSettings(tenantId: string): Promise<CalendarSettings | null> {
+  if (settingsCache[tenantId]?.calendar !== undefined) {
+    return settingsCache[tenantId].calendar;
+  }
+  
+  const { data, error } = await supabase
+    .from("ai_settings_calendar")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  
+  if (error) {
+    console.error(`[dispatch] Error fetching calendar settings for ${tenantId}:`, error);
+  }
+  
+  if (!settingsCache[tenantId]) {
+    settingsCache[tenantId] = { email: null, linkedin: null, calendar: null, crm: null };
+  }
+  settingsCache[tenantId].calendar = data;
+  return data;
+}
+
+async function getCrmWebhookSettings(tenantId: string): Promise<CRMWebhookSettings | null> {
+  if (settingsCache[tenantId]?.crm !== undefined) {
+    return settingsCache[tenantId].crm;
+  }
+  
+  const { data, error } = await supabase
+    .from("ai_settings_crm_webhooks")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  
+  if (error) {
+    console.error(`[dispatch] Error fetching CRM webhook settings for ${tenantId}:`, error);
+  }
+  
+  if (!settingsCache[tenantId]) {
+    settingsCache[tenantId] = { email: null, linkedin: null, calendar: null, crm: null };
+  }
+  settingsCache[tenantId].crm = data;
+  return data;
+}
+
+async function countTodayLinkedInSends(tenantId: string): Promise<number> {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const { count, error } = await supabase
+    .from("outbound_message_events")
+    .select("*", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("channel", "linkedin")
+    .eq("event_type", "sent")
+    .gte("created_at", todayStart.toISOString());
+
+  if (error) {
+    console.error("[dispatch] Error counting LinkedIn sends:", error);
+    return 0;
+  }
+
+  return count || 0;
+}
+
+// ============================================
+// CRM WEBHOOK DELIVERY (non-blocking)
+// ============================================
+
+async function sendCrmWebhook(params: {
+  webhookUrl: string;
+  event: string;
+  tenant_id: string;
+  prospect_id: string;
+  campaign_id: string;
+  sequence_id: string;
+  sequence_run_id: string;
+  step_id: string;
+  channel: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const { webhookUrl, event, tenant_id, prospect_id, campaign_id, sequence_id, sequence_run_id, step_id, channel, metadata } = params;
+
+  const payload = {
+    event,
+    timestamp: new Date().toISOString(),
+    tenant_id,
+    prospect_id,
+    campaign_id,
+    sequence_id,
+    sequence_run_id,
+    step_id,
+    channel,
+    ...metadata,
+  };
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!res.ok) {
+      console.warn(`[dispatch] CRM webhook failed (${res.status}): ${webhookUrl}`);
+    } else {
+      console.log(`[dispatch] CRM webhook sent: ${event} -> ${webhookUrl}`);
+    }
+  } catch (err) {
+    console.warn(`[dispatch] CRM webhook error: ${err}`);
+  }
+}
+
+// ============================================
+// CORE HELPERS
+// ============================================
+
 async function getDueRuns(): Promise<OutboundSequenceRun[]> {
-  // Join through sequences -> campaigns to get workspace_id and config
   const { data, error } = await supabase
     .from("outbound_sequence_runs")
     .select(`
@@ -69,7 +279,6 @@ async function getDueRuns(): Promise<OutboundSequenceRun[]> {
     return [];
   }
 
-  // Map to include workspace_id and config from joined data
   return (data || []).map((run: any) => ({
     ...run,
     workspace_id: run.outbound_sequences?.outbound_campaigns?.workspace_id,
@@ -78,7 +287,6 @@ async function getDueRuns(): Promise<OutboundSequenceRun[]> {
   })) as OutboundSequenceRun[];
 }
 
-// Count today's sends for a tenant by channel
 async function getDailySendCount(tenantId: string, channel: string): Promise<number> {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -99,7 +307,6 @@ async function getDailySendCount(tenantId: string, channel: string): Promise<num
   return count || 0;
 }
 
-// Check if within business hours for timezone
 function isWithinBusinessHours(timezone: string): boolean {
   try {
     const now = new Date();
@@ -113,15 +320,12 @@ function isWithinBusinessHours(timezone: string): boolean {
     const hour = parseInt(parts.find(p => p.type === "hour")?.value || "12");
     const weekday = parts.find(p => p.type === "weekday")?.value || "Mon";
 
-    // Skip weekends
     if (weekday === "Sat" || weekday === "Sun") {
       return false;
     }
 
-    // Business hours: 8 AM - 6 PM
     return hour >= 8 && hour < 18;
   } catch {
-    // Default to allowing if timezone parsing fails
     return true;
   }
 }
@@ -184,19 +388,9 @@ async function getBrandContext(workspaceId: string) {
   return data;
 }
 
-// Get tenant's integration settings for email, LinkedIn limits, etc.
-async function getTenantIntegrationSettings(tenantId: string) {
-  // Fetch email and linkedin settings in parallel
-  const [emailRes, linkedinRes] = await Promise.all([
-    supabase.from("ai_settings_email").select("*").eq("tenant_id", tenantId).maybeSingle(),
-    supabase.from("ai_settings_linkedin").select("*").eq("tenant_id", tenantId).maybeSingle(),
-  ]);
-
-  return {
-    email: emailRes.data,
-    linkedin: linkedinRes.data,
-  };
-}
+// ============================================
+// AI AGENT CALL
+// ============================================
 
 async function callOutboundCopyAgent(params: {
   tenant_id: string;
@@ -204,8 +398,17 @@ async function callOutboundCopyAgent(params: {
   insights: any;
   step: any;
   brand: any;
+  calendarSettings?: CalendarSettings | null;
 }) {
-  const { prospect, insights, step, brand } = params;
+  const { prospect, insights, step, brand, calendarSettings } = params;
+
+  // Build CTA based on step type
+  let callToAction = step.metadata?.call_to_action || "Open to a quick 15-minute call to see if this fits?";
+  
+  // For booking steps, weave in the booking URL if available
+  if (step.step_type === "booking" && calendarSettings?.booking_url) {
+    callToAction = `Book a time that works for you: ${calendarSettings.booking_url}`;
+  }
 
   const systemPrompt = `You are the Outbound Message Generator for the UbiGrowth AI CMO Outbound OS.
 You write short, punchy, non-generic outbound messages that sound like a sharp, no-nonsense SDR or founder.
@@ -251,9 +454,14 @@ Rules:
       channel: step.channel || "email",
       sequence_position: step.step_order,
       previous_message_summary: "",
-      call_to_action:
-        step.metadata?.call_to_action ||
-        "Open to a quick 15-minute call to see if this fits?",
+      call_to_action: callToAction,
+      // Include calendar context for booking steps
+      ...(step.step_type === "booking" && calendarSettings
+        ? {
+            calendar_provider: calendarSettings.calendar_provider,
+            booking_url: calendarSettings.booking_url,
+          }
+        : {}),
     },
     brand_voice: {
       tone: brand?.brand_tone || "direct, helpful, no fluff",
@@ -292,7 +500,6 @@ Rules:
   const json = await res.json();
   const rawContent = json.choices?.[0]?.message?.content || "";
 
-  // Parse JSON from response (handle markdown code blocks)
   try {
     const jsonMatch =
       rawContent.match(/```json\n?([\s\S]*?)\n?```/) ||
@@ -304,6 +511,10 @@ Rules:
     throw new Error("Failed to parse AI response");
   }
 }
+
+// ============================================
+// MESSAGE LOGGING
+// ============================================
 
 async function logMessageEvent(params: {
   tenant_id: string;
@@ -317,7 +528,7 @@ async function logMessageEvent(params: {
 }) {
   const { tenant_id, sequence_run_id, step_id, channel, event_type, message_text, subject_line, metadata } = params;
 
-  const { error } = await supabase.from("outbound_message_events").insert({
+  const { data, error } = await supabase.from("outbound_message_events").insert({
     tenant_id,
     sequence_run_id,
     step_id,
@@ -326,17 +537,18 @@ async function logMessageEvent(params: {
     message_text,
     subject_line,
     metadata: metadata || {},
-  });
+  }).select().maybeSingle();
 
   if (error) {
     console.error("[dispatch] Error inserting message event:", error);
   }
+
+  return data;
 }
 
 async function updateRunAfterSend(params: { run: OutboundSequenceRun; step: any }) {
   const { run, step } = params;
 
-  // Check if there's a next step
   const nextStepOrder = step.step_order + 1;
   const { data: nextStep } = await supabase
     .from("outbound_sequence_steps")
@@ -364,6 +576,10 @@ async function updateRunAfterSend(params: { run: OutboundSequenceRun; step: any 
     console.error("[dispatch] Error updating sequence run:", error);
   }
 }
+
+// ============================================
+// EMAIL DISPATCH
+// ============================================
 
 async function dispatchEmail(params: {
   to: string;
@@ -398,6 +614,10 @@ async function dispatchEmail(params: {
   }
 }
 
+// ============================================
+// LINKEDIN TASK QUEUE
+// ============================================
+
 async function queueLinkedInTask(params: {
   prospect: any;
   message_text: string;
@@ -423,12 +643,16 @@ async function queueLinkedInTask(params: {
   }
 }
 
+// ============================================
+// MAIN HANDLER
+// ============================================
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Verify internal secret for cron calls (accept either env var or vault secret)
+  // Verify internal secret for cron calls
   const internalSecret = req.headers.get("x-internal-secret");
   const validSecrets = [INTERNAL_SECRET, INTERNAL_SECRET_VAULT].filter(Boolean);
   if (!validSecrets.includes(internalSecret || "")) {
@@ -460,10 +684,11 @@ serve(async (req) => {
     let errors = 0;
     let skippedCaps = 0;
     let skippedBusinessHours = 0;
+    let skippedMissingSettings = 0;
 
     for (const run of runs) {
       try {
-        const config = run.config;
+        const config = { ...run.config };
 
         // Check business hours if enabled
         if (config.business_hours_only && !isWithinBusinessHours(config.timezone)) {
@@ -474,7 +699,6 @@ serve(async (req) => {
 
         const step = await getNextStep(run);
         if (!step) {
-          // No more steps - mark as completed
           await supabase
             .from("outbound_sequence_runs")
             .update({ status: "completed", updated_at: new Date().toISOString() })
@@ -485,24 +709,61 @@ serve(async (req) => {
 
         const channel = step.channel || "email";
 
+        // Load settings for this tenant (cached per invocation)
+        const [emailSettings, linkedinSettings, calendarSettings, crmSettings] = await Promise.all([
+          getEmailSettings(run.tenant_id),
+          getLinkedInSettings(run.tenant_id),
+          getCalendarSettings(run.tenant_id),
+          getCrmWebhookSettings(run.tenant_id),
+        ]);
+
         // Initialize daily counts for tenant if not cached
         if (!dailyCounts[run.tenant_id]) {
           const emailCount = await getDailySendCount(run.tenant_id, "email");
-          const linkedinCount = await getDailySendCount(run.tenant_id, "linkedin");
+          const linkedinCount = await countTodayLinkedInSends(run.tenant_id);
           dailyCounts[run.tenant_id] = { email: emailCount, linkedin: linkedinCount };
         }
 
-        // Check daily caps
-        if (channel === "email" && dailyCounts[run.tenant_id].email >= config.max_daily_sends_email) {
-          console.log(`[dispatch] Skipping run ${run.id} - daily email cap reached (${config.max_daily_sends_email})`);
-          skippedCaps++;
-          continue;
+        // =====================
+        // EMAIL CHANNEL CHECKS
+        // =====================
+        if (channel === "email") {
+          // Check required email settings
+          if (!emailSettings?.sender_name || !emailSettings?.from_address || !emailSettings?.reply_to_address) {
+            console.warn(`[dispatch] Skipping run ${run.id} - missing email settings (sender_name, from_address, or reply_to_address) for tenant ${run.tenant_id}`);
+            skippedMissingSettings++;
+            continue;
+          }
+
+          // Check daily email cap
+          if (dailyCounts[run.tenant_id].email >= config.max_daily_sends_email) {
+            console.log(`[dispatch] Skipping run ${run.id} - daily email cap reached (${config.max_daily_sends_email})`);
+            skippedCaps++;
+            continue;
+          }
         }
 
-        if (channel === "linkedin" && dailyCounts[run.tenant_id].linkedin >= config.max_daily_sends_linkedin) {
-          console.log(`[dispatch] Skipping run ${run.id} - daily LinkedIn cap reached (${config.max_daily_sends_linkedin})`);
-          skippedCaps++;
-          continue;
+        // =====================
+        // LINKEDIN CHANNEL CHECKS
+        // =====================
+        if (channel === "linkedin") {
+          // Check linkedin_profile_url
+          if (!linkedinSettings?.linkedin_profile_url) {
+            console.warn(`[dispatch] Skipping run ${run.id} - missing linkedin_profile_url for tenant ${run.tenant_id}`);
+            skippedMissingSettings++;
+            continue;
+          }
+
+          // Override config with tenant LinkedIn limits
+          const totalLinkedInLimit = (linkedinSettings.daily_connection_limit || 20) + (linkedinSettings.daily_message_limit || 50);
+          config.max_daily_sends_linkedin = totalLinkedInLimit;
+
+          // Check daily LinkedIn cap
+          if (dailyCounts[run.tenant_id].linkedin >= config.max_daily_sends_linkedin) {
+            console.log(`[dispatch] Skipping run ${run.id} - daily LinkedIn cap reached (${config.max_daily_sends_linkedin})`);
+            skippedCaps++;
+            continue;
+          }
         }
 
         const prospect = await getProspect(run.prospect_id);
@@ -513,39 +774,25 @@ serve(async (req) => {
 
         const insights = await getProspectInsights(run.prospect_id);
         const brand = await getBrandContext(run.workspace_id);
-        const integrationSettings = await getTenantIntegrationSettings(run.tenant_id);
 
-        // Override config with tenant integration settings if available
-        if (integrationSettings.linkedin) {
-          if (integrationSettings.linkedin.daily_connection_limit) {
-            config.max_daily_sends_linkedin = integrationSettings.linkedin.daily_connection_limit;
-          }
-          if (integrationSettings.linkedin.daily_message_limit) {
-            config.max_daily_sends_linkedin = Math.min(
-              config.max_daily_sends_linkedin,
-              integrationSettings.linkedin.daily_message_limit
-            );
-          }
-        }
-
+        // Call AI agent with calendar context for booking steps
         const outbound = await callOutboundCopyAgent({
           tenant_id: run.tenant_id,
           prospect,
           insights,
           step,
           brand,
+          calendarSettings: step.step_type === "booking" ? calendarSettings : null,
         });
 
+        // =====================
+        // DISPATCH EMAIL
+        // =====================
         if (channel === "email") {
-          // Email branch
           if (!prospect.email) {
-            console.warn("Prospect missing email, skipping", prospect.id);
+            console.warn("[dispatch] Prospect missing email, skipping", prospect.id);
           } else {
-            // Build from address from integration settings
-            const emailSettings = integrationSettings.email;
-            const fromName = emailSettings?.sender_name || brand?.brand_name || "UbiGrowth AI CMO";
-            const fromEmail = emailSettings?.from_address || "noreply@updates.ubigrowth.ai";
-            const replyTo = emailSettings?.reply_to_address || "team@ubigrowth.ai";
+            const fromEmail = `${emailSettings!.sender_name} <${emailSettings!.from_address}>`;
             
             await dispatchEmail({
               to: prospect.email,
@@ -553,36 +800,67 @@ serve(async (req) => {
               body: outbound.message_text,
               tenant_id: run.tenant_id,
               prospect_name: `${prospect.first_name} ${prospect.last_name}`,
-              from_email: `${fromName} <${fromEmail}>`,
-              reply_to: replyTo,
+              from_email: fromEmail,
+              reply_to: emailSettings!.reply_to_address,
             });
             dailyCounts[run.tenant_id].email++;
           }
-        } else if (channel === "linkedin") {
+        }
+
+        // =====================
+        // DISPATCH LINKEDIN
+        // =====================
+        if (channel === "linkedin") {
           await queueLinkedInTask({
             prospect,
             message_text: outbound.message_text,
             tenant_id: run.tenant_id,
-            workspace_id: prospect.workspace_id,
+            workspace_id: run.workspace_id,
             sequence_run_id: run.id,
             step_id: step.id,
           });
           dailyCounts[run.tenant_id].linkedin++;
         }
 
-        // Unified event logging for analytics pipeline
-        await logMessageEvent({
+        // =====================
+        // LOG MESSAGE EVENT
+        // =====================
+        const eventData = await logMessageEvent({
           tenant_id: run.tenant_id,
           sequence_run_id: run.id,
           step_id: step.id,
           channel: channel,
           event_type: "sent",
+          message_text: outbound.message_text,
+          subject_line: outbound.subject_line,
           metadata: {
             variant_tag: outbound.variant_tag,
-            subject_line: outbound.subject_line,
             prospect_id: prospect.id,
           },
         });
+
+        // =====================
+        // CRM WEBHOOK (non-blocking)
+        // =====================
+        if (crmSettings?.outbound_webhook_url) {
+          // Fire and forget - don't await
+          sendCrmWebhook({
+            webhookUrl: crmSettings.outbound_webhook_url,
+            event: `${channel}.sent`,
+            tenant_id: run.tenant_id,
+            prospect_id: prospect.id,
+            campaign_id: run.campaign_id,
+            sequence_id: run.sequence_id,
+            sequence_run_id: run.id,
+            step_id: step.id,
+            channel,
+            metadata: {
+              message_event_id: eventData?.id,
+              variant_tag: outbound.variant_tag,
+              subject_line: outbound.subject_line,
+            },
+          }).catch((err) => console.warn("[dispatch] CRM webhook background error:", err));
+        }
 
         await updateRunAfterSend({ run, step });
         processed++;
@@ -593,7 +871,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[dispatch] Completed: ${processed} processed, ${errors} errors, ${skippedCaps} skipped (caps), ${skippedBusinessHours} skipped (business hours)`);
+    console.log(`[dispatch] Completed: ${processed} processed, ${errors} errors, ${skippedCaps} skipped (caps), ${skippedBusinessHours} skipped (business hours), ${skippedMissingSettings} skipped (missing settings)`);
 
     return new Response(
       JSON.stringify({ 
@@ -602,6 +880,7 @@ serve(async (req) => {
         errors, 
         skippedCaps,
         skippedBusinessHours,
+        skippedMissingSettings,
         total: runs.length 
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
