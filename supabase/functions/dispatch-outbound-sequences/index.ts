@@ -1,55 +1,294 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const INTERNAL_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET");
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
-const INTERNAL_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET");
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
-
-interface SequenceRun {
+type OutboundSequenceRun = {
   id: string;
   tenant_id: string;
   workspace_id: string;
   campaign_id: string;
   sequence_id: string;
   prospect_id: string;
-  last_step_sent: number;
-  next_step_due_at: string;
   status: string;
+  last_step_sent: number;
+  next_step_due_at: string | null;
+};
+
+async function getDueRuns(): Promise<OutboundSequenceRun[]> {
+  const { data, error } = await supabase
+    .from("outbound_sequence_runs")
+    .select("*")
+    .eq("status", "active")
+    .lte("next_step_due_at", new Date().toISOString())
+    .limit(100);
+
+  if (error) {
+    console.error("[dispatch] Error fetching runs:", error);
+    return [];
+  }
+
+  return data as OutboundSequenceRun[];
 }
 
-interface SequenceStep {
-  id: string;
-  step_order: number;
-  step_type: string;
+async function getNextStep(run: OutboundSequenceRun) {
+  const nextOrder = (run.last_step_sent || 0) + 1;
+
+  const { data, error } = await supabase
+    .from("outbound_sequence_steps")
+    .select("*")
+    .eq("sequence_id", run.sequence_id)
+    .eq("step_order", nextOrder)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[dispatch] Error fetching next step:", error, run.id);
+    return null;
+  }
+
+  return data;
+}
+
+async function getProspect(prospectId: string) {
+  const { data, error } = await supabase
+    .from("prospects")
+    .select("*")
+    .eq("id", prospectId)
+    .maybeSingle();
+
+  if (error || !data) {
+    console.error("[dispatch] Error fetching prospect:", error);
+    return null;
+  }
+
+  return data;
+}
+
+async function getProspectInsights(prospectId: string) {
+  const { data, error } = await supabase
+    .from("prospect_scores")
+    .select("*")
+    .eq("prospect_id", prospectId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error || !data || data.length === 0) {
+    return null;
+  }
+
+  return data[0];
+}
+
+async function getBrandContext(workspaceId: string) {
+  const { data } = await supabase
+    .from("cmo_brand_profiles")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+
+  return data;
+}
+
+async function callOutboundCopyAgent(params: {
+  tenant_id: string;
+  prospect: any;
+  insights: any;
+  step: any;
+  brand: any;
+}) {
+  const { prospect, insights, step, brand } = params;
+
+  const systemPrompt = `You are the Outbound Message Generator for the UbiGrowth AI CMO Outbound OS.
+You write short, punchy, non-generic outbound messages that sound like a sharp, no-nonsense SDR or founder.
+
+Rules:
+- Always personalize using the prospect_profile and prospect_insights.
+- Refer to real signals (promotion, growth, posts) only if they are present.
+- Avoid buzzwords and hype ('game-changing', 'cutting-edge', etc.).
+- Keep messages tight: 40–120 words for email, 25–80 words for LinkedIn.
+- Match tone_recommendation where provided (e.g., 'direct', 'casual', 'metric-oriented').
+- Use a single, clear call-to-action (CTA). Do not list multiple CTAs.
+- Output MUST be valid JSON with exactly these fields: message_text, subject_line, variant_tag, reasoning_summary`;
+
+  const userInput = {
+    prospect_profile: {
+      first_name: prospect.first_name,
+      last_name: prospect.last_name,
+      title: prospect.title,
+      company: prospect.company,
+      industry: prospect.industry,
+      location: prospect.location,
+      linkedin_url: prospect.linkedin_url,
+    },
+    prospect_insights: insights
+      ? {
+          buying_intent_score: insights.score,
+          intent_band: insights.intent_band || "warm",
+          key_signals: insights.key_signals || [],
+          hypothesized_pain_points: insights.pain_points || [],
+          recommended_angle: insights.recommended_angle || "",
+          tone_recommendation: insights.tone_recommendation || "professional",
+        }
+      : {
+          buying_intent_score: 50,
+          intent_band: "warm",
+          key_signals: [],
+          hypothesized_pain_points: [],
+          recommended_angle: "",
+          tone_recommendation: "professional",
+        },
+    step_context: {
+      step_type: step.step_type,
+      channel: step.channel || "email",
+      sequence_position: step.step_order,
+      previous_message_summary: "",
+      call_to_action:
+        step.metadata?.call_to_action ||
+        "Open to a quick 15-minute call to see if this fits?",
+    },
+    brand_voice: {
+      tone: brand?.brand_tone || "direct, helpful, no fluff",
+      length_preference: step.channel === "linkedin" ? "short" : "medium",
+      avoid: ["buzzwords", "hype", "game-changing", "cutting-edge"],
+      product_name: brand?.brand_name || "AI CMO Outbound OS",
+      value_prop:
+        brand?.unique_value_proposition ||
+        "turns outbound into a system that reliably books meetings without adding headcount",
+    },
+  };
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: JSON.stringify(userInput) },
+      ],
+      temperature: 0.45,
+      max_tokens: 700,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("[dispatch] AI call failed:", errText);
+    throw new Error("AI call failed");
+  }
+
+  const json = await res.json();
+  const rawContent = json.choices?.[0]?.message?.content || "";
+
+  // Parse JSON from response (handle markdown code blocks)
+  try {
+    const jsonMatch =
+      rawContent.match(/```json\n?([\s\S]*?)\n?```/) ||
+      rawContent.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[1] || jsonMatch[0] : rawContent;
+    return JSON.parse(jsonStr);
+  } catch (parseErr) {
+    console.error("[dispatch] Failed to parse AI response:", rawContent);
+    throw new Error("Failed to parse AI response");
+  }
+}
+
+async function logMessageEvent(params: {
+  tenant_id: string;
+  run_id: string;
+  step_id: string;
   channel: string;
-  message_template: string;
-  delay_days: number;
+  event_type: string;
+  message_text?: string;
+  subject_line?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const { tenant_id, run_id, step_id, channel, event_type, message_text, subject_line, metadata } = params;
+
+  const { error } = await supabase.from("outbound_message_events").insert({
+    tenant_id,
+    run_id,
+    step_id,
+    channel,
+    event_type,
+    message_text,
+    subject_line,
+    metadata: metadata || {},
+  });
+
+  if (error) {
+    console.error("[dispatch] Error inserting message event:", error);
+  }
 }
 
-interface Prospect {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  title: string;
-  company: string;
-  industry: string;
+async function updateRunAfterSend(params: { run: OutboundSequenceRun; step: any }) {
+  const { run, step } = params;
+
+  // Check if there's a next step
+  const nextStepOrder = step.step_order + 1;
+  const { data: nextStep } = await supabase
+    .from("outbound_sequence_steps")
+    .select("delay_days")
+    .eq("sequence_id", run.sequence_id)
+    .eq("step_order", nextStepOrder)
+    .maybeSingle();
+
+  const delayDays = nextStep?.delay_days ?? 1;
+  const nextDue = nextStep
+    ? new Date(Date.now() + delayDays * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+
+  const { error } = await supabase
+    .from("outbound_sequence_runs")
+    .update({
+      last_step_sent: step.step_order,
+      next_step_due_at: nextDue,
+      status: nextDue ? "active" : "completed",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", run.id);
+
+  if (error) {
+    console.error("[dispatch] Error updating sequence run:", error);
+  }
+}
+
+async function dispatchEmail(params: {
+  to: string;
+  subject: string;
+  body: string;
+  tenant_id: string;
+  prospect_name: string;
+}) {
+  // Could integrate with existing email-deploy function
+  console.log(`[dispatch] Email queued for ${params.to}: ${params.subject}`);
+  // TODO: Wire to email-deploy or Resend integration
+}
+
+async function queueLinkedInTask(params: {
+  tenant_id: string;
+  prospect_id: string;
+  run_id: string;
+  step_id: string;
+  message_text: string;
+  prospect_name: string;
   linkedin_url: string;
-}
-
-interface ProspectScore {
-  score: number;
-  intent_band: string;
-  key_signals: string[];
-  pain_points: string[];
-  recommended_angle: string;
-  tone_recommendation: string;
+}) {
+  // Push to outbound_message_events as 'pending' for human-in-the-loop
+  console.log(`[dispatch] LinkedIn task queued for ${params.prospect_name}`);
 }
 
 serve(async (req) => {
@@ -60,280 +299,138 @@ serve(async (req) => {
   // Verify internal secret for cron calls
   const internalSecret = req.headers.get("x-internal-secret");
   if (internalSecret !== INTERNAL_SECRET) {
-    console.error("Unauthorized: Invalid internal secret");
+    console.error("[dispatch] Unauthorized: Invalid internal secret");
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
   try {
-    console.log("[dispatch-outbound-sequences] Starting dispatch cycle...");
+    console.log("[dispatch] Starting dispatch cycle...");
 
-    // 1. Find due sequence runs
-    const now = new Date().toISOString();
-    const { data: dueRuns, error: runsError } = await supabase
-      .from("outbound_sequence_runs")
-      .select("*")
-      .eq("status", "active")
-      .lte("next_step_due_at", now)
-      .limit(50);
-
-    if (runsError) {
-      console.error("Error fetching due runs:", runsError);
-      throw runsError;
+    const runs = await getDueRuns();
+    if (!runs.length) {
+      console.log("[dispatch] No due sequences found");
+      return new Response(
+        JSON.stringify({ status: "ok", processed: 0 }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    if (!dueRuns || dueRuns.length === 0) {
-      console.log("[dispatch-outbound-sequences] No due sequences found");
-      return new Response(JSON.stringify({ processed: 0, message: "No due sequences" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    console.log(`[dispatch-outbound-sequences] Found ${dueRuns.length} due sequence runs`);
+    console.log(`[dispatch] Found ${runs.length} due sequence runs`);
 
     let processed = 0;
     let errors = 0;
 
-    for (const run of dueRuns as SequenceRun[]) {
+    for (const run of runs) {
       try {
-        // 2. Fetch the next step
-        const nextStepOrder = (run.last_step_sent || 0) + 1;
-        const { data: step, error: stepError } = await supabase
-          .from("outbound_sequence_steps")
-          .select("*")
-          .eq("sequence_id", run.sequence_id)
-          .eq("step_order", nextStepOrder)
-          .single();
-
-        if (stepError || !step) {
-          // No more steps - mark sequence as completed
+        const step = await getNextStep(run);
+        if (!step) {
+          // No more steps - mark as completed
           await supabase
             .from("outbound_sequence_runs")
-            .update({ status: "completed", updated_at: now })
+            .update({ status: "completed", updated_at: new Date().toISOString() })
             .eq("id", run.id);
           console.log(`[dispatch] Run ${run.id} completed - no more steps`);
           continue;
         }
 
-        const sequenceStep = step as SequenceStep;
-
-        // 3. Fetch prospect data
-        const { data: prospect, error: prospectError } = await supabase
-          .from("prospects")
-          .select("*")
-          .eq("id", run.prospect_id)
-          .single();
-
-        if (prospectError || !prospect) {
-          console.error(`[dispatch] Prospect not found for run ${run.id}`);
+        const prospect = await getProspect(run.prospect_id);
+        if (!prospect) {
+          console.warn(`[dispatch] Prospect not found for run ${run.id}`);
           continue;
         }
 
-        const prospectData = prospect as Prospect;
+        const insights = await getProspectInsights(run.prospect_id);
+        const brand = await getBrandContext(run.workspace_id);
 
-        // 4. Fetch prospect intel (score + signals)
-        const { data: scoreData } = await supabase
-          .from("prospect_scores")
-          .select("*")
-          .eq("prospect_id", run.prospect_id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
-
-        const { data: signalsData } = await supabase
-          .from("prospect_signals")
-          .select("*")
-          .eq("prospect_id", run.prospect_id)
-          .order("created_at", { ascending: false })
-          .limit(5);
-
-        // 5. Fetch brand context from workspace
-        const { data: brandProfile } = await supabase
-          .from("cmo_brand_profiles")
-          .select("*")
-          .eq("workspace_id", run.workspace_id)
-          .limit(1)
-          .single();
-
-        // Build prospect insights
-        const prospectInsights = {
-          buying_intent_score: scoreData?.score || 50,
-          intent_band: scoreData?.intent_band || "warm",
-          key_signals: signalsData?.map((s: any) => s.signal_type) || [],
-          hypothesized_pain_points: scoreData?.pain_points || [],
-          recommended_angle: scoreData?.recommended_angle || "",
-          tone_recommendation: scoreData?.tone_recommendation || "professional",
-        };
-
-        // Build brand voice
-        const brandVoice = {
-          tone: brandProfile?.brand_tone || "professional",
-          length_preference: sequenceStep.channel === "linkedin" ? "short" : "medium",
-          avoid: ["game-changing", "cutting-edge", "revolutionary"],
-          product_name: brandProfile?.brand_name || "",
-          value_prop: brandProfile?.unique_value_proposition || "",
-        };
-
-        // 6. Call outbound_copy via Lovable AI
-        const systemPrompt = `You are the Outbound Message Generator for the UbiGrowth AI CMO Outbound OS.
-You write short, punchy, non-generic outbound messages that sound like a sharp, no-nonsense SDR or founder.
-
-Rules:
-- Always personalize using the prospect_profile and prospect_insights.
-- Refer to real signals (promotion, growth, posts) only if they are present.
-- Avoid buzzwords and hype ('game-changing', 'cutting-edge', etc.).
-- Keep messages tight: 40–120 words for email, 25–80 words for LinkedIn.
-- Match tone_recommendation where provided.
-- Use a single, clear call-to-action (CTA). Do not list multiple CTAs.
-- Output MUST be valid JSON with: message_text, subject_line, variant_tag, reasoning_summary`;
-
-        const userPrompt = JSON.stringify({
-          prospect_profile: {
-            first_name: prospectData.first_name,
-            last_name: prospectData.last_name,
-            title: prospectData.title,
-            company: prospectData.company,
-            industry: prospectData.industry,
-            linkedin_url: prospectData.linkedin_url,
-          },
-          prospect_insights: prospectInsights,
-          step_context: {
-            step_type: sequenceStep.step_type,
-            channel: sequenceStep.channel,
-            sequence_position: sequenceStep.step_order,
-            call_to_action: "book a call",
-          },
-          brand_voice: brandVoice,
-        });
-
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            temperature: 0.45,
-            max_tokens: 700,
-          }),
-        });
-
-        if (!aiResponse.ok) {
-          const errText = await aiResponse.text();
-          console.error(`[dispatch] AI error for run ${run.id}:`, errText);
-          errors++;
-          continue;
-        }
-
-        const aiData = await aiResponse.json();
-        const rawContent = aiData.choices?.[0]?.message?.content || "";
-
-        // Parse the AI response
-        let messageOutput: { message_text: string; subject_line: string; variant_tag: string; reasoning_summary: string };
-        try {
-          // Extract JSON from potential markdown code blocks
-          const jsonMatch = rawContent.match(/```json\n?([\s\S]*?)\n?```/) || rawContent.match(/\{[\s\S]*\}/);
-          const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawContent;
-          messageOutput = JSON.parse(jsonStr);
-        } catch (parseErr) {
-          console.error(`[dispatch] Failed to parse AI response for run ${run.id}:`, rawContent);
-          errors++;
-          continue;
-        }
-
-        // 7. Log the message event
-        const eventId = crypto.randomUUID();
-        await supabase.from("outbound_message_events").insert({
-          id: eventId,
+        const outbound = await callOutboundCopyAgent({
           tenant_id: run.tenant_id,
-          run_id: run.id,
-          step_id: sequenceStep.id,
-          event_type: sequenceStep.channel === "email" ? "queued" : "pending",
-          channel: sequenceStep.channel,
-          message_text: messageOutput.message_text,
-          subject_line: messageOutput.subject_line,
-          metadata: {
-            variant_tag: messageOutput.variant_tag,
-            reasoning: messageOutput.reasoning_summary,
-            prospect_id: run.prospect_id,
-            step_order: sequenceStep.step_order,
-          },
+          prospect,
+          insights,
+          step,
+          brand,
         });
 
-        // 8. Dispatch based on channel
-        if (sequenceStep.channel === "email" && prospectData.email) {
-          // Queue for email dispatch (could trigger email-deploy here)
-          console.log(`[dispatch] Email queued for ${prospectData.email}`);
-          
-          // Update event to sent for email (auto-dispatch)
-          await supabase
-            .from("outbound_message_events")
-            .update({ event_type: "sent", sent_at: now })
-            .eq("id", eventId);
-        } else if (sequenceStep.channel === "linkedin") {
-          // LinkedIn stays as 'pending' for human-in-the-loop queue
-          console.log(`[dispatch] LinkedIn message queued for ${prospectData.first_name} ${prospectData.last_name}`);
+        const channel = step.channel || "email";
+
+        if (channel === "email") {
+          if (!prospect.email) {
+            console.warn(`[dispatch] Prospect ${prospect.id} missing email, skipping`);
+            continue;
+          }
+
+          await dispatchEmail({
+            to: prospect.email,
+            subject: outbound.subject_line || "Quick idea",
+            body: outbound.message_text,
+            tenant_id: run.tenant_id,
+            prospect_name: `${prospect.first_name} ${prospect.last_name}`,
+          });
+
+          await logMessageEvent({
+            tenant_id: run.tenant_id,
+            run_id: run.id,
+            step_id: step.id,
+            channel: "email",
+            event_type: "sent",
+            message_text: outbound.message_text,
+            subject_line: outbound.subject_line,
+            metadata: {
+              variant_tag: outbound.variant_tag,
+              reasoning: outbound.reasoning_summary,
+              prospect_id: prospect.id,
+            },
+          });
+        } else if (channel === "linkedin") {
+          await queueLinkedInTask({
+            tenant_id: run.tenant_id,
+            prospect_id: prospect.id,
+            run_id: run.id,
+            step_id: step.id,
+            message_text: outbound.message_text,
+            prospect_name: `${prospect.first_name} ${prospect.last_name}`,
+            linkedin_url: prospect.linkedin_url,
+          });
+
+          await logMessageEvent({
+            tenant_id: run.tenant_id,
+            run_id: run.id,
+            step_id: step.id,
+            channel: "linkedin",
+            event_type: "pending",
+            message_text: outbound.message_text,
+            subject_line: outbound.subject_line,
+            metadata: {
+              variant_tag: outbound.variant_tag,
+              reasoning: outbound.reasoning_summary,
+              prospect_id: prospect.id,
+              linkedin_url: prospect.linkedin_url,
+            },
+          });
         }
 
-        // 9. Update sequence run
-        const nextStep = await supabase
-          .from("outbound_sequence_steps")
-          .select("delay_days")
-          .eq("sequence_id", run.sequence_id)
-          .eq("step_order", nextStepOrder + 1)
-          .single();
-
-        const nextDueDate = nextStep.data
-          ? new Date(Date.now() + (nextStep.data.delay_days || 1) * 24 * 60 * 60 * 1000).toISOString()
-          : null;
-
-        await supabase
-          .from("outbound_sequence_runs")
-          .update({
-            last_step_sent: nextStepOrder,
-            next_step_due_at: nextDueDate,
-            status: nextDueDate ? "active" : "completed",
-            updated_at: now,
-          })
-          .eq("id", run.id);
-
+        await updateRunAfterSend({ run, step });
         processed++;
-        console.log(`[dispatch] Successfully processed run ${run.id}, step ${nextStepOrder}`);
+        console.log(`[dispatch] Processed run ${run.id}, step ${step.step_order}`);
       } catch (runErr) {
         console.error(`[dispatch] Error processing run ${run.id}:`, runErr);
         errors++;
       }
     }
 
-    console.log(`[dispatch-outbound-sequences] Completed: ${processed} processed, ${errors} errors`);
+    console.log(`[dispatch] Completed: ${processed} processed, ${errors} errors`);
 
     return new Response(
-      JSON.stringify({
-        processed,
-        errors,
-        total: dueRuns.length,
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ status: "ok", processed, errors, total: runs.length }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error) {
-    console.error("[dispatch-outbound-sequences] Fatal error:", error);
+  } catch (e) {
+    console.error("[dispatch] Fatal error:", e);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ status: "error", message: String(e) }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
