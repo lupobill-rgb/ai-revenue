@@ -5,6 +5,7 @@ import { Resend } from "https://esm.sh/resend@2.0.0";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const INTERNAL_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET");
+const INTERNAL_SECRET_VAULT = Deno.env.get("INTERNAL_FUNCTION_SECRET_VAULT");
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 
@@ -411,9 +412,10 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Verify internal secret for cron calls
+  // Verify internal secret for cron calls (accept either env var or vault secret)
   const internalSecret = req.headers.get("x-internal-secret");
-  if (internalSecret !== INTERNAL_SECRET) {
+  const validSecrets = [INTERNAL_SECRET, INTERNAL_SECRET_VAULT].filter(Boolean);
+  if (!validSecrets.includes(internalSecret || "")) {
     console.error("[dispatch] Unauthorized: Invalid internal secret");
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
