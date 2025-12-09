@@ -199,3 +199,7 @@ verify_jwt = true
 [functions.outbound-message-gen]
 enabled = true
 verify_jwt = true
+
+[functions.outbound-cadence-timing]
+enabled = true
+verify_jwt = true
