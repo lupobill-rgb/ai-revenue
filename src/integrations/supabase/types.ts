@@ -3268,6 +3268,7 @@ export type Database = {
         Args: { variant_asset_id: string }
         Returns: boolean
       }
+      dispatch_outbound_cron: { Args: never; Returns: undefined }
       funnel_stage_workspace_access: {
         Args: { stage_funnel_id: string }
         Returns: boolean
