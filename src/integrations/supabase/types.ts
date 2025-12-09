@@ -2723,6 +2723,7 @@ export type Database = {
           started_at: string | null
           status: string | null
           tenant_id: string
+          updated_at: string | null
         }
         Insert: {
           id?: string
@@ -2733,6 +2734,7 @@ export type Database = {
           started_at?: string | null
           status?: string | null
           tenant_id: string
+          updated_at?: string | null
         }
         Update: {
           id?: string
@@ -2743,6 +2745,7 @@ export type Database = {
           started_at?: string | null
           status?: string | null
           tenant_id?: string
+          updated_at?: string | null
         }
         Relationships: [
           {
