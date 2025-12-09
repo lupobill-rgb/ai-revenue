@@ -39,6 +39,7 @@ import CROForecast from "./pages/cro/CROForecast";
 import CROPipeline from "./pages/cro/CROPipeline";
 import CRODealDetail from "./pages/cro/CRODealDetail";
 import CRORecommendations from "./pages/cro/CRORecommendations";
+import OutboundDashboard from "./pages/OutboundDashboard";
 
 const queryClient = new QueryClient();
 
@@ -82,6 +83,7 @@ const App = () => {
               <Route path="/cro/pipeline" element={<CROPipeline />} />
               <Route path="/cro/deals/:id" element={<CRODealDetail />} />
               <Route path="/cro/recommendations" element={<CRORecommendations />} />
+              <Route path="/outbound" element={<OutboundDashboard />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
