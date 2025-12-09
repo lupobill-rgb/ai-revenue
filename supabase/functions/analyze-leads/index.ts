@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,17 +19,72 @@ interface Lead {
   created_at: string;
 }
 
+interface BusinessProfile {
+  business_name: string | null;
+  industry: string | null;
+  business_description: string | null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { leads } = await req.json();
+    const { leads, workspaceId } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
     
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY not configured");
+    }
+
+    // Get auth header for user context
+    const authHeader = req.headers.get("Authorization");
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader || "" } }
+    });
+
+    // Fetch business profile for this user/workspace to get tenant-specific context
+    let businessContext = "your business";
+    let industryContext = "";
+    
+    if (workspaceId) {
+      // Try to get business profile via workspace owner
+      const { data: workspace } = await supabase
+        .from("workspaces")
+        .select("owner_id")
+        .eq("id", workspaceId)
+        .single();
+
+      if (workspace?.owner_id) {
+        const { data: profile } = await supabase
+          .from("business_profiles")
+          .select("business_name, industry, business_description")
+          .eq("user_id", workspace.owner_id)
+          .single();
+
+        if (profile) {
+          businessContext = profile.business_name || "your business";
+          industryContext = profile.industry ? ` in the ${profile.industry} industry` : "";
+        }
+      }
+    } else {
+      // Fallback: try to get profile for current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from("business_profiles")
+          .select("business_name, industry, business_description")
+          .eq("user_id", user.id)
+          .single();
+
+        if (profile) {
+          businessContext = profile.business_name || "your business";
+          industryContext = profile.industry ? ` in the ${profile.industry} industry` : "";
+        }
+      }
     }
 
     // Calculate key metrics for AI context
@@ -49,7 +105,8 @@ serve(async (req) => {
     const conversionRate = totalLeads > 0 ? ((convertedLeads / totalLeads) * 100).toFixed(1) : "0";
     const qualificationRate = totalLeads > 0 ? ((qualifiedLeads / totalLeads) * 100).toFixed(1) : "0";
 
-    const systemPrompt = `You are a B2B sales optimization expert for PlayKout, a pickleball marketing platform. Analyze lead data and provide actionable insights to:
+    // Dynamic system prompt using tenant's business profile
+    const systemPrompt = `You are a B2B sales optimization expert for ${businessContext}${industryContext}. Analyze lead data and provide actionable insights to:
 1. DRIVE QUALIFIED LEADS - Improve lead quality and qualification rates
 2. ADD NET NEW CUSTOMERS - Convert more leads to paying customers
 
