@@ -20,6 +20,8 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -78,9 +80,117 @@ const Login = () => {
         description: "An unexpected error occurred. Please try again.",
       });
     } finally {
-      setIsLoading(false);
+    setIsLoading(false);
     }
   };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrors({});
+
+    const emailSchema = z.string().trim().email({ message: "Invalid email address" }).max(255);
+    const result = emailSchema.safeParse(email);
+    
+    if (!result.success) {
+      setErrors({ email: result.error.errors[0].message });
+      return;
+    }
+
+    setIsResetting(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(result.data, {
+        redirectTo: `${window.location.origin}/change-password`,
+      });
+
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Reset failed",
+          description: error.message,
+        });
+      } else {
+        toast({
+          title: "Check your email",
+          description: "We've sent you a password reset link.",
+        });
+        setShowForgotPassword(false);
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  if (showForgotPassword) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md animate-fade-in border-border bg-card">
+          <CardHeader className="space-y-4 text-center">
+            <div className="flex justify-center">
+              <div className="h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                <Building2 className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+            <div>
+              <CardTitle className="text-3xl font-bold tracking-tight text-foreground">
+                Reset Password
+              </CardTitle>
+              <CardDescription className="text-base text-muted-foreground">
+                Enter your email to receive a reset link
+              </CardDescription>
+            </div>
+          </CardHeader>
+          <form onSubmit={handleForgotPassword}>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email" className="text-foreground">
+                  Email
+                </Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isResetting}
+                  className="bg-background border-input text-foreground placeholder:text-muted-foreground"
+                  aria-invalid={!!errors.email}
+                  aria-describedby={errors.email ? "reset-email-error" : undefined}
+                />
+                {errors.email && (
+                  <p id="reset-email-error" className="text-sm text-destructive">
+                    {errors.email}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col space-y-4">
+              <Button
+                type="submit"
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all"
+                disabled={isResetting}
+              >
+                {isResetting ? "Sending..." : "Send Reset Link"}
+              </Button>
+              <button
+                type="button"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShowForgotPassword(false)}
+              >
+                Back to login
+              </button>
+            </CardFooter>
+          </form>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -157,7 +267,7 @@ const Login = () => {
               <button
                 type="button"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => toast({ title: "Password reset coming soon" })}
+                onClick={() => setShowForgotPassword(true)}
               >
                 Forgot your password?
               </button>
