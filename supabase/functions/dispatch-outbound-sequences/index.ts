@@ -317,33 +317,26 @@ async function dispatchEmail(params: {
 }
 
 async function queueLinkedInTask(params: {
+  prospect: any;
+  message_text: string;
   tenant_id: string;
-  workspace_id: string;
-  prospect_id: string;
   sequence_run_id: string;
   step_id: string;
-  message_text: string;
-  prospect_name: string;
-  linkedin_url: string;
 }) {
-  // Insert into linkedin_tasks table for human-in-the-loop workflow
+  const { prospect, message_text, tenant_id, sequence_run_id, step_id } = params;
+
   const { error } = await supabase.from("linkedin_tasks").insert({
-    tenant_id: params.tenant_id,
-    workspace_id: params.workspace_id,
-    prospect_id: params.prospect_id,
-    sequence_run_id: params.sequence_run_id,
-    step_id: params.step_id,
-    message_text: params.message_text,
-    linkedin_url: params.linkedin_url,
-    status: "pending",
+    tenant_id,
+    prospect_id: prospect.id,
+    sequence_run_id,
+    step_id,
+    linkedin_url: prospect.linkedin_url,
+    message_text,
   });
 
   if (error) {
-    console.error("[dispatch] Error inserting LinkedIn task:", error);
-    throw new Error("Failed to queue LinkedIn task");
+    console.error("[dispatch] Error inserting linkedin task:", error);
   }
-
-  console.log(`[dispatch] LinkedIn task queued for ${params.prospect_name}`);
 }
 
 serve(async (req) => {
@@ -440,14 +433,11 @@ serve(async (req) => {
           });
         } else if (channel === "linkedin") {
           await queueLinkedInTask({
+            prospect,
+            message_text: outbound.message_text,
             tenant_id: run.tenant_id,
-            workspace_id: run.workspace_id,
-            prospect_id: prospect.id,
             sequence_run_id: run.id,
             step_id: step.id,
-            message_text: outbound.message_text,
-            prospect_name: `${prospect.first_name} ${prospect.last_name}`,
-            linkedin_url: prospect.linkedin_url,
           });
 
           await logMessageEvent({
