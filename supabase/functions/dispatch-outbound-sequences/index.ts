@@ -208,7 +208,7 @@ Rules:
 
 async function logMessageEvent(params: {
   tenant_id: string;
-  run_id: string;
+  sequence_run_id: string;
   step_id: string;
   channel: string;
   event_type: string;
@@ -216,11 +216,11 @@ async function logMessageEvent(params: {
   subject_line?: string;
   metadata?: Record<string, unknown>;
 }) {
-  const { tenant_id, run_id, step_id, channel, event_type, message_text, subject_line, metadata } = params;
+  const { tenant_id, sequence_run_id, step_id, channel, event_type, message_text, subject_line, metadata } = params;
 
   const { error } = await supabase.from("outbound_message_events").insert({
     tenant_id,
-    run_id,
+    sequence_run_id,
     step_id,
     channel,
     event_type,
@@ -371,7 +371,7 @@ serve(async (req) => {
 
           await logMessageEvent({
             tenant_id: run.tenant_id,
-            run_id: run.id,
+            sequence_run_id: run.id,
             step_id: step.id,
             channel: "email",
             event_type: "sent",
@@ -396,7 +396,7 @@ serve(async (req) => {
 
           await logMessageEvent({
             tenant_id: run.tenant_id,
-            run_id: run.id,
+            sequence_run_id: run.id,
             step_id: step.id,
             channel: "linkedin",
             event_type: "pending",

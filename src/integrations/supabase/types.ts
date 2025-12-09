@@ -2244,6 +2244,70 @@ export type Database = {
           },
         ]
       }
+      linkedin_tasks: {
+        Row: {
+          created_at: string | null
+          id: string
+          linkedin_url: string | null
+          message_text: string
+          prospect_id: string
+          run_id: string | null
+          sent_at: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          linkedin_url?: string | null
+          message_text: string
+          prospect_id: string
+          run_id?: string | null
+          sent_at?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          linkedin_url?: string | null
+          message_text?: string
+          prospect_id?: string
+          run_id?: string | null
+          sent_at?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "linkedin_tasks_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_tasks_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "outbound_sequence_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_tasks_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
@@ -2369,32 +2433,50 @@ export type Database = {
       outbound_message_events: {
         Row: {
           channel: string
+          clicked_at: string | null
           event_type: string
           id: string
+          message_text: string | null
           metadata: Json | null
           occurred_at: string | null
+          opened_at: string | null
+          replied_at: string | null
+          sent_at: string | null
           sequence_run_id: string
           step_id: string
+          subject_line: string | null
           tenant_id: string
         }
         Insert: {
           channel: string
+          clicked_at?: string | null
           event_type: string
           id?: string
+          message_text?: string | null
           metadata?: Json | null
           occurred_at?: string | null
+          opened_at?: string | null
+          replied_at?: string | null
+          sent_at?: string | null
           sequence_run_id: string
           step_id: string
+          subject_line?: string | null
           tenant_id: string
         }
         Update: {
           channel?: string
+          clicked_at?: string | null
           event_type?: string
           id?: string
+          message_text?: string | null
           metadata?: Json | null
           occurred_at?: string | null
+          opened_at?: string | null
+          replied_at?: string | null
+          sent_at?: string | null
           sequence_run_id?: string
           step_id?: string
+          subject_line?: string | null
           tenant_id?: string
         }
         Relationships: [
