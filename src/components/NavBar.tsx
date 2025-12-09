@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Menu, X, LogOut, User, Settings, Plus, Shield } from "lucide-react";
+import { Menu, X, LogOut, User, Settings, Plus, Shield, Plug } from "lucide-react";
 import Logo from "@/components/Logo";
 import NotificationBell from "@/components/NotificationBell";
 import { useToast } from "@/hooks/use-toast";
@@ -136,6 +136,10 @@ const NavBar = () => {
                 <DropdownMenuItem onClick={() => navigate("/settings")}>
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/settings/integrations")}>
+                  <Plug className="mr-2 h-4 w-4" />
+                  Integrations
                 </DropdownMenuItem>
                 {isAdmin && (
                   <>

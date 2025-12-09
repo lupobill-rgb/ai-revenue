@@ -444,7 +444,26 @@ export default function Settings() {
           </TabsList>
 
           <TabsContent value="outbound" className="space-y-6">
-            <IntegrationsTab />
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Send className="h-5 w-5 text-primary" />
+                  Outbound Integrations
+                </CardTitle>
+                <CardDescription>
+                  Configure email, LinkedIn, calendar, and CRM settings for outbound campaigns
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  Set up your email sender details, LinkedIn profile, booking URL, and CRM webhooks to activate outbound campaigns.
+                </p>
+                <Button onClick={() => navigate("/settings/integrations")}>
+                  <Send className="h-4 w-4 mr-2" />
+                  Configure Outbound Integrations
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="team" className="space-y-6">

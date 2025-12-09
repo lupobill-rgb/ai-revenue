@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,12 +13,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { toast } from "@/hooks/use-toast";
 import { 
   Mail, Linkedin, Calendar, Globe, Webhook, Loader2, 
-  CheckCircle2, XCircle, Copy, ChevronDown, Settings
+  CheckCircle2, XCircle, Copy, ChevronDown, Settings, ArrowLeft
 } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { format } from "date-fns";
+import { useNavigate } from "react-router-dom";
 
 // Types for each settings table
 interface EmailSettings {
@@ -62,10 +64,12 @@ interface DomainSettings {
 }
 
 export default function SettingsIntegrations() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("email");
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "email");
 
   // Email state
   const [emailSettings, setEmailSettings] = useState<EmailSettings | null>(null);
@@ -333,6 +337,15 @@ export default function SettingsIntegrations() {
         <NavBar />
         <main className="flex-1 container mx-auto py-8 px-4">
           <div className="mb-8">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/settings")}
+              className="mb-4 -ml-2"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Settings
+            </Button>
             <div className="flex items-center gap-3 mb-2">
               <Settings className="h-8 w-8 text-primary" />
               <h1 className="text-3xl font-bold">Integrations</h1>
