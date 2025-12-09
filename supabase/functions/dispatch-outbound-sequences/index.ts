@@ -401,37 +401,35 @@ serve(async (req) => {
           brand,
         });
 
-        const channel = step.channel || "email";
-
-        if (channel === "email") {
+        if (step.channel === "email") {
+          // Email branch
           if (!prospect.email) {
-            console.warn(`[dispatch] Prospect ${prospect.id} missing email, skipping`);
-            continue;
+            console.warn("Prospect missing email, skipping", prospect.id);
+          } else {
+            await dispatchEmail({
+              to: prospect.email,
+              subject: outbound.subject_line || "Quick idea",
+              body: outbound.message_text,
+              tenant_id: run.tenant_id,
+              prospect_name: `${prospect.first_name} ${prospect.last_name}`,
+            });
+
+            await logMessageEvent({
+              tenant_id: run.tenant_id,
+              sequence_run_id: run.id,
+              step_id: step.id,
+              channel: "email",
+              event_type: "sent",
+              message_text: outbound.message_text,
+              subject_line: outbound.subject_line,
+              metadata: {
+                variant_tag: outbound.variant_tag,
+                reasoning: outbound.reasoning_summary,
+                prospect_id: prospect.id,
+              },
+            });
           }
-
-          await dispatchEmail({
-            to: prospect.email,
-            subject: outbound.subject_line || "Quick idea",
-            body: outbound.message_text,
-            tenant_id: run.tenant_id,
-            prospect_name: `${prospect.first_name} ${prospect.last_name}`,
-          });
-
-          await logMessageEvent({
-            tenant_id: run.tenant_id,
-            sequence_run_id: run.id,
-            step_id: step.id,
-            channel: "email",
-            event_type: "sent",
-            message_text: outbound.message_text,
-            subject_line: outbound.subject_line,
-            metadata: {
-              variant_tag: outbound.variant_tag,
-              reasoning: outbound.reasoning_summary,
-              prospect_id: prospect.id,
-            },
-          });
-        } else if (channel === "linkedin") {
+        } else if (step.channel === "linkedin") {
           await queueLinkedInTask({
             prospect,
             message_text: outbound.message_text,
