@@ -44,6 +44,11 @@ export default {
           light: "hsl(var(--ubigrowth-light))",
           dark: "hsl(var(--ubigrowth-dark))",
         },
+        gold: {
+          DEFAULT: "hsl(45 100% 51%)",
+          light: "hsl(45 100% 65%)",
+          dark: "hsl(45 100% 40%)",
+        },
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
