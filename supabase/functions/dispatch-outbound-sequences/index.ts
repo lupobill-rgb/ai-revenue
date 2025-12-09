@@ -16,6 +16,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
+type CampaignConfig = {
+  max_daily_sends_email: number;
+  max_daily_sends_linkedin: number;
+  business_hours_only: boolean;
+  timezone: string;
+  linkedin_delivery_mode: string;
+};
+
 type OutboundSequenceRun = {
   id: string;
   tenant_id: string;
@@ -26,10 +34,19 @@ type OutboundSequenceRun = {
   status: string;
   last_step_sent: number;
   next_step_due_at: string | null;
+  config: CampaignConfig;
+};
+
+const DEFAULT_CONFIG: CampaignConfig = {
+  max_daily_sends_email: 200,
+  max_daily_sends_linkedin: 40,
+  business_hours_only: true,
+  timezone: "America/Chicago",
+  linkedin_delivery_mode: "manual_queue",
 };
 
 async function getDueRuns(): Promise<OutboundSequenceRun[]> {
-  // Join through sequences -> campaigns to get workspace_id
+  // Join through sequences -> campaigns to get workspace_id and config
   const { data, error } = await supabase
     .from("outbound_sequence_runs")
     .select(`
@@ -37,7 +54,8 @@ async function getDueRuns(): Promise<OutboundSequenceRun[]> {
       outbound_sequences!inner(
         campaign_id,
         outbound_campaigns!inner(
-          workspace_id
+          workspace_id,
+          config
         )
       )
     `)
@@ -50,12 +68,61 @@ async function getDueRuns(): Promise<OutboundSequenceRun[]> {
     return [];
   }
 
-  // Map to include workspace_id from joined data
+  // Map to include workspace_id and config from joined data
   return (data || []).map((run: any) => ({
     ...run,
     workspace_id: run.outbound_sequences?.outbound_campaigns?.workspace_id,
     campaign_id: run.outbound_sequences?.campaign_id,
+    config: { ...DEFAULT_CONFIG, ...(run.outbound_sequences?.outbound_campaigns?.config || {}) },
   })) as OutboundSequenceRun[];
+}
+
+// Count today's sends for a tenant by channel
+async function getDailySendCount(tenantId: string, channel: string): Promise<number> {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const { count, error } = await supabase
+    .from("outbound_message_events")
+    .select("*", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("channel", channel)
+    .eq("event_type", "sent")
+    .gte("created_at", todayStart.toISOString());
+
+  if (error) {
+    console.error("[dispatch] Error counting daily sends:", error);
+    return 0;
+  }
+
+  return count || 0;
+}
+
+// Check if within business hours for timezone
+function isWithinBusinessHours(timezone: string): boolean {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hour12: false,
+      weekday: "short",
+    });
+    const parts = formatter.formatToParts(now);
+    const hour = parseInt(parts.find(p => p.type === "hour")?.value || "12");
+    const weekday = parts.find(p => p.type === "weekday")?.value || "Mon";
+
+    // Skip weekends
+    if (weekday === "Sat" || weekday === "Sun") {
+      return false;
+    }
+
+    // Business hours: 8 AM - 6 PM
+    return hour >= 8 && hour < 18;
+  } catch {
+    // Default to allowing if timezone parsing fails
+    return true;
+  }
 }
 
 async function getNextStep(run: OutboundSequenceRun) {
@@ -368,11 +435,25 @@ serve(async (req) => {
 
     console.log(`[dispatch] Found ${runs.length} due sequence runs`);
 
+    // Track daily send counts per tenant (memoized)
+    const dailyCounts: Record<string, { email: number; linkedin: number }> = {};
+
     let processed = 0;
     let errors = 0;
+    let skippedCaps = 0;
+    let skippedBusinessHours = 0;
 
     for (const run of runs) {
       try {
+        const config = run.config;
+
+        // Check business hours if enabled
+        if (config.business_hours_only && !isWithinBusinessHours(config.timezone)) {
+          console.log(`[dispatch] Skipping run ${run.id} - outside business hours`);
+          skippedBusinessHours++;
+          continue;
+        }
+
         const step = await getNextStep(run);
         if (!step) {
           // No more steps - mark as completed
@@ -381,6 +462,28 @@ serve(async (req) => {
             .update({ status: "completed", updated_at: new Date().toISOString() })
             .eq("id", run.id);
           console.log(`[dispatch] Run ${run.id} completed - no more steps`);
+          continue;
+        }
+
+        const channel = step.channel || "email";
+
+        // Initialize daily counts for tenant if not cached
+        if (!dailyCounts[run.tenant_id]) {
+          const emailCount = await getDailySendCount(run.tenant_id, "email");
+          const linkedinCount = await getDailySendCount(run.tenant_id, "linkedin");
+          dailyCounts[run.tenant_id] = { email: emailCount, linkedin: linkedinCount };
+        }
+
+        // Check daily caps
+        if (channel === "email" && dailyCounts[run.tenant_id].email >= config.max_daily_sends_email) {
+          console.log(`[dispatch] Skipping run ${run.id} - daily email cap reached (${config.max_daily_sends_email})`);
+          skippedCaps++;
+          continue;
+        }
+
+        if (channel === "linkedin" && dailyCounts[run.tenant_id].linkedin >= config.max_daily_sends_linkedin) {
+          console.log(`[dispatch] Skipping run ${run.id} - daily LinkedIn cap reached (${config.max_daily_sends_linkedin})`);
+          skippedCaps++;
           continue;
         }
 
@@ -401,7 +504,7 @@ serve(async (req) => {
           brand,
         });
 
-        if (step.channel === "email") {
+        if (channel === "email") {
           // Email branch
           if (!prospect.email) {
             console.warn("Prospect missing email, skipping", prospect.id);
@@ -413,8 +516,9 @@ serve(async (req) => {
               tenant_id: run.tenant_id,
               prospect_name: `${prospect.first_name} ${prospect.last_name}`,
             });
+            dailyCounts[run.tenant_id].email++;
           }
-        } else if (step.channel === "linkedin") {
+        } else if (channel === "linkedin") {
           await queueLinkedInTask({
             prospect,
             message_text: outbound.message_text,
@@ -422,6 +526,7 @@ serve(async (req) => {
             sequence_run_id: run.id,
             step_id: step.id,
           });
+          dailyCounts[run.tenant_id].linkedin++;
         }
 
         // Unified event logging for analytics pipeline
@@ -429,7 +534,7 @@ serve(async (req) => {
           tenant_id: run.tenant_id,
           sequence_run_id: run.id,
           step_id: step.id,
-          channel: step.channel || "email",
+          channel: channel,
           event_type: "sent",
           metadata: {
             variant_tag: outbound.variant_tag,
@@ -440,17 +545,24 @@ serve(async (req) => {
 
         await updateRunAfterSend({ run, step });
         processed++;
-        console.log(`[dispatch] Processed run ${run.id}, step ${step.step_order}`);
+        console.log(`[dispatch] Processed run ${run.id}, step ${step.step_order}, channel ${channel}`);
       } catch (runErr) {
         console.error(`[dispatch] Error processing run ${run.id}:`, runErr);
         errors++;
       }
     }
 
-    console.log(`[dispatch] Completed: ${processed} processed, ${errors} errors`);
+    console.log(`[dispatch] Completed: ${processed} processed, ${errors} errors, ${skippedCaps} skipped (caps), ${skippedBusinessHours} skipped (business hours)`);
 
     return new Response(
-      JSON.stringify({ status: "ok", processed, errors, total: runs.length }),
+      JSON.stringify({ 
+        status: "ok", 
+        processed, 
+        errors, 
+        skippedCaps,
+        skippedBusinessHours,
+        total: runs.length 
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
