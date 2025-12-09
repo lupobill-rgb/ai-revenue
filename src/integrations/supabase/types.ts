@@ -2566,6 +2566,7 @@ export type Database = {
       }
       outbound_sequence_steps: {
         Row: {
+          channel: string | null
           created_at: string | null
           delay_days: number
           id: string
@@ -2577,6 +2578,7 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          channel?: string | null
           created_at?: string | null
           delay_days?: number
           id?: string
@@ -2588,6 +2590,7 @@ export type Database = {
           tenant_id: string
         }
         Update: {
+          channel?: string | null
           created_at?: string | null
           delay_days?: number
           id?: string
