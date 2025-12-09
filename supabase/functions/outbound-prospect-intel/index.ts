@@ -6,44 +6,40 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SYSTEM_PROMPT = `You are a B2B Prospect Intelligence Analyst. Analyze prospect profiles, detect buying signals, and score prospects for outbound prioritization.
+const SYSTEM_PROMPT = `You are a Prospect Intelligence Engine for AI CMO. Given a B2B prospect, infer intent, pain points, and recommended messaging angle. No fluff, no generic marketing jargon.
 
 ## Output Format
-Return ONLY valid JSON with this structure:
+Return ONLY valid JSON with this exact structure:
 {
-  "enriched_profile": {
-    "seniority_level": "VP|Director|Manager|IC",
-    "decision_maker": boolean,
-    "budget_authority_likely": boolean,
-    "department": "Sales|Marketing|Engineering|...",
-    "company_size_estimate": "1-10|11-50|51-200|201-1000|1000+",
-    "icp_fit_score": 0-100
-  },
-  "buying_signals": [
-    {
-      "signal_type": "job_change|company_funding|tech_adoption|expansion|content_engagement|hiring",
-      "description": "string",
-      "strength": 1-100,
-      "recency": "recent|medium|stale"
-    }
+  "buying_intent_score": 0-100,
+  "intent_band": "hot|warm|cold",
+  "key_signals": [
+    "string describing specific signal with context"
   ],
-  "priority_score": {
-    "score": 0-100,
-    "band": "hot|warm|cold",
-    "rationale": "string"
-  },
-  "personalization_hooks": ["string"],
-  "recommended_approach": {
-    "channel": "linkedin|email|multi",
-    "timing": "immediate|this_week|nurture",
-    "message_angle": "efficiency|growth|competitive|risk"
-  }
+  "hypothesized_pain_points": [
+    "string describing specific pain point"
+  ],
+  "recommended_angle": "string - concise messaging angle",
+  "tone_recommendation": "string - specific tone guidance"
 }
 
 ## Scoring Rules
-- ICP Fit: Title match +30, Industry match +25, Company size +25, Department +20
-- Hot (80-100): Strong ICP + recent signal. Warm (50-79): Good fit OR signal. Cold (0-49): Low fit.
-- Job change signals: 80-90 strength. Funding: 85-95. Hiring: 70-80. Content: 50-70.`;
+- Hot (80-100): Strong ICP fit + recent high-intent signal (promotion, funding, hiring)
+- Warm (50-79): Good ICP fit OR moderate signal activity
+- Cold (0-49): Low fit, stale signals, or unclear intent
+
+## Signal Weighting
+- Job change/promotion: +25-35
+- Company funding: +30-40
+- Hiring signals: +20-30
+- Content engagement (posts about relevant topics): +15-25
+- Tech adoption signals: +20-30
+
+## Rules
+1. Be specific - no generic signals like "interested in growth"
+2. Pain points must be actionable and tied to their role/situation
+3. Recommended angle should differentiate from typical spam
+4. Tone should match their seniority and industry culture`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -176,13 +172,18 @@ Return your analysis as valid JSON.`;
     }
 
     // Store prospect score if we have a prospect_id
-    if (prospect_id && intelligence?.priority_score) {
+    if (prospect_id && intelligence?.buying_intent_score !== undefined) {
+      const rationale = [
+        ...(intelligence.key_signals || []),
+        `Recommended angle: ${intelligence.recommended_angle || 'N/A'}`,
+      ].join('; ');
+
       const { error: scoreError } = await supabase.from("prospect_scores").upsert({
         tenant_id,
         prospect_id,
-        score: intelligence.priority_score.score,
-        band: intelligence.priority_score.band,
-        rationale: intelligence.priority_score.rationale,
+        score: intelligence.buying_intent_score,
+        band: intelligence.intent_band,
+        rationale,
         last_scored_at: new Date().toISOString(),
       }, { onConflict: "prospect_id" });
 
@@ -191,15 +192,15 @@ Return your analysis as valid JSON.`;
       }
     }
 
-    // Store buying signals if we have a prospect_id
-    if (prospect_id && intelligence?.buying_signals?.length > 0) {
-      const signals = intelligence.buying_signals.map((s: any) => ({
+    // Store key signals as prospect_signals if we have a prospect_id
+    if (prospect_id && intelligence?.key_signals?.length > 0) {
+      const signals = intelligence.key_signals.map((signal: string, idx: number) => ({
         tenant_id,
         prospect_id,
         source: "ai_analysis",
-        signal_type: s.signal_type,
-        signal_data: s,
-        signal_strength: s.strength,
+        signal_type: "inferred",
+        signal_data: { description: signal, index: idx },
+        signal_strength: Math.max(50, intelligence.buying_intent_score - (idx * 10)),
         detected_at: new Date().toISOString(),
       }));
 
