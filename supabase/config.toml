@@ -195,3 +195,7 @@ verify_jwt = true
 [functions.outbound-prospect-intel]
 enabled = true
 verify_jwt = true
+
+[functions.outbound-message-gen]
+enabled = true
+verify_jwt = true
