@@ -388,13 +388,15 @@ async function queueLinkedInTask(params: {
   prospect: any;
   message_text: string;
   tenant_id: string;
+  workspace_id: string;
   sequence_run_id: string;
   step_id: string;
 }) {
-  const { prospect, message_text, tenant_id, sequence_run_id, step_id } = params;
+  const { prospect, message_text, tenant_id, workspace_id, sequence_run_id, step_id } = params;
 
   const { error } = await supabase.from("linkedin_tasks").insert({
     tenant_id,
+    workspace_id,
     prospect_id: prospect.id,
     sequence_run_id,
     step_id,
@@ -525,6 +527,7 @@ serve(async (req) => {
             prospect,
             message_text: outbound.message_text,
             tenant_id: run.tenant_id,
+            workspace_id: prospect.workspace_id,
             sequence_run_id: run.id,
             step_id: step.id,
           });
