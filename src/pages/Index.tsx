@@ -59,11 +59,11 @@ const Index = () => {
 
   const keyFeatures = [
     { icon: Sparkles, title: "Autonomous Campaign Builder", desc: "AI creates complete campaigns from a single goal" },
-    { icon: Send, title: "Email + SMS Engine", desc: "Multi-channel messaging at scale" },
-    { icon: Phone, title: "Voice Agent Integration", desc: "AI-powered calling campaigns" },
-    { icon: Workflow, title: "CRM-Connected Orchestration", desc: "Direct pipeline integration" },
-    { icon: Layers, title: "Funnel + Landing Copy", desc: "Conversion-optimized content generation" },
-    { icon: LineChart, title: "Performance Dashboards", desc: "Real-time campaign analytics" },
+    { icon: Mail, title: "Email Engine", desc: "Multi-step sequences with smart personalization" },
+    { icon: MessageSquare, title: "SMS Engine", desc: "Text-based outreach at scale" },
+    { icon: Phone, title: "Voice Agent Triggers", desc: "AI-powered calling campaigns" },
+    { icon: Workflow, title: "CRM Orchestration", desc: "Direct pipeline integration and sync" },
+    { icon: LineChart, title: "Dashboards", desc: "Real-time campaign analytics and insights" },
   ];
 
   const industries = [
