@@ -12,8 +12,18 @@ export default {
         "2xl": "1400px",
       },
     },
-    extend: {
-      colors: {
+		extend: {
+			fontFamily: {
+				sans: ['Inter', 'system-ui', 'sans-serif'],
+				display: ['Space Grotesk', 'Inter', 'sans-serif'],
+			},
+			letterSpacing: {
+				'tight': '-0.02em',
+				'normal': '0',
+				'wide': '0.02em',
+				'wider': '0.04em',
+			},
+			colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
