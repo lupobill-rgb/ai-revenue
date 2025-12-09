@@ -8,80 +8,83 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* UbiGrowth AI Dark Theme */
-    --background: 210 20% 6%;
+    /* AI CMO Black/White/Gold Theme */
+    --background: 0 0% 2%;
     --foreground: 0 0% 98%;
 
-    --card: 210 15% 9%;
+    --card: 0 0% 6%;
     --card-foreground: 0 0% 98%;
 
-    --popover: 210 15% 9%;
+    --popover: 0 0% 6%;
     --popover-foreground: 0 0% 98%;
 
-    /* UbiGrowth AI Cyan accent */
-    --primary: 187 100% 50%;
-    --primary-foreground: 210 20% 6%;
+    /* Gold accent */
+    --primary: 45 100% 51%;
+    --primary-foreground: 0 0% 2%;
 
-    --secondary: 210 15% 15%;
+    --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 98%;
 
-    --muted: 210 15% 15%;
-    --muted-foreground: 210 10% 55%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 60%;
 
-    --accent: 187 100% 50%;
-    --accent-foreground: 210 20% 6%;
+    --accent: 45 100% 51%;
+    --accent-foreground: 0 0% 2%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 210 15% 20%;
-    --input: 210 15% 20%;
-    --ring: 187 100% 50%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 45 100% 51%;
 
     --radius: 0.5rem;
 
-    /* UbiGrowth AI Brand Colors */
-    --ubigrowth: 187 100% 50%;
-    --ubigrowth-light: 187 100% 70%;
-    --ubigrowth-dark: 187 100% 35%;
+    /* UbiGrowth AI Brand Colors - Gold */
+    --ubigrowth: 45 100% 51%;
+    --ubigrowth-light: 45 100% 65%;
+    --ubigrowth-dark: 45 100% 40%;
+
+    /* Gold gradient */
+    --gold-start: 45 100% 51%;
+    --gold-end: 38 100% 45%;
 
     /* Transitions */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .dark {
-    --background: 210 20% 6%;
+    --background: 0 0% 2%;
     --foreground: 0 0% 98%;
 
-    --card: 210 15% 9%;
+    --card: 0 0% 6%;
     --card-foreground: 0 0% 98%;
 
-    --popover: 210 15% 9%;
+    --popover: 0 0% 6%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 187 100% 50%;
-    --primary-foreground: 210 20% 6%;
+    --primary: 45 100% 51%;
+    --primary-foreground: 0 0% 2%;
 
-    --secondary: 210 15% 15%;
+    --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 98%;
 
-    --muted: 210 15% 15%;
-    --muted-foreground: 210 10% 55%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 60%;
 
-    --accent: 187 100% 50%;
-    --accent-foreground: 210 20% 6%;
+    --accent: 45 100% 51%;
+    --accent-foreground: 0 0% 2%;
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 210 15% 20%;
-    --input: 210 15% 20%;
-    --ring: 187 100% 50%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 45 100% 51%;
 
-    /* UbiGrowth AI Brand Colors */
-    --ubigrowth: 187 100% 50%;
-    --ubigrowth-light: 187 100% 70%;
-    --ubigrowth-dark: 187 100% 35%;
+    --ubigrowth: 45 100% 51%;
+    --ubigrowth-light: 45 100% 65%;
+    --ubigrowth-dark: 45 100% 40%;
   }
 }
 
@@ -92,5 +95,26 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .gold-gradient {
+    background: linear-gradient(135deg, hsl(var(--gold-start)) 0%, hsl(var(--gold-end)) 100%);
+  }
+  
+  .gold-gradient-text {
+    background: linear-gradient(135deg, hsl(var(--gold-start)) 0%, hsl(var(--gold-end)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .gold-border {
+    border-image: linear-gradient(135deg, hsl(var(--gold-start)) 0%, hsl(var(--gold-end)) 100%) 1;
+  }
+  
+  .gold-glow {
+    box-shadow: 0 0 40px hsl(var(--primary) / 0.2);
   }
 }
