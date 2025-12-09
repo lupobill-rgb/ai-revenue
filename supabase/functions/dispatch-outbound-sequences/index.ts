@@ -296,7 +296,7 @@ async function dispatchEmail(params: {
   
   try {
     const emailResponse = await resend.emails.send({
-      from: params.from_email || "UbiGrowth AI CMO <onboarding@resend.dev>",
+      from: params.from_email || "UbiGrowth AI CMO <noreply@updates.ubigrowth.ai>",
       to: [params.to],
       subject: params.subject,
       reply_to: params.reply_to || "team@ubigrowth.ai",
