@@ -320,7 +320,7 @@ async function queueLinkedInTask(params: {
   tenant_id: string;
   workspace_id: string;
   prospect_id: string;
-  run_id: string;
+  sequence_run_id: string;
   step_id: string;
   message_text: string;
   prospect_name: string;
@@ -331,7 +331,8 @@ async function queueLinkedInTask(params: {
     tenant_id: params.tenant_id,
     workspace_id: params.workspace_id,
     prospect_id: params.prospect_id,
-    run_id: params.run_id,
+    sequence_run_id: params.sequence_run_id,
+    step_id: params.step_id,
     message_text: params.message_text,
     linkedin_url: params.linkedin_url,
     status: "pending",
@@ -442,7 +443,7 @@ serve(async (req) => {
             tenant_id: run.tenant_id,
             workspace_id: run.workspace_id,
             prospect_id: prospect.id,
-            run_id: run.id,
+            sequence_run_id: run.id,
             step_id: step.id,
             message_text: outbound.message_text,
             prospect_name: `${prospect.first_name} ${prospect.last_name}`,

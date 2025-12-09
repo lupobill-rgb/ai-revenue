@@ -26,11 +26,13 @@ interface LinkedInTask {
   tenant_id: string;
   workspace_id: string;
   prospect_id: string;
-  run_id: string | null;
+  sequence_run_id: string | null;
+  step_id: string | null;
   message_text: string;
   linkedin_url: string | null;
   status: string;
   created_at: string;
+  notes?: string | null;
   prospect?: {
     first_name: string;
     last_name: string;
@@ -171,8 +173,8 @@ export default function OutboundLinkedInQueue() {
 
       // Log the event in outbound_message_events
       await supabase.from("outbound_message_events").insert({
-        sequence_run_id: task.run_id,
-        step_id: task.id,
+        sequence_run_id: task.sequence_run_id,
+        step_id: task.step_id || task.id,
         tenant_id: task.tenant_id,
         event_type: "sent",
         channel: "linkedin",
@@ -185,11 +187,11 @@ export default function OutboundLinkedInQueue() {
       });
 
       // If there's an associated sequence run, advance it
-      if (task.run_id) {
+      if (task.sequence_run_id) {
         const { data: run } = await supabase
           .from("outbound_sequence_runs")
           .select("last_step_sent, sequence_id")
-          .eq("id", task.run_id)
+          .eq("id", task.sequence_run_id)
           .single();
 
         if (run) {
@@ -214,7 +216,7 @@ export default function OutboundLinkedInQueue() {
               next_step_due_at: nextDueAt,
               status: nextDueAt ? "active" : "completed",
             })
-            .eq("id", task.run_id);
+            .eq("id", task.sequence_run_id);
         }
       }
 

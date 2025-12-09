@@ -2250,10 +2250,12 @@ export type Database = {
           id: string
           linkedin_url: string | null
           message_text: string
+          notes: string | null
           prospect_id: string
-          run_id: string | null
           sent_at: string | null
+          sequence_run_id: string | null
           status: string | null
+          step_id: string | null
           tenant_id: string
           updated_at: string | null
           workspace_id: string
@@ -2263,10 +2265,12 @@ export type Database = {
           id?: string
           linkedin_url?: string | null
           message_text: string
+          notes?: string | null
           prospect_id: string
-          run_id?: string | null
           sent_at?: string | null
+          sequence_run_id?: string | null
           status?: string | null
+          step_id?: string | null
           tenant_id: string
           updated_at?: string | null
           workspace_id: string
@@ -2276,10 +2280,12 @@ export type Database = {
           id?: string
           linkedin_url?: string | null
           message_text?: string
+          notes?: string | null
           prospect_id?: string
-          run_id?: string | null
           sent_at?: string | null
+          sequence_run_id?: string | null
           status?: string | null
+          step_id?: string | null
           tenant_id?: string
           updated_at?: string | null
           workspace_id?: string
@@ -2294,9 +2300,23 @@ export type Database = {
           },
           {
             foreignKeyName: "linkedin_tasks_run_id_fkey"
-            columns: ["run_id"]
+            columns: ["sequence_run_id"]
             isOneToOne: false
             referencedRelation: "outbound_sequence_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_tasks_sequence_run_id_fkey"
+            columns: ["sequence_run_id"]
+            isOneToOne: false
+            referencedRelation: "outbound_sequence_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_tasks_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "outbound_sequence_steps"
             referencedColumns: ["id"]
           },
           {
