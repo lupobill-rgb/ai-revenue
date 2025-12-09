@@ -2324,6 +2324,356 @@ export type Database = {
         }
         Relationships: []
       }
+      outbound_campaigns: {
+        Row: {
+          channel: string
+          config: Json | null
+          created_at: string | null
+          id: string
+          name: string
+          objective: string | null
+          status: string | null
+          target_persona: string | null
+          tenant_id: string
+          updated_at: string | null
+          workspace_id: string
+        }
+        Insert: {
+          channel: string
+          config?: Json | null
+          created_at?: string | null
+          id?: string
+          name: string
+          objective?: string | null
+          status?: string | null
+          target_persona?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          workspace_id: string
+        }
+        Update: {
+          channel?: string
+          config?: Json | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          objective?: string | null
+          status?: string | null
+          target_persona?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      outbound_message_events: {
+        Row: {
+          channel: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          occurred_at: string | null
+          sequence_run_id: string
+          step_id: string
+          tenant_id: string
+        }
+        Insert: {
+          channel: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          occurred_at?: string | null
+          sequence_run_id: string
+          step_id: string
+          tenant_id: string
+        }
+        Update: {
+          channel?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          occurred_at?: string | null
+          sequence_run_id?: string
+          step_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outbound_message_events_sequence_run_id_fkey"
+            columns: ["sequence_run_id"]
+            isOneToOne: false
+            referencedRelation: "outbound_sequence_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_message_events_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "outbound_sequence_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outbound_sequence_runs: {
+        Row: {
+          id: string
+          last_step_sent: number | null
+          next_step_due_at: string | null
+          prospect_id: string
+          sequence_id: string
+          started_at: string | null
+          status: string | null
+          tenant_id: string
+        }
+        Insert: {
+          id?: string
+          last_step_sent?: number | null
+          next_step_due_at?: string | null
+          prospect_id: string
+          sequence_id: string
+          started_at?: string | null
+          status?: string | null
+          tenant_id: string
+        }
+        Update: {
+          id?: string
+          last_step_sent?: number | null
+          next_step_due_at?: string | null
+          prospect_id?: string
+          sequence_id?: string
+          started_at?: string | null
+          status?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outbound_sequence_runs_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_sequence_runs_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "outbound_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outbound_sequence_steps: {
+        Row: {
+          created_at: string | null
+          delay_days: number
+          id: string
+          message_template: string | null
+          metadata: Json | null
+          sequence_id: string
+          step_order: number
+          step_type: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          delay_days?: number
+          id?: string
+          message_template?: string | null
+          metadata?: Json | null
+          sequence_id: string
+          step_order: number
+          step_type: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          delay_days?: number
+          id?: string
+          message_template?: string | null
+          metadata?: Json | null
+          sequence_id?: string
+          step_order?: number
+          step_type?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outbound_sequence_steps_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "outbound_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outbound_sequences: {
+        Row: {
+          campaign_id: string
+          channel: string
+          created_at: string | null
+          id: string
+          name: string
+          tenant_id: string
+        }
+        Insert: {
+          campaign_id: string
+          channel: string
+          created_at?: string | null
+          id?: string
+          name: string
+          tenant_id: string
+        }
+        Update: {
+          campaign_id?: string
+          channel?: string
+          created_at?: string | null
+          id?: string
+          name?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outbound_sequences_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "outbound_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prospect_scores: {
+        Row: {
+          band: string | null
+          id: string
+          last_scored_at: string | null
+          prospect_id: string
+          rationale: string | null
+          score: number
+          tenant_id: string
+        }
+        Insert: {
+          band?: string | null
+          id?: string
+          last_scored_at?: string | null
+          prospect_id: string
+          rationale?: string | null
+          score?: number
+          tenant_id: string
+        }
+        Update: {
+          band?: string | null
+          id?: string
+          last_scored_at?: string | null
+          prospect_id?: string
+          rationale?: string | null
+          score?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_scores_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prospect_signals: {
+        Row: {
+          detected_at: string | null
+          id: string
+          prospect_id: string
+          signal_data: Json
+          signal_strength: number | null
+          signal_type: string
+          source: string
+          tenant_id: string
+        }
+        Insert: {
+          detected_at?: string | null
+          id?: string
+          prospect_id: string
+          signal_data?: Json
+          signal_strength?: number | null
+          signal_type: string
+          source: string
+          tenant_id: string
+        }
+        Update: {
+          detected_at?: string | null
+          id?: string
+          prospect_id?: string
+          signal_data?: Json
+          signal_strength?: number | null
+          signal_type?: string
+          source?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_signals_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prospects: {
+        Row: {
+          company: string | null
+          created_at: string | null
+          email: string | null
+          external_id: string | null
+          first_name: string | null
+          id: string
+          industry: string | null
+          last_name: string | null
+          linkedin_url: string | null
+          location: string | null
+          persona_tag: string | null
+          tenant_id: string
+          title: string | null
+          updated_at: string | null
+          workspace_id: string
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string | null
+          email?: string | null
+          external_id?: string | null
+          first_name?: string | null
+          id?: string
+          industry?: string | null
+          last_name?: string | null
+          linkedin_url?: string | null
+          location?: string | null
+          persona_tag?: string | null
+          tenant_id: string
+          title?: string | null
+          updated_at?: string | null
+          workspace_id: string
+        }
+        Update: {
+          company?: string | null
+          created_at?: string | null
+          email?: string | null
+          external_id?: string | null
+          first_name?: string | null
+          id?: string
+          industry?: string | null
+          last_name?: string | null
+          linkedin_url?: string | null
+          location?: string | null
+          persona_tag?: string | null
+          tenant_id?: string
+          title?: string | null
+          updated_at?: string | null
+          workspace_id?: string
+        }
+        Relationships: []
+      }
       rate_limit_counters: {
         Row: {
           count: number
