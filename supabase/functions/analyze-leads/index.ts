@@ -42,42 +42,74 @@ serve(async (req) => {
 
     // Get auth header for user context
     const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader || "" } }
+      global: { headers: { Authorization: authHeader } }
     });
 
     // ============================================================
-    // TEMPORARY TENANT ALLOWLIST GUARD - Remove after isolation verified
-    // Only allow specific workspaces until multi-tenant isolation is confirmed
+    // TENANT VALIDATION: Get user from JWT and validate workspace access
+    // This is the SINGLE SOURCE OF TRUTH for tenant identity
     // ============================================================
-    const ALLOWED_WORKSPACES = [
-      "4161ee82-be97-4fa8-9017-5c40be3ebe19", // UbiGrowth Inc workspace
-      "81dc2cb8-67ae-4608-9987-37ee864c87b0", // Default Workspace (dev)
-      "a1b2c3d4-e5f6-7890-abcd-ef1234567890", // UbiGrowth OS
-    ];
-    
-    if (workspaceId && !ALLOWED_WORKSPACES.includes(workspaceId)) {
-      console.warn(`[analyze-leads] Blocked request from non-allowlisted workspace: ${workspaceId}`);
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error("[analyze-leads] Auth error:", userError);
       return new Response(
-        JSON.stringify({ 
-          error: "Feature temporarily restricted",
-          message: "AI lead analysis is temporarily restricted while we verify tenant isolation."
-        }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Invalid authentication" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Validate workspaceId: user must have access to this workspace
+    let validatedWorkspaceId: string | null = null;
+    
+    if (workspaceId) {
+      // Check if user has access to this workspace (owner or member)
+      const { data: workspaceAccess } = await supabase
+        .from("workspaces")
+        .select("id, owner_id")
+        .eq("id", workspaceId)
+        .single();
+
+      if (!workspaceAccess) {
+        // Also check workspace_members
+        const { data: memberAccess } = await supabase
+          .from("workspace_members")
+          .select("workspace_id")
+          .eq("workspace_id", workspaceId)
+          .eq("user_id", user.id)
+          .single();
+
+        if (!memberAccess) {
+          console.warn(`[analyze-leads] User ${user.id} attempted access to unauthorized workspace ${workspaceId}`);
+          return new Response(
+            JSON.stringify({ error: "Workspace access denied" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        validatedWorkspaceId = workspaceId;
+      } else {
+        validatedWorkspaceId = workspaceId;
+      }
     }
     // ============================================================
 
-    // Fetch business profile for this user/workspace to get tenant-specific context
+    // Fetch business profile using validated workspace/user context
     let businessContext = "your business";
     let industryContext = "";
     
-    if (workspaceId) {
-      // Try to get business profile via workspace owner
+    if (validatedWorkspaceId) {
+      // Get business profile via workspace owner
       const { data: workspace } = await supabase
         .from("workspaces")
         .select("owner_id")
-        .eq("id", workspaceId)
+        .eq("id", validatedWorkspaceId)
         .single();
 
       if (workspace?.owner_id) {
@@ -93,19 +125,16 @@ serve(async (req) => {
         }
       }
     } else {
-      // Fallback: try to get profile for current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from("business_profiles")
-          .select("business_name, industry, business_description")
-          .eq("user_id", user.id)
-          .single();
+      // Fallback: use authenticated user's profile directly
+      const { data: profile } = await supabase
+        .from("business_profiles")
+        .select("business_name, industry, business_description")
+        .eq("user_id", user.id)
+        .single();
 
-        if (profile) {
-          businessContext = profile.business_name || "your business";
-          industryContext = profile.industry ? ` in the ${profile.industry} industry` : "";
-        }
+      if (profile) {
+        businessContext = profile.business_name || "your business";
+        industryContext = profile.industry ? ` in the ${profile.industry} industry` : "";
       }
     }
 
