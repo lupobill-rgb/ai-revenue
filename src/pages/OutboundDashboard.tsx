@@ -66,6 +66,11 @@ interface OverviewStats {
   bestCampaign?: string;
 }
 
+interface ChannelStats {
+  email: { sent: number; replied: number; booked: number };
+  linkedin: { sent: number; replied: number; booked: number };
+}
+
 export default function OutboundDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -81,6 +86,10 @@ export default function OutboundDashboard() {
   const [campaigns, setCampaigns] = useState<CampaignMetrics[]>([]);
   const [sequenceSteps, setSequenceSteps] = useState<SequenceStep[]>([]);
   const [hotProspects, setHotProspects] = useState<HotProspect[]>([]);
+  const [channelStats, setChannelStats] = useState<ChannelStats>({
+    email: { sent: 0, replied: 0, booked: 0 },
+    linkedin: { sent: 0, replied: 0, booked: 0 },
+  });
 
   useEffect(() => {
     fetchWorkspace();
@@ -96,15 +105,8 @@ export default function OutboundDashboard() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: workspace } = await supabase
-      .from("workspaces")
-      .select("id")
-      .eq("owner_id", user.id)
-      .maybeSingle();
-
-    if (workspace) {
-      setWorkspaceId(workspace.id);
-    }
+    // Use tenant_id (user.id) for tenant isolation
+    setWorkspaceId(user.id);
   };
 
   const fetchAnalytics = async () => {
@@ -116,32 +118,39 @@ export default function OutboundDashboard() {
       const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      // Fetch all message events
+      // Use tenant_id for all queries (workspaceId is actually user.id/tenant_id)
+      const tenantId = workspaceId;
+
+      // Fetch all message events for this tenant
       const { data: events } = await supabase
         .from("outbound_message_events")
         .select("*")
+        .eq("tenant_id", tenantId)
         .gte("occurred_at", d30);
 
-      // Fetch campaigns
+      // Fetch campaigns for this tenant
       const { data: campaignsData } = await supabase
         .from("outbound_campaigns")
-        .select("id, name, channel")
-        .eq("workspace_id", workspaceId);
+        .select("id, name, channel, status")
+        .eq("tenant_id", tenantId);
 
-      // Fetch sequences with campaign_id
+      // Fetch sequences for this tenant
       const { data: sequences } = await supabase
         .from("outbound_sequences")
-        .select("id, campaign_id, channel");
+        .select("id, campaign_id, channel")
+        .eq("tenant_id", tenantId);
 
-      // Fetch sequence runs
+      // Fetch sequence runs for this tenant
       const { data: runs } = await supabase
         .from("outbound_sequence_runs")
-        .select("id, sequence_id");
+        .select("id, sequence_id, prospect_id, status, last_step_sent")
+        .eq("tenant_id", tenantId);
 
-      // Fetch hot prospects with scores
+      // Fetch hot prospects with scores for this tenant
       const { data: scores } = await supabase
         .from("prospect_scores")
         .select("prospect_id, score, band, last_scored_at")
+        .eq("tenant_id", tenantId)
         .gte("score", 60)
         .order("score", { ascending: false })
         .limit(20);
@@ -162,6 +171,36 @@ export default function OutboundDashboard() {
       const bookings7d = events7d.filter(e => e.event_type === "booked").length;
       const bookings30d = events?.filter(e => e.event_type === "booked").length || 0;
 
+      // Calculate channel-specific stats
+      const emailEvents = events?.filter(e => e.channel === "email") || [];
+      const linkedinEvents = events?.filter(e => e.channel === "linkedin") || [];
+      
+      setChannelStats({
+        email: {
+          sent: emailEvents.filter(e => e.event_type === "sent").length,
+          replied: emailEvents.filter(e => e.event_type === "replied").length,
+          booked: emailEvents.filter(e => e.event_type === "booked").length,
+        },
+        linkedin: {
+          sent: linkedinEvents.filter(e => e.event_type === "sent").length,
+          replied: linkedinEvents.filter(e => e.event_type === "replied").length,
+          booked: linkedinEvents.filter(e => e.event_type === "booked").length,
+        },
+      });
+
+      // Find best campaign by reply rate
+      const campaignWithStats = (campaignsData || []).map(campaign => {
+        const campaignSequences = sequences?.filter(s => s.campaign_id === campaign.id) || [];
+        const campaignRunIds = runs
+          ?.filter(r => campaignSequences.some(s => s.id === r.sequence_id))
+          .map(r => r.id) || [];
+        const campaignEvents = events?.filter(e => campaignRunIds.includes(e.sequence_run_id)) || [];
+        const sent = campaignEvents.filter(e => e.event_type === "sent").length;
+        const replied = campaignEvents.filter(e => e.event_type === "replied").length;
+        return { ...campaign, replyRate: sent > 0 ? replied / sent : 0 };
+      });
+      const bestCampaign = campaignWithStats.sort((a, b) => b.replyRate - a.replyRate)[0];
+
       setOverview({
         bookings7d,
         bookings30d,
@@ -169,7 +208,7 @@ export default function OutboundDashboard() {
         replyRate30d: sent30d > 0 ? Math.round((replied30d / sent30d) * 100) : 0,
         sent7d,
         sent30d,
-        bestCampaign: campaignsData?.[0]?.name,
+        bestCampaign: bestCampaign?.name,
       });
 
       // Calculate campaign metrics
@@ -359,6 +398,79 @@ export default function OutboundDashboard() {
                         <p className="text-xs text-muted-foreground">
                           Highest reply rate
                         </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Channel Breakdown */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                          <Mail className="h-4 w-4" />
+                          Email Channel
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                          <div>
+                            <div className="text-2xl font-bold">{channelStats.email.sent}</div>
+                            <p className="text-xs text-muted-foreground">Sent</p>
+                          </div>
+                          <div>
+                            <div className="text-2xl font-bold">{channelStats.email.replied}</div>
+                            <p className="text-xs text-muted-foreground">Replied</p>
+                          </div>
+                          <div>
+                            <div className="text-2xl font-bold">{channelStats.email.booked}</div>
+                            <p className="text-xs text-muted-foreground">Booked</p>
+                          </div>
+                        </div>
+                        {channelStats.email.sent > 0 && (
+                          <div className="mt-3 pt-3 border-t">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Reply Rate</span>
+                              <span className="font-medium">
+                                {Math.round((channelStats.email.replied / channelStats.email.sent) * 100)}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                          <Linkedin className="h-4 w-4" />
+                          LinkedIn Channel
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                          <div>
+                            <div className="text-2xl font-bold">{channelStats.linkedin.sent}</div>
+                            <p className="text-xs text-muted-foreground">Sent</p>
+                          </div>
+                          <div>
+                            <div className="text-2xl font-bold">{channelStats.linkedin.replied}</div>
+                            <p className="text-xs text-muted-foreground">Replied</p>
+                          </div>
+                          <div>
+                            <div className="text-2xl font-bold">{channelStats.linkedin.booked}</div>
+                            <p className="text-xs text-muted-foreground">Booked</p>
+                          </div>
+                        </div>
+                        {channelStats.linkedin.sent > 0 && (
+                          <div className="mt-3 pt-3 border-t">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Reply Rate</span>
+                              <span className="font-medium">
+                                {Math.round((channelStats.linkedin.replied / channelStats.linkedin.sent) * 100)}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </div>
