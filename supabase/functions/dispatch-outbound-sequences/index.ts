@@ -184,6 +184,22 @@ async function getBrandContext(workspaceId: string) {
   return data;
 }
 
+// Get tenant's integration settings for email, LinkedIn limits, etc.
+async function getTenantIntegrationSettings(workspaceId: string) {
+  const { data, error } = await supabase
+    .from("customer_integrations")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[dispatch] Error fetching integration settings:", error);
+    return null;
+  }
+
+  return data;
+}
+
 async function callOutboundCopyAgent(params: {
   tenant_id: string;
   prospect: any;
@@ -499,6 +515,20 @@ serve(async (req) => {
 
         const insights = await getProspectInsights(run.prospect_id);
         const brand = await getBrandContext(run.workspace_id);
+        const integrationSettings = await getTenantIntegrationSettings(run.workspace_id);
+
+        // Override config with tenant integration settings if available
+        if (integrationSettings) {
+          if (integrationSettings.linkedin_daily_connect_limit) {
+            config.max_daily_sends_linkedin = integrationSettings.linkedin_daily_connect_limit;
+          }
+          if (integrationSettings.linkedin_daily_message_limit) {
+            config.max_daily_sends_linkedin = Math.min(
+              config.max_daily_sends_linkedin,
+              integrationSettings.linkedin_daily_message_limit
+            );
+          }
+        }
 
         const outbound = await callOutboundCopyAgent({
           tenant_id: run.tenant_id,
@@ -513,12 +543,19 @@ serve(async (req) => {
           if (!prospect.email) {
             console.warn("Prospect missing email, skipping", prospect.id);
           } else {
+            // Build from address from integration settings
+            const fromName = integrationSettings?.email_from_name || brand?.brand_name || "UbiGrowth AI CMO";
+            const fromEmail = integrationSettings?.email_from_address || "noreply@updates.ubigrowth.ai";
+            const replyTo = integrationSettings?.email_reply_to || "team@ubigrowth.ai";
+            
             await dispatchEmail({
               to: prospect.email,
               subject: outbound.subject_line || "Quick idea",
               body: outbound.message_text,
               tenant_id: run.tenant_id,
               prospect_name: `${prospect.first_name} ${prospect.last_name}`,
+              from_email: `${fromName} <${fromEmail}>`,
+              reply_to: replyTo,
             });
             dailyCounts[run.tenant_id].email++;
           }
