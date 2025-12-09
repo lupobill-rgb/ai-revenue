@@ -1,12 +1,15 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Resend } from "https://esm.sh/resend@2.0.0";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const INTERNAL_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET");
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const resend = new Resend(RESEND_API_KEY);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -272,10 +275,31 @@ async function dispatchEmail(params: {
   body: string;
   tenant_id: string;
   prospect_name: string;
+  from_email?: string;
+  reply_to?: string;
 }) {
-  // Could integrate with existing email-deploy function
-  console.log(`[dispatch] Email queued for ${params.to}: ${params.subject}`);
-  // TODO: Wire to email-deploy or Resend integration
+  console.log(`[dispatch] Sending email to ${params.to}: ${params.subject}`);
+  
+  try {
+    const emailResponse = await resend.emails.send({
+      from: params.from_email || "UbiGrowth AI CMO <noreply@ubigrowth.com>",
+      to: [params.to],
+      subject: params.subject,
+      reply_to: params.reply_to || "team@ubigrowth.com",
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          ${params.body.split('\n').map(line => `<p style="margin: 0 0 16px 0; line-height: 1.6; color: #333;">${line}</p>`).join('')}
+        </div>
+      `,
+      text: params.body,
+    });
+
+    console.log(`[dispatch] Email sent successfully:`, emailResponse);
+    return { success: true, id: emailResponse.data?.id };
+  } catch (error) {
+    console.error(`[dispatch] Email send failed:`, error);
+    return { success: false, error };
+  }
 }
 
 async function queueLinkedInTask(params: {
