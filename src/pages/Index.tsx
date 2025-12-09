@@ -42,12 +42,12 @@ const Index = () => {
   }, [navigate]);
 
   const features = [
-    { icon: Target, title: "Campaign Strategy", desc: "AI-generated targeting and messaging" },
-    { icon: Mail, title: "Email + SMS Sequences", desc: "Multi-step automated outreach" },
-    { icon: Globe, title: "Funnel + Landing Copy", desc: "Conversion-optimized content" },
-    { icon: Phone, title: "Voice Agent Triggers", desc: "Automated call campaigns" },
-    { icon: Workflow, title: "CRM Automation", desc: "Seamless pipeline integration" },
-    { icon: BarChart3, title: "Attribution + Reporting", desc: "Full-funnel analytics" },
+    { icon: Target, title: "Campaign Strategy", desc: "AI-driven targeting and positioning" },
+    { icon: Mail, title: "Email Sequences", desc: "Multi-step automated nurture flows" },
+    { icon: MessageSquare, title: "SMS Sequences", desc: "Text-based engagement campaigns" },
+    { icon: Globe, title: "Funnel Copy", desc: "Conversion-optimized landing content" },
+    { icon: Phone, title: "Voice Triggers", desc: "AI-powered call automations" },
+    { icon: Workflow, title: "CRM Automation", desc: "Seamless pipeline orchestration" },
   ];
 
   const steps = [
