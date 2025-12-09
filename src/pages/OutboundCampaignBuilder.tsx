@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/hooks/use-toast";
 import { 
   ArrowLeft, 
@@ -25,7 +26,10 @@ import {
   Sparkles,
   Target,
   Users,
-  Zap
+  Zap,
+  AlertTriangle,
+  Settings,
+  Rocket
 } from "lucide-react";
 
 interface SequenceStep {
@@ -63,6 +67,9 @@ export default function OutboundCampaignBuilder() {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [savedCampaignId, setSavedCampaignId] = useState<string | null>(null);
 
   // Step 1: Campaign Details
   const [campaignName, setCampaignName] = useState("");
@@ -238,8 +245,8 @@ export default function OutboundCampaignBuilder() {
 
       if (stepsError) throw stepsError;
 
-      toast({ title: "Campaign created!", description: "Your outbound campaign is ready" });
-      navigate(`/outbound/campaigns/${campaign.id}`);
+      setSavedCampaignId(campaign.id);
+      toast({ title: "Campaign saved as draft", description: "You can now activate it" });
     } catch (error) {
       console.error("Error saving campaign:", error);
       toast({
@@ -250,6 +257,60 @@ export default function OutboundCampaignBuilder() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const validateAndActivate = async (campaignId: string) => {
+    setActivating(true);
+    setValidationErrors([]);
+    
+    try {
+      // Call the validation RPC
+      const { data, error } = await supabase.rpc('validate_campaign_integrations', {
+        p_campaign_id: campaignId
+      });
+      
+      if (error) throw error;
+      
+      const result = data as { ok: boolean; errors: string[] };
+      
+      if (!result.ok) {
+        setValidationErrors(result.errors || ['Unknown validation error']);
+        toast({
+          title: "Cannot activate campaign",
+          description: "Please configure the required integrations first",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Validation passed - activate the campaign
+      const { error: updateError } = await supabase
+        .from('outbound_campaigns')
+        .update({ status: 'active' })
+        .eq('id', campaignId);
+      
+      if (updateError) throw updateError;
+      
+      toast({ title: "Campaign activated!", description: "Your campaign is now live" });
+      navigate(`/outbound/campaigns/${campaignId}`);
+    } catch (error) {
+      console.error("Error activating campaign:", error);
+      toast({
+        title: "Activation failed",
+        description: "Could not activate campaign. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setActivating(false);
+    }
+  };
+
+  const getIntegrationTabLink = (error: string): string => {
+    if (error.toLowerCase().includes('email')) return '/settings/integrations?tab=email';
+    if (error.toLowerCase().includes('linkedin')) return '/settings/integrations?tab=linkedin';
+    if (error.toLowerCase().includes('calendar') || error.toLowerCase().includes('booking')) return '/settings/integrations?tab=calendar';
+    if (error.toLowerCase().includes('crm') || error.toLowerCase().includes('webhook')) return '/settings/integrations?tab=crm';
+    return '/settings/integrations';
   };
 
   return (
@@ -531,15 +592,64 @@ export default function OutboundCampaignBuilder() {
                   Add Step
                 </Button>
 
+                {/* Validation Errors */}
+                {validationErrors.length > 0 && (
+                  <Alert variant="destructive" className="mt-4">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Integration Configuration Required</AlertTitle>
+                    <AlertDescription>
+                      <ul className="list-disc pl-4 mt-2 space-y-1">
+                        {validationErrors.map((err, i) => (
+                          <li key={i} className="flex items-center justify-between gap-2">
+                            <span>{err}</span>
+                            <Link 
+                              to={getIntegrationTabLink(err)}
+                              className="text-xs underline hover:no-underline whitespace-nowrap"
+                            >
+                              Configure →
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-3">
+                        <Link to="/settings/integrations">
+                          <Button variant="outline" size="sm">
+                            <Settings className="h-4 w-4 mr-2" />
+                            Go to Settings → Integrations
+                          </Button>
+                        </Link>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 <div className="flex justify-between pt-4">
                   <Button variant="outline" onClick={() => setStep(2)}>
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back
                   </Button>
-                  <Button onClick={saveCampaign} disabled={saving}>
-                    {saving ? "Saving..." : "Create Campaign"}
-                    <Check className="h-4 w-4 ml-2" />
-                  </Button>
+                  <div className="flex gap-2">
+                    {!savedCampaignId ? (
+                      <Button onClick={saveCampaign} disabled={saving}>
+                        {saving ? "Saving..." : "Save as Draft"}
+                        <Check className="h-4 w-4 ml-2" />
+                      </Button>
+                    ) : (
+                      <>
+                        <Button variant="outline" onClick={() => navigate(`/outbound/campaigns/${savedCampaignId}`)}>
+                          View Draft
+                        </Button>
+                        <Button 
+                          onClick={() => validateAndActivate(savedCampaignId)} 
+                          disabled={activating}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          {activating ? "Validating..." : "Activate Campaign"}
+                          <Rocket className="h-4 w-4 ml-2" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

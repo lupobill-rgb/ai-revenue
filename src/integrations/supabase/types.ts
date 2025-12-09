@@ -3514,6 +3514,10 @@ export type Database = {
         Args: { _workspace_id: string }
         Returns: boolean
       }
+      validate_campaign_integrations: {
+        Args: { p_campaign_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "sales" | "manager"
