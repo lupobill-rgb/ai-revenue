@@ -413,21 +413,6 @@ serve(async (req) => {
               tenant_id: run.tenant_id,
               prospect_name: `${prospect.first_name} ${prospect.last_name}`,
             });
-
-            await logMessageEvent({
-              tenant_id: run.tenant_id,
-              sequence_run_id: run.id,
-              step_id: step.id,
-              channel: "email",
-              event_type: "sent",
-              message_text: outbound.message_text,
-              subject_line: outbound.subject_line,
-              metadata: {
-                variant_tag: outbound.variant_tag,
-                reasoning: outbound.reasoning_summary,
-                prospect_id: prospect.id,
-              },
-            });
           }
         } else if (step.channel === "linkedin") {
           await queueLinkedInTask({
@@ -437,23 +422,21 @@ serve(async (req) => {
             sequence_run_id: run.id,
             step_id: step.id,
           });
-
-          await logMessageEvent({
-            tenant_id: run.tenant_id,
-            sequence_run_id: run.id,
-            step_id: step.id,
-            channel: "linkedin",
-            event_type: "pending",
-            message_text: outbound.message_text,
-            subject_line: outbound.subject_line,
-            metadata: {
-              variant_tag: outbound.variant_tag,
-              reasoning: outbound.reasoning_summary,
-              prospect_id: prospect.id,
-              linkedin_url: prospect.linkedin_url,
-            },
-          });
         }
+
+        // Unified event logging for analytics pipeline
+        await logMessageEvent({
+          tenant_id: run.tenant_id,
+          sequence_run_id: run.id,
+          step_id: step.id,
+          channel: step.channel || "email",
+          event_type: "sent",
+          metadata: {
+            variant_tag: outbound.variant_tag,
+            subject_line: outbound.subject_line,
+            prospect_id: prospect.id,
+          },
+        });
 
         await updateRunAfterSend({ run, step });
         processed++;
