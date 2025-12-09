@@ -1928,6 +1928,80 @@ export type Database = {
           },
         ]
       }
+      customer_integrations: {
+        Row: {
+          calendar_booking_url: string | null
+          calendar_provider: string | null
+          created_at: string
+          crm_inbound_webhook_url: string | null
+          crm_outbound_webhook_url: string | null
+          crm_webhook_secret: string | null
+          custom_domain: string | null
+          custom_domain_verified: boolean | null
+          email_domain_verified: boolean | null
+          email_from_address: string | null
+          email_from_name: string | null
+          email_reply_to: string | null
+          id: string
+          linkedin_daily_connect_limit: number | null
+          linkedin_daily_message_limit: number | null
+          linkedin_profile_url: string | null
+          tenant_id: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          calendar_booking_url?: string | null
+          calendar_provider?: string | null
+          created_at?: string
+          crm_inbound_webhook_url?: string | null
+          crm_outbound_webhook_url?: string | null
+          crm_webhook_secret?: string | null
+          custom_domain?: string | null
+          custom_domain_verified?: boolean | null
+          email_domain_verified?: boolean | null
+          email_from_address?: string | null
+          email_from_name?: string | null
+          email_reply_to?: string | null
+          id?: string
+          linkedin_daily_connect_limit?: number | null
+          linkedin_daily_message_limit?: number | null
+          linkedin_profile_url?: string | null
+          tenant_id: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          calendar_booking_url?: string | null
+          calendar_provider?: string | null
+          created_at?: string
+          crm_inbound_webhook_url?: string | null
+          crm_outbound_webhook_url?: string | null
+          crm_webhook_secret?: string | null
+          custom_domain?: string | null
+          custom_domain_verified?: boolean | null
+          email_domain_verified?: boolean | null
+          email_from_address?: string | null
+          email_from_name?: string | null
+          email_reply_to?: string | null
+          id?: string
+          linkedin_daily_connect_limit?: number | null
+          linkedin_daily_message_limit?: number | null
+          linkedin_profile_url?: string | null
+          tenant_id?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_integrations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deals: {
         Row: {
           actual_close_date: string | null

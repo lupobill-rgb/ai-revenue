@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Instagram, Linkedin, Facebook, Video, CreditCard, Palette, Download, Copy, CheckCircle2, ArrowLeft } from "lucide-react";
+import { Instagram, Linkedin, Facebook, Video, CreditCard, Palette, Download, Copy, CheckCircle2, ArrowLeft, Send } from "lucide-react";
 import ubigrowthLogo from "@/assets/ubigrowth-logo.png";
 import BusinessProfileTab from "@/components/BusinessProfileTab";
 import NavBar from "@/components/NavBar";
@@ -17,6 +17,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import ModuleToggles from "@/components/ModuleToggles";
 import ChannelToggles from "@/components/ChannelToggles";
 import TeamManagement from "@/components/TeamManagement";
+import { IntegrationsTab } from "@/components/settings/IntegrationsTab";
 
 interface SocialIntegration {
   id: string;
@@ -431,8 +432,9 @@ export default function Settings() {
             </div>
 
             <Tabs defaultValue="integrations" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            <TabsTrigger value="outbound">Outbound</TabsTrigger>
             <TabsTrigger value="channels">Channels</TabsTrigger>
             <TabsTrigger value="modules">Modules</TabsTrigger>
             <TabsTrigger value="team">Team</TabsTrigger>
@@ -440,6 +442,10 @@ export default function Settings() {
             <TabsTrigger value="discovery">Brand Discovery</TabsTrigger>
             <TabsTrigger value="brand">Brand Guidelines</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="outbound" className="space-y-6">
+            <IntegrationsTab />
+          </TabsContent>
 
           <TabsContent value="team" className="space-y-6">
             <TeamManagement />
