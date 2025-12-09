@@ -55,9 +55,9 @@ export default {
           dark: "hsl(var(--ubigrowth-dark))",
         },
 			cyan: {
-				DEFAULT: "hsl(190 100% 50%)",
-				light: "hsl(190 100% 65%)",
-				dark: "hsl(200 100% 40%)",
+				DEFAULT: "hsl(202 100% 56%)",
+				light: "hsl(197 100% 70%)",
+				dark: "hsl(202 100% 45%)",
 			},
         popover: {
           DEFAULT: "hsl(var(--popover))",

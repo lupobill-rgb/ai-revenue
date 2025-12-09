@@ -8,83 +8,83 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* AI CMO Deep Navy/White/Cyan Theme */
-    --background: 220 50% 6%;
-    --foreground: 0 0% 98%;
+    /* AI CMO Theme - #02040A / #1DA4FF */
+    --background: 220 67% 2%;
+    --foreground: 0 0% 100%;
 
-    --card: 220 45% 10%;
-    --card-foreground: 0 0% 98%;
+    --card: 220 22% 7%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 220 45% 10%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 220 22% 7%;
+    --popover-foreground: 0 0% 100%;
 
-    /* Cyan accent */
-    --primary: 190 100% 50%;
-    --primary-foreground: 220 50% 6%;
+    /* Primary blue accent #1DA4FF */
+    --primary: 202 100% 56%;
+    --primary-foreground: 220 67% 2%;
 
-    --secondary: 220 40% 15%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 218 29% 15%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 220 35% 20%;
-    --muted-foreground: 210 15% 55%;
+    --muted: 218 29% 15%;
+    --muted-foreground: 214 8% 80%;
 
-    --accent: 190 100% 50%;
-    --accent-foreground: 220 50% 6%;
+    --accent: 202 100% 56%;
+    --accent-foreground: 220 67% 2%;
 
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 35% 20%;
-    --input: 220 35% 20%;
-    --ring: 190 100% 50%;
+    --border: 218 29% 15%;
+    --input: 218 29% 15%;
+    --ring: 202 100% 56%;
 
     --radius: 0.5rem;
 
-    /* UbiGrowth AI Brand Colors - Cyan */
-    --ubigrowth: 190 100% 50%;
-    --ubigrowth-light: 190 100% 65%;
-    --ubigrowth-dark: 200 100% 40%;
+    /* UbiGrowth AI Brand Colors */
+    --ubigrowth: 202 100% 56%;
+    --ubigrowth-light: 197 100% 70%;
+    --ubigrowth-dark: 202 100% 45%;
 
-    /* Cyan gradient */
-    --gold-start: 190 100% 50%;
-    --gold-end: 200 100% 45%;
+    /* Gradient colors */
+    --gold-start: 202 100% 56%;
+    --gold-end: 197 100% 70%;
 
     /* Transitions */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .dark {
-    --background: 220 50% 6%;
-    --foreground: 0 0% 98%;
+    --background: 220 67% 2%;
+    --foreground: 0 0% 100%;
 
-    --card: 220 45% 10%;
-    --card-foreground: 0 0% 98%;
+    --card: 220 22% 7%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 220 45% 10%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 220 22% 7%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 190 100% 50%;
-    --primary-foreground: 220 50% 6%;
+    --primary: 202 100% 56%;
+    --primary-foreground: 220 67% 2%;
 
-    --secondary: 220 40% 15%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 218 29% 15%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 220 35% 20%;
-    --muted-foreground: 210 15% 55%;
+    --muted: 218 29% 15%;
+    --muted-foreground: 214 8% 80%;
 
-    --accent: 190 100% 50%;
-    --accent-foreground: 220 50% 6%;
+    --accent: 202 100% 56%;
+    --accent-foreground: 220 67% 2%;
 
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 35% 20%;
-    --input: 220 35% 20%;
-    --ring: 190 100% 50%;
+    --border: 218 29% 15%;
+    --input: 218 29% 15%;
+    --ring: 202 100% 56%;
 
-    --ubigrowth: 190 100% 50%;
-    --ubigrowth-light: 190 100% 65%;
-    --ubigrowth-dark: 200 100% 40%;
+    --ubigrowth: 202 100% 56%;
+    --ubigrowth-light: 197 100% 70%;
+    --ubigrowth-dark: 202 100% 45%;
   }
 }
 
