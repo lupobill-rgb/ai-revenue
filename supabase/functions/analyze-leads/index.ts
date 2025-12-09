@@ -46,6 +46,28 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader || "" } }
     });
 
+    // ============================================================
+    // TEMPORARY TENANT ALLOWLIST GUARD - Remove after isolation verified
+    // Only allow specific workspaces until multi-tenant isolation is confirmed
+    // ============================================================
+    const ALLOWED_WORKSPACES = [
+      "4161ee82-be97-4fa8-9017-5c40be3ebe19", // UbiGrowth Inc workspace
+      "81dc2cb8-67ae-4608-9987-37ee864c87b0", // Default Workspace (dev)
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890", // UbiGrowth OS
+    ];
+    
+    if (workspaceId && !ALLOWED_WORKSPACES.includes(workspaceId)) {
+      console.warn(`[analyze-leads] Blocked request from non-allowlisted workspace: ${workspaceId}`);
+      return new Response(
+        JSON.stringify({ 
+          error: "Feature temporarily restricted",
+          message: "AI lead analysis is temporarily restricted while we verify tenant isolation."
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    // ============================================================
+
     // Fetch business profile for this user/workspace to get tenant-specific context
     let businessContext = "your business";
     let industryContext = "";
