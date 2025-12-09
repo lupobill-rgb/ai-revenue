@@ -344,47 +344,11 @@ const CRM = () => {
     }
   };
 
-  const parseCSVLine = (line: string): string[] => {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        result.push(current.trim().replace(/^"|"$/g, ''));
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    result.push(current.trim().replace(/^"|"$/g, ''));
-    return result;
-  };
-
-  const normalizeHeader = (header: string): string => {
-    const h = header.toLowerCase().replace(/[^a-z0-9]/g, '');
-    // Map common variations
-    if (['firstname', 'first', 'fname', 'givenname'].includes(h)) return 'first_name';
-    if (['lastname', 'last', 'lname', 'surname', 'familyname'].includes(h)) return 'last_name';
-    if (['email', 'emailaddress', 'mail'].includes(h)) return 'email';
-    if (['phone', 'phonenumber', 'tel', 'telephone', 'mobile', 'cell'].includes(h)) return 'phone';
-    if (['company', 'companyname', 'organization', 'org', 'business'].includes(h)) return 'company';
-    if (['jobtitle', 'title', 'position', 'role'].includes(h)) return 'job_title';
-    if (['vertical', 'sector'].includes(h)) return 'vertical';
-    if (['industry'].includes(h)) return 'industry';
-    if (['location', 'city', 'address', 'region', 'area'].includes(h)) return 'location';
-    if (['name', 'fullname'].includes(h)) return 'full_name';
-    return h;
-  };
-
   const handleDownloadSampleCSV = () => {
-    const csvContent = `first_name,last_name,email,phone,company,job_title,location,industry
-Sarah,Johnson,sarah@example.com,+1-555-0101,Luxury Resorts,VP of Marketing,"Miami, FL",Hospitality
-Michael,Chen,michael@example.com,+1-555-0102,Urban Properties,Marketing Director,"Los Angeles, CA",Real Estate
-Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dallas, TX",Sports & Recreation`;
+    const csvContent = `Name,Email,Phone,Company,Title,Industry
+Sarah Johnson,sarah@example.com,+1-555-0101,Luxury Resorts,VP of Marketing,Hospitality
+Michael Chen,michael@example.com,+1-555-0102,Urban Properties,Marketing Director,Real Estate
+Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports & Recreation`;
     
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -401,77 +365,64 @@ Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dalla
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (!workspaceId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please select a workspace first",
+      });
+      return;
+    }
+
     setImporting(true);
     try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      const csvContent = await file.text();
       
-      if (lines.length < 2) {
-        throw new Error("CSV file must have a header row and at least one data row");
+      // Use AI to automatically map CSV columns
+      sonnerToast.info("AI is analyzing your CSV format...");
+      
+      const { data, error: fnError } = await supabase.functions.invoke('ai-csv-mapper', {
+        body: { csvContent }
+      });
+
+      if (fnError) throw fnError;
+      
+      if (data?.error) {
+        throw new Error(data.error);
       }
 
-      const headers = parseCSVLine(lines[0]).map(h => normalizeHeader(h));
-      console.log("Detected headers:", headers);
-
-      const leadsToImport = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = parseCSVLine(lines[i]);
-        const lead: any = { source: "csv_import" };
-
-        headers.forEach((header, index) => {
-          const value = values[index]?.trim();
-          if (!value) return;
-          
-          if (header === 'first_name') lead.first_name = value;
-          else if (header === 'last_name') lead.last_name = value;
-          else if (header === 'email') lead.email = value;
-          else if (header === 'phone') lead.phone = value;
-          else if (header === 'company') lead.company = value;
-          else if (header === 'job_title') lead.job_title = value;
-          else if (header === 'vertical') lead.vertical = value;
-          else if (header === 'industry') lead.industry = value;
-          else if (header === 'location') {
-            // Store location in custom_fields since leads table may not have location column
-            if (!lead.custom_fields) lead.custom_fields = {};
-            lead.custom_fields.location = value;
-          }
-          else if (header === 'full_name' && value) {
-            // Split full name into first/last
-            const parts = value.split(/\s+/);
-            if (!lead.first_name) lead.first_name = parts[0] || '';
-            if (!lead.last_name) lead.last_name = parts.slice(1).join(' ') || parts[0] || '';
-          }
-        });
-
-        // Validate required fields
-        if (lead.email) {
-          // Provide defaults if first/last name missing
-          if (!lead.first_name) lead.first_name = lead.email.split('@')[0] || 'Unknown';
-          if (!lead.last_name) lead.last_name = 'Contact';
-          leadsToImport.push(lead);
-        }
+      if (!data?.leads || data.leads.length === 0) {
+        throw new Error("No valid leads found. Make sure your CSV has email addresses.");
       }
 
-      console.log("Leads to import:", leadsToImport.length);
+      console.log("AI mapped leads:", data.leads.length);
+      console.log("Column mapping:", data.mapping);
+      console.log("Confidence:", data.confidence);
 
-      if (leadsToImport.length === 0) {
-        throw new Error("No valid leads found. Make sure your CSV has an 'email' column.");
+      // Show mapping info
+      if (data.confidence && data.confidence < 0.7) {
+        sonnerToast.warning("Low confidence mapping - please verify imported data");
       }
 
       const { data: user } = await supabase.auth.getUser();
-      const leadsWithCreator = leadsToImport.map((lead) => ({
+      const leadsWithMetadata = data.leads.map((lead: any) => ({
         ...lead,
         created_by: user.user?.id,
+        workspace_id: workspaceId,
       }));
 
-      const { error } = await supabase.from("leads").insert(leadsWithCreator);
+      const { error: insertError } = await supabase.from("leads").insert(leadsWithMetadata);
 
-      if (error) throw error;
+      if (insertError) throw insertError;
 
       toast({
         title: "Success",
-        description: `Imported ${leadsToImport.length} leads`,
+        description: `AI imported ${data.validLeads} leads from ${data.totalRows} rows`,
       });
+
+      if (data.errors && data.errors.length > 0) {
+        sonnerToast.warning(`${data.errors.length} rows skipped (missing email)`);
+      }
 
       setShowImportDialog(false);
       fetchLeads();
@@ -646,18 +597,20 @@ Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dalla
               <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Import Leads from CSV</DialogTitle>
+                    <DialogTitle className="flex items-center gap-2">
+                      <span className="bg-gradient-to-r from-primary to-cyan bg-clip-text text-transparent">AI-Powered</span> CSV Import
+                    </DialogTitle>
                     <DialogDescription>
-                      Upload a CSV file with lead data. Only email is required; names will be auto-generated if missing.
+                      Upload any CSV file - AI will automatically detect and map columns to lead fields.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <Button variant="outline" size="sm" onClick={downloadCSVTemplate} className="w-full">
                       <Download className="mr-2 h-4 w-4" />
-                      Download CSV Template
+                      Download Sample CSV
                     </Button>
-                    <div className="text-xs text-muted-foreground">
-                      Supported columns: first_name, last_name, email, phone, company, job_title, location, industry
+                    <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
+                      <strong>AI auto-maps:</strong> Names, emails, phones, companies, job titles, industry, and more. Just upload your file in any format!
                     </div>
                     <div
                       className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
@@ -711,9 +664,9 @@ Emily,Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,"Dalla
                       />
                     </div>
                     {importing && (
-                      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <div className="flex items-center justify-center gap-2 text-sm text-primary">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Importing leads...
+                        AI is analyzing and importing leads...
                       </div>
                     )}
                   </div>

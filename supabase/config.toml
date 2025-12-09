@@ -12,6 +12,9 @@ verify_jwt = true
 [functions.ai-campaign-planner]
 verify_jwt = true
 
+[functions.ai-csv-mapper]
+verify_jwt = true
+
 [functions.ai-lead-nurturing]
 verify_jwt = true
 
@@ -130,6 +133,9 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.optimize-video-prompts]
+verify_jwt = true
+
+[functions.onboarding-assistant]
 verify_jwt = true
 
 [functions.playkout-assets-approve]
