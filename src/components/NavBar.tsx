@@ -48,6 +48,7 @@ const NavBar = () => {
     { path: "/voice-agents", label: "Voice Agents", module: null },
     { path: "/websites", label: "Websites", module: null },
     { path: "/crm", label: "CRM", module: "crm" as const },
+    { path: "/outbound", label: "Outbound", module: null },
     { path: "/reports", label: "Reports", module: null },
   ];
 
