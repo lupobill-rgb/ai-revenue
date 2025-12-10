@@ -34,6 +34,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [copiedColor, setCopiedColor] = useState<string | null>(null);
+  const [brandSubSection, setBrandSubSection] = useState<'profile' | 'discovery' | 'guidelines'>('profile');
   
   // Brand discovery states
   const [brandWebsiteUrl, setBrandWebsiteUrl] = useState("");
@@ -432,84 +433,68 @@ export default function Settings() {
             </div>
 
             <Tabs defaultValue="integrations" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8">
-            <TabsTrigger value="integrations">Integrations</TabsTrigger>
-            <TabsTrigger value="outbound">Outbound</TabsTrigger>
-            <TabsTrigger value="channels">Channels</TabsTrigger>
-            <TabsTrigger value="modules">Modules</TabsTrigger>
-            <TabsTrigger value="team">Team</TabsTrigger>
-            <TabsTrigger value="profile">Business Profile</TabsTrigger>
-            <TabsTrigger value="discovery">Brand Discovery</TabsTrigger>
-            <TabsTrigger value="brand">Brand Guidelines</TabsTrigger>
-          </TabsList>
+              <TabsList className="w-full flex gap-1 h-auto flex-wrap justify-start p-1">
+                <TabsTrigger value="integrations" className="px-4">Integrations</TabsTrigger>
+                <TabsTrigger value="team" className="px-4">Team</TabsTrigger>
+                <TabsTrigger value="channels" className="px-4">Channels</TabsTrigger>
+                <TabsTrigger value="modules" className="px-4">Modules</TabsTrigger>
+                <TabsTrigger value="brand" className="px-4">Brand</TabsTrigger>
+              </TabsList>
 
-          <TabsContent value="outbound" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Send className="h-5 w-5 text-primary" />
-                  Outbound Integrations
-                </CardTitle>
-                <CardDescription>
-                  Configure email, LinkedIn, calendar, and CRM settings for outbound campaigns
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground mb-4">
-                  Set up your email sender details, LinkedIn profile, booking URL, and CRM webhooks to activate outbound campaigns.
-                </p>
-                <Button onClick={() => navigate("/settings/integrations")}>
-                  <Send className="h-4 w-4 mr-2" />
-                  Configure Outbound Integrations
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              <TabsContent value="integrations" className="space-y-6">
+                {/* Outbound Integrations Card */}
+                <Card className="bg-primary/5 border-primary/20">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Send className="h-5 w-5 text-primary" />
+                      Outbound Integrations
+                    </CardTitle>
+                    <CardDescription>
+                      Configure email, LinkedIn, calendar, and CRM settings for outbound campaigns
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground mb-4">
+                      Set up your email sender details, LinkedIn profile, booking URL, and CRM webhooks to activate outbound campaigns.
+                    </p>
+                    <Button onClick={() => navigate("/settings/integrations")}>
+                      <Send className="h-4 w-4 mr-2" />
+                      Configure Outbound Integrations
+                    </Button>
+                  </CardContent>
+                </Card>
 
-          <TabsContent value="team" className="space-y-6">
-            <TeamManagement />
-          </TabsContent>
-
-          <TabsContent value="channels" className="space-y-6">
-            <ChannelToggles />
-          </TabsContent>
-
-          <TabsContent value="modules" className="space-y-6">
-            <ModuleToggles />
-          </TabsContent>
-
-          <TabsContent value="integrations" className="space-y-6">
-        {/* Stripe Billing Section */}
-        <Card className="bg-accent/5 border-accent/20">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <CreditCard className="h-6 w-6 text-primary" />
-              <div>
-                <CardTitle className="text-2xl">Stripe Billing</CardTitle>
-                <CardDescription className="text-base">
-                  Connect your Stripe account to track spending and manage your UbiGrowth subscription payments.
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!stripeConnected ? (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="stripe-secret">Stripe Secret Key</Label>
-                  <Input
-                    id="stripe-secret"
-                    type="password"
-                    placeholder="sk_live_..."
-                    value={stripeSecretKey}
-                    onChange={(e) => setStripeSecretKey(e.target.value)}
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    Your Secret Key from the Stripe Dashboard (Developers → API keys)
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="stripe-publishable">Stripe Publishable Key (Optional)</Label>
+                {/* Stripe Billing Section */}
+                <Card className="bg-accent/5 border-accent/20">
+                  <CardHeader>
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="h-6 w-6 text-primary" />
+                      <div>
+                        <CardTitle className="text-2xl">Stripe Billing</CardTitle>
+                        <CardDescription className="text-base">
+                          Connect your Stripe account to track spending and manage your UbiGrowth subscription payments.
+                        </CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {!stripeConnected ? (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="stripe-secret">Stripe Secret Key</Label>
+                          <Input
+                            id="stripe-secret"
+                            type="password"
+                            placeholder="sk_live_..."
+                            value={stripeSecretKey}
+                            onChange={(e) => setStripeSecretKey(e.target.value)}
+                          />
+                          <p className="text-sm text-muted-foreground">
+                            Your Secret Key from the Stripe Dashboard (Developers → API keys)
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="stripe-publishable">Stripe Publishable Key (Optional)</Label>
                   <Input
                     id="stripe-publishable"
                     type="text"
@@ -863,16 +848,63 @@ export default function Settings() {
              )}
           </CardContent>
         </Card>
-        </TabsContent>
+              </TabsContent>
 
-        <TabsContent value="profile" className="space-y-6">
-          <BusinessProfileTab key={profileRefreshKey} />
-        </TabsContent>
+              <TabsContent value="team" className="space-y-6">
+                <TeamManagement />
+              </TabsContent>
 
-        <TabsContent value="discovery" className="space-y-6">
-          {/* Brand Discovery Tool */}
-          <Card>
-            <CardHeader>
+              <TabsContent value="channels" className="space-y-6">
+                <ChannelToggles />
+              </TabsContent>
+
+              <TabsContent value="modules" className="space-y-6">
+                <ModuleToggles />
+              </TabsContent>
+
+              <TabsContent value="brand" className="space-y-6">
+                {/* Sub-navigation for Brand sections */}
+                <div className="flex gap-2 mb-6">
+                  <Button
+                    variant={brandSubSection === 'profile' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setBrandSubSection('profile')}
+                  >
+                    Business Profile
+                  </Button>
+                  <Button
+                    variant={brandSubSection === 'discovery' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setBrandSubSection('discovery')}
+                  >
+                    Brand Discovery
+                  </Button>
+                  <Button
+                    variant={brandSubSection === 'guidelines' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setBrandSubSection('guidelines')}
+                  >
+                    Brand Guidelines
+                  </Button>
+                </div>
+
+                {brandSubSection === 'profile' && (
+                  <BusinessProfileTab key={profileRefreshKey} />
+                )}
+
+                {brandSubSection === 'discovery' && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center gap-3">
+                        <Palette className="h-6 w-6 text-primary" />
+                        <div>
+                          <CardTitle className="text-2xl">Automated Brand Discovery</CardTitle>
+                          <CardDescription className="text-base">
+                            Automatically extract brand guidelines from your website and logo. Our AI will analyze colors, fonts, messaging, and brand voice.
+                          </CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
               <div className="flex items-center gap-3">
                 <Palette className="h-6 w-6 text-primary" />
                 <div>
