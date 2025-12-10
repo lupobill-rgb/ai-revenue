@@ -261,14 +261,64 @@ export async function fetchRecommendations(
 
 import type { LandingPageDraft } from "./types";
 
-export async function generateLandingPageWithAI(
+export async function fetchCampaignLandingPages(
   tenantId: string,
-  draft: LandingPageDraft
+  campaignId?: string | null
+): Promise<LandingPageDraft[]> {
+  const { data, error } = await supabase.functions.invoke(
+    "ai-cmo-landing-pages-list",
+    {
+      body: { tenantId, campaignId: campaignId || null },
+    }
+  );
+
+  if (error) throw new Error(error.message);
+  
+  // Map API response to LandingPageDraft format
+  return (data || []).map((page: any) => ({
+    id: page.id,
+    tenant_id: tenantId,
+    workspace_id: page.workspaceId,
+    campaign_id: page.campaignId,
+    campaignName: page.campaignName,
+    templateType: page.templateType || "saas",
+    internalName: page.internalName,
+    urlSlug: page.urlSlug || "",
+    heroHeadline: page.heroHeadline || "",
+    heroSubheadline: page.heroSubheadline || "",
+    heroSupportingPoints: page.heroSupportingPoints || [],
+    sections: page.sections || [],
+    primaryCtaLabel: page.primaryCtaLabel || "Get Started",
+    primaryCtaType: page.primaryCtaType || "form",
+    formFields: page.formFields || [],
+    status: page.status || "draft",
+    published: page.published,
+    url: page.url,
+    autoWired: page.autoWired,
+    variantId: page.variantId,
+    created_at: page.createdAt,
+    updated_at: page.updatedAt,
+  }));
+}
+
+export async function regenerateLandingPage(
+  tenantId: string,
+  landingPageId: string,
+  overrides: {
+    heroHeadline?: string;
+    heroSubheadline?: string;
+    primaryCtaLabel?: string;
+  }
 ): Promise<LandingPageDraft> {
   const { data, error } = await supabase.functions.invoke(
     "ai-cmo-landing-pages-generate",
     {
-      body: { tenant_id: tenantId, draft },
+      body: {
+        tenant_id: tenantId,
+        landing_page_id: landingPageId,
+        overrides,
+        regenerate: true,
+      },
     }
   );
 
@@ -293,44 +343,25 @@ export async function saveLandingPage(
   return data as { id: string; url: string; published: boolean };
 }
 
+export async function generateLandingPageWithAI(
+  tenantId: string,
+  draft: LandingPageDraft
+): Promise<LandingPageDraft> {
+  const { data, error } = await supabase.functions.invoke(
+    "ai-cmo-landing-pages-generate",
+    {
+      body: { tenant_id: tenantId, draft },
+    }
+  );
+
+  if (error) throw new Error(error.message);
+  return data as LandingPageDraft;
+}
+
+// Legacy function for backwards compatibility
 export async function fetchLandingPages(
   tenantId: string,
   campaignId?: string
 ): Promise<LandingPageDraft[]> {
-  // Landing pages are stored as cmo_content_assets with content_type = 'landing_page'
-  let query = supabase
-    .from("cmo_content_assets")
-    .select("*")
-    .eq("tenant_id", tenantId)
-    .eq("content_type", "landing_page")
-    .order("created_at", { ascending: false });
-
-  if (campaignId) {
-    query = query.eq("campaign_id", campaignId);
-  }
-
-  const { data, error } = await query;
-
-  if (error) throw new Error(error.message);
-  
-  // Map to LandingPageDraft format - actual content stored in metadata or fetched from variants
-  return (data || []).map((asset) => ({
-    id: asset.id,
-    tenant_id: asset.tenant_id,
-    workspace_id: asset.workspace_id,
-    campaign_id: asset.campaign_id || undefined,
-    templateType: "saas" as const,
-    internalName: asset.title,
-    urlSlug: asset.title.toLowerCase().replace(/\s+/g, "-"),
-    heroHeadline: asset.key_message || "",
-    heroSubheadline: asset.cta || "",
-    heroSupportingPoints: (asset.supporting_points as string[]) || [],
-    sections: [],
-    primaryCtaLabel: "Learn More",
-    primaryCtaType: "form" as const,
-    formFields: [],
-    status: asset.status as "draft" | "published" | "archived" | undefined,
-    created_at: asset.created_at,
-    updated_at: asset.updated_at,
-  }));
+  return fetchCampaignLandingPages(tenantId, campaignId);
 }

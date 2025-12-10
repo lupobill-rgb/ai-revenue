@@ -380,6 +380,7 @@ export interface LandingPageDraft {
   tenant_id?: string;
   workspace_id?: string;
   campaign_id?: string;
+  campaignName?: string;
   templateType: LandingTemplateType;
   internalName: string;
   urlSlug: string;
@@ -393,6 +394,10 @@ export interface LandingPageDraft {
   calendarUrl?: string;
   status?: "draft" | "published" | "archived";
   published_url?: string;
+  url?: string;
+  published?: boolean;
+  autoWired?: boolean;
+  variantId?: string;
   created_at?: string;
   updated_at?: string;
 }

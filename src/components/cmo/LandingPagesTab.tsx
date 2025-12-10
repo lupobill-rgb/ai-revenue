@@ -27,39 +27,12 @@ import {
   X,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-
-interface LandingPageFromAPI {
-  id: string;
-  campaignId: string | null;
-  campaignName: string | null;
-  templateType: string;
-  internalName: string;
-  urlSlug: string;
-  heroHeadline: string;
-  heroSubheadline: string;
-  heroSupportingPoints: string[];
-  sections: Array<{
-    type: string;
-    heading: string;
-    body: string;
-    bullets: string[];
-    enabled: boolean;
-  }>;
-  primaryCtaLabel: string;
-  primaryCtaType: string;
-  formFields: Array<{
-    name: string;
-    label: string;
-    type: string;
-    required: boolean;
-  }>;
-  published: boolean;
-  status: string;
-  url: string | null;
-  autoWired: boolean;
-  createdAt: string;
-  variantId?: string;
-}
+import { 
+  fetchCampaignLandingPages, 
+  regenerateLandingPage,
+  saveLandingPage 
+} from "@/lib/cmo/apiClient";
+import type { LandingPageDraft } from "@/lib/cmo/types";
 
 interface ParsedLandingPage {
   id: string;
@@ -123,35 +96,27 @@ function LandingPagesTab() {
     enabled: !!tenantId,
   });
 
-  // Fetch landing pages from backend API
+  // Fetch landing pages from API client
   const { data: landingPages, isLoading } = useQuery({
     queryKey: ['landing-pages', tenantId, selectedCampaignId],
     queryFn: async () => {
       if (!tenantId) return [];
       
-      const { data, error } = await supabase.functions.invoke('ai-cmo-landing-pages-list', {
-        body: {
-          tenantId,
-          campaignId: selectedCampaignId !== "all" ? selectedCampaignId : null,
-        },
-      });
+      const pages = await fetchCampaignLandingPages(
+        tenantId,
+        selectedCampaignId !== "all" ? selectedCampaignId : null
+      );
 
-      // Fallback to direct query if edge function not available
-      if (error) {
-        console.warn("Edge function error, falling back to direct query:", error);
-        return fetchLandingPagesDirect();
-      }
-
-      // Transform API response to internal format
-      return (data as LandingPageFromAPI[] || []).map(page => ({
-        id: page.id,
-        assetId: page.id,
+      // Transform to internal format
+      return pages.map(page => ({
+        id: page.id || '',
+        assetId: page.id || '',
         variantId: page.variantId,
-        campaignId: page.campaignId,
-        campaignName: page.campaignName || undefined,
+        campaignId: page.campaign_id || null,
+        campaignName: page.campaignName,
         status: page.status || 'draft',
-        createdAt: page.createdAt,
-        internalName: page.internalName,
+        createdAt: page.created_at || '',
+        internalName: page.internalName || '',
         urlSlug: page.urlSlug || '',
         publishedUrl: page.url || '',
         templateType: page.templateType || 'lead_magnet',
