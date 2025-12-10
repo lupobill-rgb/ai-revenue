@@ -1986,6 +1986,51 @@ export type Database = {
           },
         ]
       }
+      crm_activities: {
+        Row: {
+          activity_type: string
+          contact_id: string
+          created_at: string
+          id: string
+          lead_id: string | null
+          meta: Json
+          tenant_id: string
+        }
+        Insert: {
+          activity_type: string
+          contact_id: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          meta?: Json
+          tenant_id: string
+        }
+        Update: {
+          activity_type?: string
+          contact_id?: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          meta?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_activities_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "crm_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_contacts: {
         Row: {
           company_name: string | null
