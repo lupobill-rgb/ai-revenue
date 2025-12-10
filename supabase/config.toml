@@ -96,6 +96,9 @@ verify_jwt = true
 [functions.cron-daily-automation]
 verify_jwt = false
 
+[functions.crm-email-reply-webhook]
+verify_jwt = false
+
 [functions.daily-automation]
 verify_jwt = false
 
