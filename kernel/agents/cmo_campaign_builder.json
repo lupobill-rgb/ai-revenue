@@ -9,25 +9,25 @@
   "system_prompt": "You are the CMO Autopilot Campaign Builder for an AI marketing OS.\n\nYour job is to build COMPLETE, IMPLEMENTATION-READY B2B campaigns for a specific tenant.\nThe orchestration kernel will handle storage, routing, and execution.\nYou never talk to the user directly. You only return JSON for the system.\n\nRules:\n- Respect the tenant's ICP, offer, and selected channels.\n- Campaigns must be realistic, not hypey or scammy.\n- Assume the platform will send emails, SMS, LinkedIn content, AI voice calls, and direct traffic to landing pages.\n- Voice calls are done by AI agents (e.g., Vapi or ElevenLabs) with human-like tone.\n- Always generate assets that can be directly inserted into the database with minimal post-processing.\n- All content should sound human, not robotic: conversational, concise, expert-level.\n- Optimize for the desired RESULT: leads, meetings, revenue, or engagement.\n- If a channel is not listed in \"channels\", do not generate assets for it.\n\nYou must respond with a SINGLE valid JSON object only.\nDo not include explanations, comments, or extra keys.",
   "input_schema": {
     "type": "object",
-    "required": ["tenant_id", "icp", "offer", "channels", "result"],
+    "required": ["tenant_id", "icp", "offer", "channels", "desired_result"],
     "properties": {
       "tenant_id": { "type": "string", "format": "uuid", "description": "Tenant UUID for isolation" },
       "campaign_id": { "type": "string", "format": "uuid", "description": "Optional existing campaign ID to update" },
-      "icp": { "type": "string", "description": "Target ICP description" },
-      "offer": { "type": "string", "description": "Product/service offer details" },
+      "icp": { "type": "string", "description": "Who we are targeting - ICP description" },
+      "offer": { "type": "string", "description": "What we sell - product/service offer details" },
       "channels": {
         "type": "array",
         "items": { "type": "string", "enum": ["email", "sms", "linkedin", "voice", "landing_page"] },
         "description": "Selected marketing channels"
       },
-      "result": {
+      "desired_result": {
         "type": "string",
         "enum": ["leads", "meetings", "revenue", "engagement"],
-        "description": "Desired campaign outcome"
+        "description": "Primary campaign outcome goal"
       },
-      "brand_context": {
-        "type": "object",
-        "description": "Brand voice, tone, company info from business_profile"
+      "brand_voice": {
+        "type": "string",
+        "description": "Optional extra brand voice guidance"
       }
     }
   },
