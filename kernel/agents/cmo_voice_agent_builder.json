@@ -1,13 +1,15 @@
 {
-  "agent_name": "cmo_voice_agent_builder",
-  "version": "2.0.0",
-  "description": "Generates VAPI/ElevenLabs voice agent configurations from brand context",
+  "id": "cmo_voice_agent_builder",
+  "agent_name": "CMO Voice Agent Configuration Designer",
+  "module": "ai_cmo",
+  "version": "2.1.0",
+  "description": "Designs implementation-ready configurations for AI voice agents (Vapi/ElevenLabs) that call leads on behalf of tenants",
   "model": "google/gemini-2.5-flash",
   "temperature": 0.4,
-  "system_prompt": "You are an expert voice agent designer for a multi-tenant marketing automation platform. Your role is to generate complete voice agent configurations that can be deployed to VAPI or ElevenLabs.\n\nGuidelines:\n- Match the brand voice and tone exactly\n- Design conversation flows appropriate for the ICP\n- Include proper objection handling\n- Add qualification questions aligned with the offer\n- Ensure compliance with telephony regulations\n- Create natural, conversational scripts\n- Never reference other tenants or leak cross-tenant data\n\nOutput must be deployment-ready JSON configuration.",
+  "system_prompt": "You are the Voice Agent Configuration Designer for an AI marketing OS.\n\nYour job is to design IMPLEMENTATION-READY configurations for AI voice agents that call leads on behalf of the tenant.\nThe voice can be delivered over providers like Vapi or ElevenLabs. The orchestration kernel and telephony layer handle the actual calls.\nYou never talk to end users. You only return JSON configurations.\n\nThe voice agent must:\n- Sound human, calm, and consultative.\n- Never promise guaranteed outcomes, funding, or returns.\n- Follow all constraints provided (compliance, disclosures, timing).\n- Always respect the lead's time and preferences.\n- Aim to book qualified meetings, not hard-sell or harass.\n\nYou must respond with a SINGLE valid JSON object only.\nDo not include explanations, comments, or extra keys.",
   "input_schema": {
     "type": "object",
-    "required": ["tenant_id", "brandVoice", "icp", "offer"],
+    "required": ["tenant_id", "brand_voice", "icp", "offer"],
     "properties": {
       "tenant_id": {
         "type": "string",
@@ -16,80 +18,106 @@
       },
       "workspace_id": {
         "type": "string",
-        "format": "uuid"
+        "format": "uuid",
+        "description": "Workspace context"
       },
       "campaign_id": {
         "type": "string",
         "format": "uuid",
         "description": "Optional campaign to associate the agent with"
       },
-      "brandVoice": {
+      "brand_voice": {
         "type": "string",
-        "description": "Brand voice description (e.g., 'Professional yet friendly, expert in B2B SaaS')"
+        "description": "Description of brand tone/personality"
       },
       "icp": {
         "type": "string",
-        "description": "Ideal Customer Profile description"
+        "description": "Who they are calling - Ideal Customer Profile description"
       },
       "offer": {
         "type": "string",
-        "description": "Product/service being offered"
+        "description": "What they're talking about - product/service being offered"
       },
       "constraints": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Compliance or conversation constraints"
+        "description": "Compliance rules, forbidden claims, disclosures, etc."
+      },
+      "preferred_provider": {
+        "type": "string",
+        "enum": ["vapi", "elevenlabs"],
+        "description": "Preferred voice provider"
       }
     }
   },
   "output_schema": {
     "type": "object",
-    "required": ["provider", "agent_config"],
+    "required": ["name", "provider", "system_prompt", "voice_profile", "tools", "call_policies", "script_templates"],
     "properties": {
+      "name": { "type": "string", "description": "Agent name/identifier" },
       "provider": {
         "type": "string",
         "enum": ["vapi", "elevenlabs"],
         "description": "Voice provider to use"
       },
-      "agent_config": {
+      "system_prompt": { "type": "string", "description": "Full system prompt for the voice agent" },
+      "speaking_style": { "type": "string", "description": "Description of speaking style" },
+      "voice_profile": {
         "type": "object",
-        "required": ["name", "system_prompt", "first_message"],
+        "required": ["gender", "tone", "pace", "language"],
         "properties": {
-          "name": { "type": "string" },
-          "system_prompt": { "type": "string" },
-          "first_message": { "type": "string" },
-          "voice_id": { "type": "string" },
-          "model": { "type": "string" },
-          "language": { "type": "string" },
-          "end_call_phrases": {
-            "type": "array",
-            "items": { "type": "string" }
-          },
-          "objection_handlers": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "objection": { "type": "string" },
-                "response": { "type": "string" }
-              }
+          "gender": { "type": "string", "enum": ["male", "female", "neutral", "unspecified"] },
+          "tone": { "type": "string", "description": "e.g., warm, authoritative, friendly" },
+          "pace": { "type": "string", "enum": ["slow", "medium", "fast"] },
+          "language": { "type": "string", "description": "e.g., en-US, es-ES" }
+        }
+      },
+      "tools": {
+        "type": "array",
+        "items": { 
+          "type": "string",
+          "enum": ["book_meeting", "update_crm", "tag_lead", "handoff_to_human"]
+        },
+        "description": "Available tools the agent can use during calls"
+      },
+      "call_policies": {
+        "type": "object",
+        "required": ["max_call_duration_minutes", "max_attempts_per_lead", "attempt_spacing_hours", "allowed_hours_local"],
+        "properties": {
+          "max_call_duration_minutes": { "type": "number" },
+          "max_attempts_per_lead": { "type": "number" },
+          "attempt_spacing_hours": { "type": "number" },
+          "allowed_hours_local": {
+            "type": "object",
+            "properties": {
+              "start": { "type": "string", "description": "e.g., 09:00" },
+              "end": { "type": "string", "description": "e.g., 18:00" }
             }
           },
-          "qualification_questions": {
+          "disclosures": {
             "type": "array",
-            "items": { "type": "string" }
-          },
-          "tools": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "type": { "type": "string" },
-                "function": { "type": "object" }
-              }
-            }
-          },
-          "metadata": { "type": "object" }
+            "items": { "type": "string" },
+            "description": "Required disclosures to read during calls"
+          }
+        }
+      },
+      "script_templates": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["scenario", "outline", "full_script"],
+          "properties": {
+            "scenario": { 
+              "type": "string", 
+              "enum": ["first_outreach", "follow_up", "no_show", "reengagement"]
+            },
+            "outline": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Bullet-point outline of the conversation flow"
+            },
+            "full_script": { "type": "string", "description": "Complete script for the scenario" }
+          }
         }
       }
     }
