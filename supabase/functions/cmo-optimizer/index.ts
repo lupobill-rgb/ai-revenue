@@ -7,40 +7,41 @@ const corsHeaders = {
 };
 
 interface OptimizationChange {
-  type: 'update_email' | 'update_sms' | 'update_post' | 'update_voice_script' | 'adjust_wait' | 'kill_variant' | 'add_step' | 'remove_step';
+  type: 'update_email' | 'update_sms' | 'update_post' | 'update_landing_section' | 'update_voice_script' | 'adjust_wait' | 'kill_variant';
   target_id: string;
   reason: string;
   new_subject?: string;
   new_body?: string;
-  new_message?: string;
+  new_heading?: string;
   new_script?: string;
   new_delay_hours?: number;
-  metadata?: Record<string, any>;
 }
 
 interface OptimizerInput {
   tenant_id: string;
   workspace_id?: string;
   campaign_id: string;
-  goal: string;
+  goal: 'leads' | 'meetings' | 'revenue' | 'engagement';
   metrics: {
     opens?: number;
     clicks?: number;
     replies?: number;
     booked_meetings?: number;
     no_shows?: number;
+    conversions?: number;
     voice_calls?: {
       total: number;
       reached: number;
       booked: number;
+      no_answer: number;
     };
   };
   assets?: {
-    emails?: any[];
-    sms?: any[];
-    posts?: any[];
-    landing_pages?: any[];
-    voice_scripts?: any[];
+    emails?: { id: string; subject: string; body: string; performance?: any }[];
+    sms?: { id: string; body: string; performance?: any }[];
+    posts?: { id: string; body: string; performance?: any }[];
+    landing_sections?: { id: string; type: string; heading: string; body: string; performance?: any }[];
+    voice_scripts?: { id: string; scenario: string; script: string; performance?: any }[];
   };
   constraints?: string[];
 }
@@ -238,14 +239,14 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
 
     for (const change of optimizations.changes || []) {
       try {
+        // Update email assets
         if (change.type === 'update_email' && change.target_id) {
-          // Find and update the email asset
           const { data: emailAsset } = await supabase
             .from('cmo_content_assets')
             .select('id')
             .eq('campaign_id', campaign_id)
             .eq('content_type', 'email')
-            .ilike('title', `%${change.target_id}%`)
+            .or(`id.eq.${change.target_id},title.ilike.%${change.target_id}%`)
             .single();
 
           if (emailAsset) {
@@ -261,13 +262,81 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
           }
         }
 
+        // Update SMS assets
+        if (change.type === 'update_sms' && change.target_id) {
+          const { data: smsAsset } = await supabase
+            .from('cmo_content_assets')
+            .select('id')
+            .eq('campaign_id', campaign_id)
+            .eq('content_type', 'sms')
+            .or(`id.eq.${change.target_id},title.ilike.%${change.target_id}%`)
+            .single();
+
+          if (smsAsset) {
+            await supabase
+              .from('cmo_content_assets')
+              .update({
+                key_message: change.new_body || undefined,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', smsAsset.id);
+            appliedChanges.push(`Updated SMS: ${change.target_id}`);
+          }
+        }
+
+        // Update social posts
+        if (change.type === 'update_post' && change.target_id) {
+          const { data: postAsset } = await supabase
+            .from('cmo_content_assets')
+            .select('id')
+            .eq('campaign_id', campaign_id)
+            .eq('content_type', 'social_post')
+            .or(`id.eq.${change.target_id},title.ilike.%${change.target_id}%`)
+            .single();
+
+          if (postAsset) {
+            await supabase
+              .from('cmo_content_assets')
+              .update({
+                key_message: change.new_body || undefined,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', postAsset.id);
+            appliedChanges.push(`Updated post: ${change.target_id}`);
+          }
+        }
+
+        // Update landing page sections
+        if (change.type === 'update_landing_section' && change.target_id) {
+          const { data: landingAsset } = await supabase
+            .from('cmo_content_assets')
+            .select('id')
+            .eq('campaign_id', campaign_id)
+            .eq('content_type', 'landing_page')
+            .or(`id.eq.${change.target_id},title.ilike.%${change.target_id}%`)
+            .single();
+
+          if (landingAsset) {
+            await supabase
+              .from('cmo_content_assets')
+              .update({
+                title: change.new_heading || undefined,
+                key_message: change.new_body || undefined,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', landingAsset.id);
+            appliedChanges.push(`Updated landing section: ${change.target_id}`);
+          }
+        }
+
+        // Update voice scripts
         if (change.type === 'update_voice_script' && change.target_id) {
           const { data: voiceAsset } = await supabase
             .from('cmo_content_assets')
             .select('id')
             .eq('campaign_id', campaign_id)
             .eq('content_type', 'voice_script')
-            .ilike('title', `%${change.target_id}%`)
+            .or(`id.eq.${change.target_id},title.ilike.%${change.target_id}%`)
             .single();
 
           if (voiceAsset) {
@@ -282,12 +351,28 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
           }
         }
 
+        // Adjust wait/delay times in automation steps
+        if (change.type === 'adjust_wait' && change.target_id && change.new_delay_hours !== undefined) {
+          const { error: waitError } = await supabase
+            .from('automation_steps')
+            .update({
+              config: { delay_hours: change.new_delay_hours },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', change.target_id);
+
+          if (!waitError) {
+            appliedChanges.push(`Adjusted wait time: ${change.new_delay_hours}h`);
+          }
+        }
+
+        // Kill (archive) underperforming variants
         if (change.type === 'kill_variant' && change.target_id) {
           await supabase
             .from('cmo_content_assets')
-            .update({ status: 'archived' })
+            .update({ status: 'archived', updated_at: new Date().toISOString() })
             .eq('campaign_id', campaign_id)
-            .ilike('title', `%${change.target_id}%`);
+            .or(`id.eq.${change.target_id},title.ilike.%${change.target_id}%`);
           appliedChanges.push(`Archived variant: ${change.target_id}`);
         }
       } catch (applyError) {
