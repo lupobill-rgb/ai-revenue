@@ -837,8 +837,8 @@ const Approvals = () => {
                       const needsThumbnail = !asset.preview_url && !asset.content?.hero_image_url;
                       
                       // Get preview image URL based on asset type - unique per campaign
-                      const getPreviewImage = () => {
-                        // For email assets, prioritize customer logo from business profile
+                      const getPreviewImage = (): string | null => {
+                        // For email assets, only show logo if explicitly set - no placeholder images
                         if (asset.type === "email") {
                           // First check business profile logo
                           if (businessProfile?.logo_url) {
@@ -848,13 +848,8 @@ const Approvals = () => {
                           if (asset.content?.logo_url) {
                             return asset.content.logo_url;
                           }
-                          if (asset.preview_url && 
-                              !asset.preview_url.startsWith("/videos/") && 
-                              !asset.preview_url.includes("example.com")) {
-                            return asset.preview_url;
-                          }
-                          // Email-specific placeholder
-                          return getCampaignPlaceholder("email", asset.content?.vertical, asset.name);
+                          // No placeholder for emails - return null to show blank
+                          return null;
                         }
                         // Check for AI-generated images first
                         if (asset.content?.hero_image_url) {
@@ -869,6 +864,8 @@ const Approvals = () => {
                         // Use campaign-specific placeholder
                         return getCampaignPlaceholder(asset.type, asset.content?.vertical, asset.name);
                       };
+                      
+                      const previewImage = getPreviewImage();
 
                       return (
                         <div
@@ -876,17 +873,20 @@ const Approvals = () => {
                           className="flex flex-col sm:flex-row p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors gap-4"
                         >
                           {/* Preview Image */}
-                          <div className="w-full sm:w-48 h-32 sm:h-28 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                            <img
-                              src={getPreviewImage()}
-                              alt={asset.name}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                // Fallback to generic placeholder
-                                target.src = "https://images.unsplash.com/photo-1551434678-e076c223a692?w=400&h=300&fit=crop";
-                              }}
-                            />
+                          <div className="w-full sm:w-48 h-32 sm:h-28 rounded-lg overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center">
+                            {previewImage ? (
+                              <img
+                                src={previewImage}
+                                alt={asset.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <Icon className="h-12 w-12 text-muted-foreground/50" />
+                            )}
                           </div>
                           
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between flex-1 gap-4">
