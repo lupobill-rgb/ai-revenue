@@ -147,6 +147,9 @@ export interface CMOFunnelStage {
   updated_at: string;
 }
 
+// Autopilot & Optimization Types
+export type CampaignGoal = "leads" | "meetings" | "revenue" | "engagement";
+
 export interface CMOCampaign {
   id: string;
   tenant_id: string;
@@ -167,6 +170,11 @@ export interface CMOCampaign {
   primary_kpi?: Record<string, unknown>;
   secondary_kpis?: Record<string, unknown>;
   success_criteria?: string;
+  // Autopilot fields
+  autopilot_enabled?: boolean;
+  goal?: CampaignGoal | null;
+  last_optimization_at?: string | null;
+  last_optimization_note?: string | null;
   created_at: string;
   updated_at: string;
   channels?: CMOCampaignChannel[];
