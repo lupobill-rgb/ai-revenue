@@ -28,6 +28,17 @@ export async function runAgent(request: AgentRequest): Promise<AgentResponse> {
   const startTime = Date.now();
   const { agent_name, tenant_id, campaign_id, user_id, payload } = request;
 
+  // === GUARDRAIL 1: Validate tenant_id is present ===
+  if (!tenant_id) {
+    return {
+      success: false,
+      agent_name,
+      run_id: '',
+      error: 'Missing required field: tenant_id',
+      duration_ms: Date.now() - startTime,
+    };
+  }
+
   // Determine edge function from agent name
   const agentToFunction: Record<string, string> = {
     'cmo_campaign_builder': 'cmo-campaign-builder',
@@ -47,19 +58,53 @@ export async function runAgent(request: AgentRequest): Promise<AgentResponse> {
   }
 
   try {
-    // Log agent run start
+    // === GUARDRAIL 2: Validate campaign_id belongs to tenant (if provided) ===
+    if (campaign_id) {
+      const { data: campaign, error: campaignError } = await supabase
+        .from('cmo_campaigns')
+        .select('id, tenant_id')
+        .eq('id', campaign_id)
+        .single();
+
+      if (campaignError || !campaign) {
+        return {
+          success: false,
+          agent_name,
+          run_id: '',
+          error: `Campaign not found: ${campaign_id}`,
+          duration_ms: Date.now() - startTime,
+        };
+      }
+
+      if (campaign.tenant_id !== tenant_id) {
+        console.error(`Security: Campaign ${campaign_id} does not belong to tenant ${tenant_id}`);
+        return {
+          success: false,
+          agent_name,
+          run_id: '',
+          error: 'Campaign does not belong to this tenant',
+          duration_ms: Date.now() - startTime,
+        };
+      }
+    }
+
+    // === GUARDRAIL 3: Log agent run start to agent_runs ===
     const { data: runData, error: runError } = await supabase
       .from('agent_runs')
       .insert({
         agent: agent_name,
         tenant_id,
-        workspace_id: tenant_id, // Use tenant_id as workspace_id for consistency
+        workspace_id: tenant_id,
         mode: agent_name.replace('cmo_', ''),
         status: 'running',
         input: { campaign_id, user_id, payload },
       })
       .select('id')
       .single();
+
+    if (runError) {
+      console.error('Failed to create agent_run:', runError);
+    }
 
     const run_id = runData?.id || '';
 
@@ -77,7 +122,7 @@ export async function runAgent(request: AgentRequest): Promise<AgentResponse> {
 
     const duration_ms = Date.now() - startTime;
 
-    // Update agent run with result
+    // === Update agent_run with result (success/failure + latency) ===
     if (run_id) {
       await supabase
         .from('agent_runs')
@@ -109,12 +154,14 @@ export async function runAgent(request: AgentRequest): Promise<AgentResponse> {
       duration_ms,
     };
   } catch (err) {
+    const duration_ms = Date.now() - startTime;
+    console.error(`Agent ${agent_name} error:`, err);
     return {
       success: false,
       agent_name,
       run_id: '',
       error: err instanceof Error ? err.message : 'Unknown error',
-      duration_ms: Date.now() - startTime,
+      duration_ms,
     };
   }
 }
