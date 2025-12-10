@@ -15,6 +15,9 @@ verify_jwt = true
 [functions.ai-cmo-lead-activities]
 verify_jwt = true
 
+[functions.ai-cmo-lead-status]
+verify_jwt = true
+
 [functions.ai-cmo-toggle-autopilot]
 verify_jwt = true
 
