@@ -12,6 +12,30 @@ export type COOMode = 'setup' | 'workflows' | 'processes' | 'optimization';
 
 export type ModuleMode = CMOMode | CROMode | CFOMode | COOMode;
 
+/**
+ * Standardized Agent Request Envelope
+ * All kernel agent calls follow this contract
+ */
+export interface AgentRequest {
+  agent_name: string;
+  tenant_id: string;
+  campaign_id?: string | null;
+  user_id: string;
+  payload: Record<string, unknown>;
+}
+
+/**
+ * Standardized Agent Response
+ */
+export interface AgentResponse {
+  success: boolean;
+  agent_name: string;
+  run_id: string;
+  data?: Record<string, unknown>;
+  error?: string;
+  duration_ms?: number;
+}
+
 export interface KernelRequest {
   module: ExecModule;
   mode: ModuleMode;
@@ -94,3 +118,14 @@ export const MODULE_FUNCTION_PREFIXES: Record<ExecModule, string> = {
   ai_cfo: 'cfo-',
   ai_coo: 'coo-',
 };
+
+/**
+ * CMO Agent Names
+ */
+export const CMO_AGENTS = {
+  CAMPAIGN_BUILDER: 'cmo_campaign_builder',
+  VOICE_AGENT_BUILDER: 'cmo_voice_agent_builder',
+  OPTIMIZER: 'cmo_optimizer',
+} as const;
+
+export type CMOAgentName = typeof CMO_AGENTS[keyof typeof CMO_AGENTS];
