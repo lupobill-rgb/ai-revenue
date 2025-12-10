@@ -143,9 +143,35 @@ serve(async (req) => {
         metadata: {
           url: publishedUrl,
           templateType: draft.templateType,
+          urlSlug: draft.urlSlug,
         },
       });
     }
+
+    // Auto-wire the form submission config for lead capture
+    // This metadata will be embedded in the rendered page's form
+    const formSubmissionConfig = {
+      workspaceId,
+      campaignId: campaign_id || null,
+      landingPageSlug: draft.urlSlug,
+      landingPageUrl: publishedUrl,
+    };
+
+    // Store the form config in the variant metadata for rendering
+    await supabase
+      .from("cmo_content_variants")
+      .update({
+        metadata: {
+          templateType: draft.templateType,
+          urlSlug: draft.urlSlug,
+          formFields: draft.formFields,
+          sections: draft.sections,
+          formSubmissionConfig, // Auto-wired lead capture config
+        },
+      })
+      .eq("asset_id", asset.id);
+
+    console.log(`[landing-pages-save] Auto-wired form submission for slug: ${draft.urlSlug}, campaign: ${campaign_id || 'none'}`);
 
     // Log agent run
     await supabase.from("agent_runs").insert({

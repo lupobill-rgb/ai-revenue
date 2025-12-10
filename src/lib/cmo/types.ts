@@ -398,6 +398,13 @@ export interface LandingPageDraft {
   url?: string;
   published?: boolean;
   autoWired?: boolean;
+  // Auto-wired form submission config for lead capture
+  formSubmissionConfig?: {
+    workspaceId: string;
+    campaignId: string | null;
+    landingPageSlug: string;
+    landingPageUrl: string | null;
+  } | null;
   variantId?: string;
   created_at?: string;
   updated_at?: string;

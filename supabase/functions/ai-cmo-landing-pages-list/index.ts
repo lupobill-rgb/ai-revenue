@@ -124,6 +124,7 @@ serve(async (req) => {
     const landingPages = assets.map(asset => {
       const variant = variants?.find(v => v.asset_id === asset.id);
       let bodyContent: Record<string, unknown> = {};
+      const metadata = (variant?.metadata as Record<string, unknown>) || {};
       
       try {
         bodyContent = variant?.body_content ? JSON.parse(variant.body_content) : {};
@@ -132,28 +133,33 @@ serve(async (req) => {
       }
 
       const isPublished = asset.status === "published";
-      const urlSlug = (bodyContent.url_slug as string) || "";
+      const urlSlug = (metadata.urlSlug as string) || (bodyContent.urlSlug as string) || "";
+      const formSubmissionConfig = metadata.formSubmissionConfig as Record<string, unknown> | undefined;
+      
+      // Landing page is auto-wired if it has formSubmissionConfig with workspaceId
+      const isAutoWired = !!formSubmissionConfig?.workspaceId;
       
       return {
         id: asset.id,
         campaignId: asset.campaign_id,
         campaignName: asset.campaign_id ? campaignMap.get(asset.campaign_id) : null,
-        templateType: (bodyContent.template_type as string) || "lead_magnet",
+        templateType: (metadata.templateType as string) || (bodyContent.templateType as string) || "lead_magnet",
         internalName: asset.title,
         urlSlug,
         heroHeadline: variant?.headline || asset.key_message || "",
-        heroSubheadline: variant?.subject_line || "",
-        heroSupportingPoints: (bodyContent.hero_supporting_points as string[]) || asset.supporting_points || [],
-        sections: (bodyContent.sections as unknown[]) || [],
-        primaryCtaLabel: variant?.cta_text || asset.cta || "Get Started",
-        primaryCtaType: (bodyContent.primary_cta_type as string) || "form",
-        formFields: (bodyContent.form_fields as unknown[]) || [],
+        heroSubheadline: (bodyContent.heroSubheadline as string) || variant?.subject_line || "",
+        heroSupportingPoints: (bodyContent.heroSupportingPoints as string[]) || asset.supporting_points || [],
+        sections: (metadata.sections as unknown[]) || (bodyContent.sections as unknown[]) || [],
+        primaryCtaLabel: variant?.cta_text || (bodyContent.primaryCtaLabel as string) || asset.cta || "Get Started",
+        primaryCtaType: (bodyContent.primaryCtaType as string) || "form",
+        formFields: (metadata.formFields as unknown[]) || (bodyContent.formFields as unknown[]) || [],
         published: isPublished,
         status: asset.status,
         url: isPublished && urlSlug 
-          ? (bodyContent.published_url as string) || `https://${tenantId}.ai-cmo.app/${urlSlug}`
+          ? `https://pages.ubigrowth.ai/${urlSlug}`
           : null,
-        autoWired: (variant?.metadata as Record<string, unknown>)?.auto_wired || false,
+        autoWired: isAutoWired,
+        formSubmissionConfig: isAutoWired ? formSubmissionConfig : null,
         createdAt: asset.created_at,
         variantId: variant?.id,
       };
