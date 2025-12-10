@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,19 +13,55 @@ serve(async (req) => {
   }
 
   try {
-    const vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY');
-    
-    if (!vapiPrivateKey) {
-      console.error('VAPI_PRIVATE_KEY not configured');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'VAPI_PRIVATE_KEY not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Fetching assistants from Vapi API...');
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
-    // Fetch assistants from Vapi API
+    // Verify user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get tenant-specific VAPI key from ai_settings_voice
+    const { data: voiceSettings, error: settingsError } = await supabase
+      .from('ai_settings_voice')
+      .select('vapi_private_key')
+      .eq('tenant_id', user.id)
+      .maybeSingle();
+
+    let vapiPrivateKey = voiceSettings?.vapi_private_key;
+
+    // Fallback to global key if tenant doesn't have one configured
+    if (!vapiPrivateKey) {
+      vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY');
+    }
+    
+    if (!vapiPrivateKey) {
+      console.error('No VAPI private key configured for tenant or globally');
+      return new Response(
+        JSON.stringify({ error: 'VAPI private key not configured. Please add your VAPI credentials in Settings → Integrations → Voice.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Fetching assistants from Vapi API for tenant ${user.id}...`);
+
+    // Fetch assistants from Vapi API using tenant's key
     const response = await fetch('https://api.vapi.ai/assistant', {
       method: 'GET',
       headers: {
@@ -43,7 +80,7 @@ serve(async (req) => {
     }
 
     const assistants = await response.json();
-    console.log(`Successfully fetched ${assistants.length} assistants`);
+    console.log(`Successfully fetched ${assistants.length} assistants for tenant ${user.id}`);
 
     // Return simplified assistant data
     const simplifiedAssistants = assistants.map((assistant: any) => ({
