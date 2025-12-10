@@ -18,6 +18,9 @@ verify_jwt = true
 [functions.ai-cmo-autopilot-build]
 verify_jwt = true
 
+[functions.ai-cmo-voice-agents]
+verify_jwt = true
+
 [functions.ai-chat]
 verify_jwt = true
 
