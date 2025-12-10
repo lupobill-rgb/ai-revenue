@@ -42,6 +42,7 @@ serve(async (req) => {
 
     const body = JSON.parse(rawBody) as {
       workspaceId: string;
+      tenantId?: string; // Support both workspaceId and tenantId
       password?: string;
       firstName: string;
       lastName: string;
@@ -55,13 +56,13 @@ serve(async (req) => {
       utmCampaign?: string;
       landingPageUrl?: string;
       customFields?: Record<string, unknown>;
-      // Landing page integration fields
       campaignId?: string;
       landingPageSlug?: string;
     };
 
     const {
       workspaceId,
+      tenantId,
       password,
       firstName,
       lastName,
@@ -79,10 +80,13 @@ serve(async (req) => {
       landingPageSlug,
     } = body;
 
+    // Use tenantId if provided, otherwise fall back to workspaceId
+    const effectiveTenantId = tenantId || workspaceId;
+
     // Validate required fields
-    if (!workspaceId) {
+    if (!effectiveTenantId) {
       return new Response(
-        JSON.stringify({ error: "Missing required field: workspaceId" }),
+        JSON.stringify({ error: "Missing required field: tenantId or workspaceId" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -95,12 +99,12 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Rate limiting per workspace + IP
+    // Rate limiting per tenant + IP
     const clientIp = getClientIp(req);
     const rateLimitResult = await checkRateLimits(
       supabaseClient,
       "lead-capture",
-      workspaceId,
+      effectiveTenantId,
       clientIp,
       RATE_LIMIT_CONFIG
     );
@@ -130,268 +134,126 @@ serve(async (req) => {
       );
     }
 
-    // Verify workspace exists
-    const { data: workspace, error: wsError } = await supabaseClient
-      .from("workspaces")
-      .select("id")
-      .eq("id", workspaceId)
-      .single();
-
-    if (wsError || !workspace) {
-      console.error("[lead-capture] Invalid workspace:", workspaceId);
-      return new Response(
-        JSON.stringify({ error: "Invalid workspace" }),
+    // Check workspace form password (if workspaceId provided and password configured)
+    if (workspaceId) {
+      const { data: passOk, error: passError } = await supabaseClient.rpc(
+        "check_workspace_form_password",
         {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          _workspace_id: workspaceId,
+          _password: password ?? "",
         }
       );
-    }
 
-    // Check workspace form password (if configured)
-    const { data: passOk, error: passError } = await supabaseClient.rpc(
-      "check_workspace_form_password",
-      {
-        _workspace_id: workspaceId,
-        _password: password ?? "",
+      if (passError || !passOk) {
+        console.error("[lead-capture] Invalid form password for workspace:", workspaceId);
+        return new Response(
+          JSON.stringify({ error: "Invalid form password" }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
       }
-    );
-
-    if (passError || !passOk) {
-      console.error("[lead-capture] Invalid form password for workspace:", workspaceId);
-      return new Response(
-        JSON.stringify({ error: "Invalid form password" }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
     }
-
-    // Check if lead already exists in this workspace
-    const { data: existingLead } = await supabaseClient
-      .from("leads")
-      .select("id")
-      .eq("email", email)
-      .eq("workspace_id", workspaceId)
-      .single();
-
-    if (existingLead) {
-      // Update existing lead
-      const { data, error } = await supabaseClient
-        .from("leads")
-        .update({
-          first_name: firstName,
-          last_name: lastName,
-          phone: phone || null,
-          company: company || null,
-          job_title: jobTitle || null,
-          vertical: vertical || null,
-          utm_source: utmSource || null,
-          utm_medium: utmMedium || null,
-          utm_campaign: utmCampaign || null,
-          landing_page_url: landingPageUrl || null,
-          custom_fields: customFields || {},
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingLead.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Log activity
-      await supabaseClient.from("lead_activities").insert({
-        lead_id: existingLead.id,
-        workspace_id: workspaceId,
-        activity_type: "note",
-        description: `Lead updated via landing page form`,
-        metadata: { landing_page_url: landingPageUrl },
-      });
-
-      console.log(`[lead-capture] Lead updated: ${email} in workspace ${workspaceId}`);
-
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          leadId: existingLead.id,
-          message: "Lead updated successfully" 
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Calculate vertical-specific lead score
-    let score = 40; // Base score
-    const companySize = customFields?.companySize || customFields?.company_size || '';
-    
-    // Vertical-specific scoring logic
-    const verticalScoring: Record<string, (l: any) => number> = {
-      'hotels_resorts': (l) => {
-        let s = 0;
-        if (l.jobTitle?.toLowerCase().includes('general manager') || l.jobTitle?.toLowerCase().includes('revenue manager')) s += 25;
-        if (l.companySize === 'large' || l.companySize === 'enterprise') s += 20;
-        if (l.customFields?.rooms && parseInt(l.customFields.rooms) > 100) s += 15;
-        return s;
-      },
-      'multifamily_real_estate': (l) => {
-        let s = 0;
-        if (l.jobTitle?.toLowerCase().includes('property manager') || l.jobTitle?.toLowerCase().includes('leasing director')) s += 25;
-        if (l.customFields?.units && parseInt(l.customFields.units) > 200) s += 20;
-        if (l.companySize === 'large' || l.companySize === 'enterprise') s += 15;
-        return s;
-      },
-      'pickleball_country_clubs': (l) => {
-        let s = 0;
-        if (l.jobTitle?.toLowerCase().includes('club manager') || l.jobTitle?.toLowerCase().includes('membership director')) s += 25;
-        if (l.customFields?.members && parseInt(l.customFields.members) > 500) s += 20;
-        if (l.companySize === 'medium' || l.companySize === 'large') s += 15;
-        return s;
-      },
-      'entertainment_venues': (l) => {
-        let s = 0;
-        if (l.jobTitle?.toLowerCase().includes('venue manager') || l.jobTitle?.toLowerCase().includes('event director')) s += 25;
-        if (l.customFields?.capacity && parseInt(l.customFields.capacity) > 1000) s += 20;
-        if (l.companySize === 'medium' || l.companySize === 'large') s += 15;
-        return s;
-      },
-      'physical_therapy': (l) => {
-        let s = 0;
-        if (l.jobTitle?.toLowerCase().includes('clinic director') || l.jobTitle?.toLowerCase().includes('practice owner')) s += 25;
-        if (l.customFields?.clinics && parseInt(l.customFields.clinics) > 3) s += 20;
-        if (l.companySize === 'medium' || l.companySize === 'large') s += 15;
-        return s;
-      },
-      'corporate_coworking': (l) => {
-        let s = 0;
-        if (l.jobTitle?.toLowerCase().includes('facilities manager') || l.jobTitle?.toLowerCase().includes('operations director')) s += 25;
-        if (l.customFields?.sqft && parseInt(l.customFields.sqft) > 20000) s += 20;
-        if (l.companySize === 'large' || l.companySize === 'enterprise') s += 15;
-        return s;
-      },
-      'education': (l) => {
-        let s = 0;
-        if (l.jobTitle?.toLowerCase().includes('dean') || l.jobTitle?.toLowerCase().includes('director') || l.jobTitle?.toLowerCase().includes('superintendent')) s += 25;
-        if (l.customFields?.students && parseInt(l.customFields.students) > 1000) s += 20;
-        if (l.companySize === 'large' || l.companySize === 'enterprise') s += 15;
-        return s;
-      },
-      'gyms': (l) => {
-        let s = 0;
-        if (l.jobTitle?.toLowerCase().includes('owner') || l.jobTitle?.toLowerCase().includes('general manager')) s += 25;
-        if (l.customFields?.members && parseInt(l.customFields.members) > 500) s += 20;
-        if (l.customFields?.locations && parseInt(l.customFields.locations) > 1) s += 15;
-        return s;
-      }
-    };
-    
-    // Apply vertical-specific scoring
-    if (vertical && verticalScoring[vertical]) {
-      score += verticalScoring[vertical]({ jobTitle, companySize, customFields });
-    }
-    
-    // Universal scoring factors
-    if (jobTitle && (jobTitle.toLowerCase().includes('director') || 
-        jobTitle.toLowerCase().includes('manager') || 
-        jobTitle.toLowerCase().includes('vp') || 
-        jobTitle.toLowerCase().includes('ceo') ||
-        jobTitle.toLowerCase().includes('owner'))) {
-      score += 15;
-    }
-    
-    if (companySize === 'enterprise' || companySize === 'large') {
-      score += 10;
-    }
-    
-    if (phone) {
-      score += 10;
-    }
-    
-    // Cap score at 100
-    score = Math.min(score, 100);
 
     // Build source with landing page slug for automation matching
     const leadSource = landingPageSlug 
       ? `landing_page:${landingPageSlug}` 
       : "landing_page";
 
-    // Create new lead with workspace_id and campaign linking
-    const { data, error } = await supabaseClient
-      .from("leads")
-      .insert({
-        workspace_id: workspaceId,
-        first_name: firstName,
-        last_name: lastName,
-        email,
-        phone: phone || null,
-        company: company || null,
-        job_title: jobTitle || null,
-        source: leadSource,
-        status: "new",
-        score,
-        vertical: vertical || null,
-        campaign_id: campaignId || null,
-        utm_source: utmSource || null,
-        utm_medium: utmMedium || null,
-        utm_campaign: utmCampaign || null,
-        landing_page_url: landingPageUrl || null,
-        custom_fields: customFields || {},
-      })
-      .select()
-      .single();
+    // Use centralized RPC for contact/lead upsert (CRM spine)
+    const { data: result, error: rpcError } = await supabaseClient.rpc(
+      "crm_upsert_contact_and_lead",
+      {
+        in_tenant_id: effectiveTenantId,
+        in_email: email.toLowerCase().trim(),
+        in_phone: phone || null,
+        in_first_name: firstName || null,
+        in_last_name: lastName || null,
+        in_company: company || null,
+        in_job_title: jobTitle || null,
+        in_campaign_id: campaignId || null,
+        in_source: leadSource,
+      }
+    );
 
-    if (error) throw error;
+    if (rpcError || !result || result.length === 0) {
+      console.error("[lead-capture] RPC crm_upsert_contact_and_lead failed:", rpcError);
+      throw rpcError || new Error("Failed to create contact/lead");
+    }
 
-    // Log initial activity with workspace_id
-    await supabaseClient.from("lead_activities").insert({
-      lead_id: data.id,
-      workspace_id: workspaceId,
-      activity_type: "note",
-      description: `New lead captured via landing page form`,
-      metadata: { 
-        landing_page_url: landingPageUrl,
-        landing_page_slug: landingPageSlug,
-        campaign_id: campaignId,
-        initial_score: score 
+    const contactId = result[0].contact_id;
+    const leadId = result[0].lead_id;
+    console.log("[lead-capture] Created CRM contact:", contactId, "lead:", leadId);
+
+    // Log activity to crm_activities
+    const activityMeta = {
+      landing_page_url: landingPageUrl,
+      landing_page_slug: landingPageSlug,
+      campaign_id: campaignId,
+      utm: {
+        utm_source: utmSource,
+        utm_medium: utmMedium,
+        utm_campaign: utmCampaign,
       },
-    });
+      vertical: vertical,
+      custom_fields: customFields || {},
+    };
 
-    console.log(`[lead-capture] New lead captured: ${email} (Score: ${score}) in workspace ${workspaceId}, source: ${leadSource}`);
+    const { error: activityError } = await supabaseClient
+      .from("crm_activities")
+      .insert({
+        tenant_id: effectiveTenantId,
+        contact_id: contactId,
+        lead_id: leadId,
+        activity_type: "landing_form_submit",
+        meta: activityMeta,
+      });
 
-    // Auto-trigger campaign automations if campaign_id is linked
+    if (activityError) {
+      console.error("[lead-capture] Failed to log CRM activity:", activityError);
+      // Non-blocking - don't throw
+    } else {
+      console.log("[lead-capture] Logged CRM activity for contact:", contactId);
+    }
+
+    // Trigger kernel for next steps (automations, scoring, routing)
     if (campaignId) {
-      // Find automation steps triggered by lead creation for this campaign
-      const { data: automationSteps } = await supabaseClient
-        .from("automation_steps")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .eq("automation_id", campaignId)
-        .order("step_order", { ascending: true });
-
-      if (automationSteps && automationSteps.length > 0) {
-        console.log(`[lead-capture] Found ${automationSteps.length} automation steps for campaign ${campaignId}`);
-        
-        // Log automation trigger event
-        await supabaseClient.from("lead_activities").insert({
-          lead_id: data.id,
-          workspace_id: workspaceId,
-          activity_type: "automation_triggered",
-          description: `Campaign automation triggered: ${automationSteps.length} steps queued`,
-          metadata: { 
-            campaign_id: campaignId,
-            steps_count: automationSteps.length 
-          },
-        });
+      try {
+        const { error: kernelError } = await supabaseClient.functions.invoke(
+          "cmo-kernel",
+          {
+            body: {
+              agent_name: "cmo_lead_router",
+              tenant_id: effectiveTenantId,
+              campaign_id: campaignId,
+              payload: {
+                contact_id: contactId,
+                lead_id: leadId,
+                source: leadSource,
+                utm: { utmSource, utmMedium, utmCampaign },
+              },
+            },
+          }
+        );
+        if (kernelError) {
+          console.warn("[lead-capture] Kernel lead router failed:", kernelError);
+        } else {
+          console.log("[lead-capture] Triggered cmo_lead_router for lead:", leadId);
+        }
+      } catch (kernelErr) {
+        console.warn("[lead-capture] Kernel call error:", kernelErr);
       }
     }
+
+    console.log(`[lead-capture] Successfully captured lead: ${email} for tenant ${effectiveTenantId}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        leadId: data.id,
-        message: "Lead created successfully" 
+        contactId,
+        leadId,
+        message: "Lead captured successfully" 
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

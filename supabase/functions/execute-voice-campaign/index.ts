@@ -50,7 +50,7 @@ serve(async (req) => {
       return rateLimitResponse(rateLimitResult, corsHeaders);
     }
 
-    const { assetId, assistantId, phoneNumberId } = await req.json();
+    const { assetId, assistantId, phoneNumberId, tenantId } = await req.json();
 
     if (!assetId || !assistantId) {
       return new Response(
@@ -74,6 +74,9 @@ serve(async (req) => {
       );
     }
 
+    // Use provided tenantId or fall back to user.id
+    const effectiveTenantId = tenantId || user.id;
+
     const content = asset.content as any;
     const targetLeads = content?.target_leads || [];
 
@@ -84,7 +87,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Executing voice campaign for ${targetLeads.length} leads`);
+    console.log(`[execute-voice-campaign] Executing for ${targetLeads.length} leads, tenant: ${effectiveTenantId}`);
 
     const results: { leadId: string; success: boolean; callId?: string; error?: string }[] = [];
     let successCount = 0;
@@ -121,23 +124,38 @@ serve(async (req) => {
           results.push({ leadId: lead.id, success: true, callId: callData.id });
           successCount++;
 
-          // Log activity for the lead - include workspace_id for RLS
-          await supabaseClient.from('lead_activities').insert({
-            lead_id: lead.id,
-            activity_type: 'outbound_call',
-            description: `Outbound call initiated via voice campaign: ${asset.name}`,
-            created_by: user.id,
-            workspace_id: asset.workspace_id,
-            metadata: { callId: callData.id, assetId, assistantId },
-          });
+          // Log activity to crm_activities (unified CRM spine)
+          const { error: activityError } = await serviceClient
+            .from('crm_activities')
+            .insert({
+              tenant_id: effectiveTenantId,
+              contact_id: lead.contactId || null,
+              lead_id: lead.crmLeadId || null,
+              activity_type: 'voice_call',
+              meta: {
+                call_id: callData.id,
+                asset_id: assetId,
+                assistant_id: assistantId,
+                outcome: 'initiated',
+                phone: lead.phone,
+                lead_name: lead.name,
+                campaign_name: asset.name,
+              },
+            });
 
-          // Trigger auto-scoring for engaged lead using user's JWT (RLS enforced)
+          if (activityError) {
+            console.error("[execute-voice-campaign] Failed to log CRM activity:", activityError);
+          } else {
+            console.log(`[execute-voice-campaign] Logged voice_call activity for lead: ${lead.id}`);
+          }
+
+          // Trigger auto-scoring for engaged lead
           try {
             await supabaseClient.functions.invoke('auto-score-lead', {
               body: { leadId: lead.id },
             });
           } catch (scoreError) {
-            console.error("Error triggering auto-score:", scoreError);
+            console.error("[execute-voice-campaign] Error triggering auto-score:", scoreError);
           }
         } else {
           let errorMessage = 'Call failed';
@@ -198,7 +216,7 @@ serve(async (req) => {
       }, { onConflict: 'campaign_id' });
     }
 
-    console.log(`Voice campaign completed: ${successCount} successful, ${failCount} failed`);
+    console.log(`[execute-voice-campaign] Completed: ${successCount} successful, ${failCount} failed`);
 
     return new Response(
       JSON.stringify({
@@ -212,7 +230,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in execute-voice-campaign:', error);
+    console.error('[execute-voice-campaign] Error:', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -41,11 +41,9 @@ serve(async (req) => {
     console.log("[crm-email-reply-webhook] Received event:", payload.type || "inbound");
 
     // Handle Resend inbound email (reply detection)
-    // Resend sends inbound emails with from, to, subject, text, html
-    const senderEmail = payload.from?.toLowerCase() || payload.data?.from?.toLowerCase();
+    const senderEmail = (payload.from?.toLowerCase() || payload.data?.from?.toLowerCase() || "").trim();
     const subject = payload.subject || payload.data?.subject || "";
     const textContent = payload.text || payload.data?.text || "";
-    const htmlContent = payload.html || payload.data?.html || "";
 
     if (!senderEmail) {
       console.log("[crm-email-reply-webhook] No sender email found");
@@ -56,27 +54,33 @@ serve(async (req) => {
 
     console.log(`[crm-email-reply-webhook] Processing reply from: ${senderEmail}`);
 
-    // Find lead by email in CRM
-    const { data: lead, error: leadError } = await supabase
-      .from("leads")
-      .select("id, workspace_id, first_name, last_name, email, status")
+    // First check CRM contacts (unified CRM spine)
+    const { data: crmContact, error: crmError } = await supabase
+      .from("crm_contacts")
+      .select("id, tenant_id, first_name, last_name, email, status")
       .ilike("email", senderEmail)
       .maybeSingle();
 
-    if (leadError) {
-      console.error("[crm-email-reply-webhook] Error finding lead:", leadError);
-    }
+    if (crmContact) {
+      console.log(`[crm-email-reply-webhook] Found CRM contact: ${crmContact.first_name} ${crmContact.last_name}`);
 
-    if (lead) {
-      console.log(`[crm-email-reply-webhook] Found CRM lead: ${lead.first_name} ${lead.last_name}`);
+      // Find the most recent lead for this contact
+      const { data: crmLead } = await supabase
+        .from("crm_leads")
+        .select("id, status")
+        .eq("contact_id", crmContact.id)
+        .eq("tenant_id", crmContact.tenant_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      // Log reply as lead activity
-      const { error: activityError } = await supabase.from("lead_activities").insert({
-        lead_id: lead.id,
-        workspace_id: lead.workspace_id,
-        activity_type: "email_replied",
-        description: `Lead replied to email: "${subject.substring(0, 100)}"`,
-        metadata: {
+      // Log reply to crm_activities (unified CRM spine)
+      const { error: activityError } = await supabase.from("crm_activities").insert({
+        tenant_id: crmContact.tenant_id,
+        contact_id: crmContact.id,
+        lead_id: crmLead?.id || null,
+        activity_type: "email_reply",
+        meta: {
           from: senderEmail,
           subject: subject,
           text_preview: textContent.substring(0, 500),
@@ -85,33 +89,39 @@ serve(async (req) => {
       });
 
       if (activityError) {
-        console.error("[crm-email-reply-webhook] Error logging activity:", activityError);
+        console.error("[crm-email-reply-webhook] Error logging CRM activity:", activityError);
+      } else {
+        console.log(`[crm-email-reply-webhook] Logged email_reply activity for contact: ${crmContact.id}`);
       }
 
-      // Update lead status to 'contacted' if currently 'new'
-      if (lead.status === "new") {
+      // Update lead status to 'working' if currently 'new'
+      if (crmLead && crmLead.status === "new") {
         await supabase
-          .from("leads")
-          .update({ status: "contacted", updated_at: new Date().toISOString() })
-          .eq("id", lead.id);
-        console.log(`[crm-email-reply-webhook] Updated lead status to 'contacted'`);
-      }
+          .from("crm_leads")
+          .update({ status: "working", updated_at: new Date().toISOString() })
+          .eq("id", crmLead.id);
+        console.log(`[crm-email-reply-webhook] Updated CRM lead status to 'working'`);
 
-      // Trigger lead scoring for engagement
-      try {
-        await supabase.functions.invoke("auto-score-lead", {
-          body: { leadId: lead.id },
+        // Log status change activity
+        await supabase.from("crm_activities").insert({
+          tenant_id: crmContact.tenant_id,
+          contact_id: crmContact.id,
+          lead_id: crmLead.id,
+          activity_type: "status_change",
+          meta: {
+            old_status: "new",
+            new_status: "working",
+            triggered_by: "email_reply",
+          },
         });
-        console.log(`[crm-email-reply-webhook] Triggered auto-scoring for lead ${lead.id}`);
-      } catch (scoreError) {
-        console.error("[crm-email-reply-webhook] Error triggering auto-score:", scoreError);
       }
 
       return new Response(JSON.stringify({
         status: "ok",
-        lead_id: lead.id,
-        action: "reply_logged",
-        lead_name: `${lead.first_name} ${lead.last_name}`,
+        contact_id: crmContact.id,
+        lead_id: crmLead?.id,
+        action: "crm_reply_logged",
+        contact_name: `${crmContact.first_name} ${crmContact.last_name}`,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -170,6 +180,21 @@ serve(async (req) => {
         console.log(`[crm-email-reply-webhook] Prospect reply logged, sequence paused`);
       }
 
+      // Also log to crm_activities if prospect has a linked CRM contact
+      await supabase.from("crm_activities").insert({
+        tenant_id: prospect.tenant_id,
+        contact_id: null, // Will be linked if prospect has contact_id
+        lead_id: null,
+        activity_type: "email_reply",
+        meta: {
+          from: senderEmail,
+          subject: subject,
+          text_preview: textContent.substring(0, 500),
+          prospect_id: prospect.id,
+          source: "outbound_os",
+        },
+      });
+
       return new Response(JSON.stringify({
         status: "ok",
         prospect_id: prospect.id,
@@ -179,7 +204,7 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[crm-email-reply-webhook] No lead or prospect found for: ${senderEmail}`);
+    console.log(`[crm-email-reply-webhook] No CRM contact or prospect found for: ${senderEmail}`);
     return new Response(JSON.stringify({ status: "no_match", email: senderEmail }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
