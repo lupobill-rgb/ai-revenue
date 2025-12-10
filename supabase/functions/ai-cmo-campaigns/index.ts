@@ -46,6 +46,52 @@ serve(async (req) => {
 
     const tenantId = userTenant?.tenant_id || user.id;
 
+    // Parse URL to determine route
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    
+    // Route: GET /ai-cmo-campaigns/:id/optimizations
+    if (req.method === "GET" && pathParts.length >= 2 && pathParts[pathParts.length - 1] === "optimizations") {
+      const campaignId = pathParts[pathParts.length - 2];
+      
+      if (!campaignId || campaignId === "ai-cmo-campaigns") {
+        return new Response(
+          JSON.stringify({ error: "Campaign ID required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log(`Fetching optimizations for campaign: ${campaignId}`);
+
+      const { data: optimizations, error: optError } = await supabase
+        .from("campaign_optimizations")
+        .select("id, created_at, summary")
+        .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: false });
+
+      if (optError) {
+        console.error("Error fetching optimizations:", optError);
+        return new Response(
+          JSON.stringify({ error: optError.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const response = (optimizations || []).map(opt => ({
+        id: opt.id,
+        createdAt: opt.created_at,
+        summary: opt.summary || "No summary available",
+      }));
+
+      console.log(`Found ${response.length} optimizations for campaign ${campaignId}`);
+
+      return new Response(
+        JSON.stringify(response),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Default route: GET /ai-cmo-campaigns - List all campaigns
     // Fetch campaigns with channels
     const { data: campaigns, error: campaignsError } = await supabase
       .from("cmo_campaigns")
