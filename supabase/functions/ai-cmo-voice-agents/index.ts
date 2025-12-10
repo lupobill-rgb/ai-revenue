@@ -78,207 +78,80 @@ serve(async (req) => {
 
     const workspaceId = workspace?.id || tenantId;
 
-    // Fetch brand profile for context
-    const { data: brandProfile } = await supabase
-      .from("cmo_brand_profiles")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .limit(1)
-      .single();
-
-    // Fetch voice settings
-    const { data: voiceSettings } = await supabase
-      .from("ai_settings_voice")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .single();
-
-    // Build AI prompt for voice agent generation
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "AI service not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const brandContext = brandProfile ? `
-Brand: ${brandProfile.brand_name}
-Industry: ${brandProfile.industry || "Not specified"}
-Value Proposition: ${brandProfile.unique_value_proposition || ""}
-Brand Tone: ${brandProfile.brand_tone || brandVoice}
-Messaging Pillars: ${JSON.stringify(brandProfile.messaging_pillars || [])}
-` : `Brand Voice: ${brandVoice}`;
-
-    const systemPrompt = `You are a Voice Agent Architect for AI-powered outbound calling systems.
-Your task is to generate a complete voice agent configuration for VAPI/ElevenLabs.
-
-${brandContext}
-
-Generate a voice agent configuration that:
-1. Matches the brand voice and tone
-2. Addresses the target ICP's pain points and desires
-3. Presents the offer naturally in conversation
-4. Handles common objections gracefully
-5. Respects all compliance constraints
-6. Qualifies prospects effectively
-
-Output JSON with this structure:
-{
-  "agent_name": "string - descriptive name for the agent",
-  "system_prompt": "string - detailed system prompt for the AI voice agent",
-  "first_message": "string - opening message when call connects",
-  "voice_id": "string - recommended voice ID (alloy, echo, fable, onyx, nova, shimmer for OpenAI; or ElevenLabs voice ID)",
-  "model": "string - gpt-4o-mini or gpt-4o",
-  "tools": [
-    {
-      "name": "string",
-      "description": "string",
-      "parameters": {}
-    }
-  ],
-  "objection_handlers": [
-    {
-      "objection": "string - the objection",
-      "response": "string - recommended response"
-    }
-  ],
-  "qualification_questions": [
-    "string - questions to qualify the prospect"
-  ],
-  "compliance_statements": [
-    "string - required compliance statements"
-  ],
-  "call_flow": {
-    "opening": "string",
-    "discovery": "string", 
-    "pitch": "string",
-    "handling_objections": "string",
-    "closing": "string"
-  }
-}`;
-
-    const userPrompt = `Create a voice agent for:
-
-ICP (Ideal Customer Profile):
-${icp}
-
-Offer:
-${offer}
-
-Brand Voice: ${brandVoice}
-
-Compliance Constraints:
-${constraints.length > 0 ? constraints.map(c => `- ${c}`).join("\n") : "- Standard professional compliance"}
-
-Generate a complete voice agent configuration optimized for high conversion while maintaining brand authenticity.`;
-
-    console.log("Calling AI to generate voice agent configuration...");
-
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Call kernel cmo_voice_agent_builder
+    console.log("Calling kernel cmo_voice_agent_builder...");
+    
+    const kernelResponse = await fetch(`${supabaseUrl}/functions/v1/cmo-kernel`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": authHeader,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.3,
-        response_format: { type: "json_object" },
+        mode: "voice-agent-builder",
+        tenant_id: tenantId,
+        workspace_id: workspaceId,
+        payload: {
+          brandVoice,
+          icp,
+          offer,
+          constraints,
+          campaignId,
+        },
       }),
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error("AI API error:", errorText);
+    if (!kernelResponse.ok) {
+      const errorText = await kernelResponse.text();
+      console.error("Kernel error:", errorText);
       return new Response(
-        JSON.stringify({ error: "AI generation failed" }),
+        JSON.stringify({ error: "Voice agent generation failed" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content || "{}";
-    
-    let agentConfig;
-    try {
-      agentConfig = JSON.parse(content);
-    } catch {
-      // Try to extract JSON from markdown
-      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        agentConfig = JSON.parse(jsonMatch[1]);
-      } else {
-        throw new Error("Failed to parse AI response");
-      }
-    }
+    const kernelData = await kernelResponse.json();
+    const { provider, agent_config } = kernelData;
 
-    console.log("Voice agent configuration generated:", agentConfig.agent_name);
+    console.log("Kernel returned voice agent config:", { provider, agentName: agent_config?.agent_name });
 
-    // Determine voice provider based on settings
-    const voiceProvider = voiceSettings?.vapi_private_key ? "vapi" : 
-                          voiceSettings?.elevenlabs_api_key ? "elevenlabs" : "vapi";
-
-    // Store the voice agent configuration as a content asset
-    const { data: voiceAsset, error: assetError } = await supabase
+    // Insert into voice_agents table (using cmo_content_assets as voice_agents container)
+    const { data: voiceAgent, error: insertError } = await supabase
       .from("cmo_content_assets")
       .insert({
         tenant_id: tenantId,
         workspace_id: workspaceId,
         campaign_id: campaignId || null,
-        title: agentConfig.agent_name || "AI Voice Agent",
+        title: agent_config.agent_name || "AI Voice Agent",
         content_type: "voice_agent",
         channel: "voice",
         status: "draft",
-        key_message: agentConfig.first_message,
-        supporting_points: agentConfig.qualification_questions || [],
+        key_message: agent_config.first_message,
+        supporting_points: agent_config.qualification_questions || [],
         tone: brandVoice,
         dependencies: {
-          config: agentConfig,
-          voice_provider: voiceProvider,
-          voice_id: agentConfig.voice_id,
-          model: agentConfig.model,
-          system_prompt: agentConfig.system_prompt,
-          tools: agentConfig.tools,
-          objection_handlers: agentConfig.objection_handlers,
-          compliance_statements: agentConfig.compliance_statements,
-          call_flow: agentConfig.call_flow,
+          provider,
+          config: agent_config,
         },
       })
       .select()
       .single();
 
-    if (assetError) {
-      console.error("Error storing voice agent:", assetError);
+    if (insertError) {
+      console.error("Error inserting voice agent:", insertError);
       return new Response(
-        JSON.stringify({ error: "Failed to store voice agent configuration" }),
+        JSON.stringify({ error: "Failed to store voice agent" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Log agent run
-    await supabase.from("agent_runs").insert({
-      tenant_id: tenantId,
-      workspace_id: workspaceId,
-      agent: "cmo_voice_agent_builder",
-      mode: "create",
-      input: { brandVoice, icp, offer, constraints, campaignId },
-      output: agentConfig,
-      status: "completed",
-      completed_at: new Date().toISOString(),
-    });
+    console.log(`Voice agent ${voiceAgent.id} created successfully`);
 
     return new Response(
       JSON.stringify({
-        voiceAgentId: voiceAsset.id,
-        agentName: agentConfig.agent_name,
-        voiceProvider,
-        config: agentConfig,
-        status: "created",
+        id: voiceAgent.id,
+        provider,
+        config: agent_config,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
