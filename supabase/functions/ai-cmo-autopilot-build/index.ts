@@ -292,16 +292,41 @@ serve(async (req) => {
       await supabase.from("cmo_content_assets").insert(assetInserts);
     }
 
+    // Create automation definition with steps (including voice)
+    const automations = result.automations || {};
+    const automationSteps = automations.steps || [];
+    
+    if (automationSteps.length > 0) {
+      const stepInserts = automationSteps.map((step: any, index: number) => ({
+        tenant_id: tenantId,
+        workspace_id: workspaceId,
+        automation_id: campaign.id, // Link to campaign as automation container
+        step_order: step.step || index + 1,
+        step_type: step.type, // email, sms, wait, voice, condition
+        config: {
+          delay_days: step.delay_days || 0,
+          ...step.config,
+          // Voice-specific config
+          ...(step.type === "voice" && {
+            agent_id: step.config?.agent_id,
+            script_template: step.config?.script_template,
+            retry_on_no_answer: step.config?.retry_on_no_answer || false,
+            max_retries: step.config?.max_retries || 2,
+            max_duration: step.config?.max_duration || 300,
+          }),
+        },
+      }));
+
+      await supabase.from("automation_steps").insert(stepInserts);
+      console.log(`Created ${stepInserts.length} automation steps for campaign ${campaign.id}`);
+    }
+
     console.log(`Autopilot campaign ${campaign.id} built with ${assetInserts.length} assets`);
 
     return new Response(
       JSON.stringify({
-        success: true,
-        campaign_id: campaign.id,
-        campaign_name: result.campaign_name || campaign.campaign_name,
-        assets: result.assets,
-        automations: result.automations,
-        summary: result.summary || `Created campaign with ${assetInserts.length} assets`,
+        campaignId: campaign.id,
+        status: "created",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
