@@ -9,6 +9,9 @@ verify_jwt = true
 [functions.ai-cmo-campaigns]
 verify_jwt = true
 
+[functions.ai-cmo-toggle-autopilot]
+verify_jwt = true
+
 [functions.ai-chat]
 verify_jwt = true
 
