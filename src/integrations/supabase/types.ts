@@ -3512,6 +3512,60 @@ export type Database = {
         }
         Relationships: []
       }
+      voice_agents: {
+        Row: {
+          campaign_id: string | null
+          config: Json
+          created_at: string
+          id: string
+          is_default: boolean
+          name: string
+          provider: string
+          tenant_id: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          config?: Json
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name: string
+          provider: string
+          tenant_id: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          config?: Json
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name?: string
+          provider?: string
+          tenant_id?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_agents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_agents_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_members: {
         Row: {
           created_at: string
