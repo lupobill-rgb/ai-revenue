@@ -1,13 +1,15 @@
 {
-  "agent_name": "cmo_optimizer",
-  "version": "2.0.0",
-  "description": "Analyzes campaign performance and generates actionable optimization recommendations",
+  "id": "cmo_optimizer",
+  "agent_name": "CMO Optimization Agent",
+  "module": "ai_cmo",
+  "version": "2.1.0",
+  "description": "Analyzes campaign performance and generates actionable optimization changesets to improve results",
   "model": "google/gemini-2.5-flash",
-  "temperature": 0.5,
-  "system_prompt": "You are an expert marketing optimization AI for a multi-tenant SaaS platform. Your role is to analyze campaign performance metrics and current assets, then recommend specific, actionable changes to improve results.\n\nGuidelines:\n- Focus on the stated campaign goal (leads, meetings, revenue, engagement)\n- Respect all constraints provided by the tenant\n- Prioritize high-impact, low-effort changes\n- Be specific - provide actual new copy, not just 'improve this'\n- Consider the full funnel from awareness to conversion\n- Never reference other tenants or leak cross-tenant data\n- Output ONLY valid JSON matching the exact schema requested\n\nChange types you can recommend:\n- update_email: Modify email subject lines or body copy\n- update_sms: Modify SMS message text\n- update_post: Modify social post content\n- update_voice_script: Modify voice agent scripts\n- adjust_wait: Change timing/delays between steps\n- kill_variant: Archive underperforming content variants\n- add_step: Recommend adding a new automation step\n- remove_step: Recommend removing an ineffective step",
+  "temperature": 0.4,
+  "system_prompt": "You are the Optimization Agent for an AI marketing OS.\n\nYour job is to continuously optimize multi-channel B2B campaigns for a specific tenant.\nYou receive:\n- The campaign goal,\n- Recent performance metrics,\n- Current assets (emails, SMS, posts, landing pages, voice scripts),\n- Channel and compliance constraints.\n\nYou MUST:\n- Focus strictly on improving performance relative to the goal (leads, meetings, revenue, or engagement).\n- Propose specific, actionable changes that the system can apply.\n- Avoid random, high-risk experiments.\n- Preserve tenant's brand voice and constraints.\n- Never propose illegal, misleading, or spammy behavior.\n\nYou never talk to end users. You only return a JSON CHANGESET.\nDo not rewrite the entire campaign; only touch parts that need improvement.\nIf the campaign is already performing well, propose minimal or no changes and say so in \"summary\".\n\nYou must respond with a SINGLE valid JSON object only.\nDo not include explanations, comments, or extra keys.",
   "input_schema": {
     "type": "object",
-    "required": ["tenant_id", "campaign_id", "goal", "metrics"],
+    "required": ["tenant_id", "campaign_id", "goal", "metrics", "assets"],
     "properties": {
       "tenant_id": {
         "type": "string",
@@ -31,36 +33,131 @@
       },
       "metrics": {
         "type": "object",
+        "description": "Recent performance metrics",
         "properties": {
-          "opens": { "type": "integer" },
-          "clicks": { "type": "integer" },
-          "replies": { "type": "integer" },
-          "booked_meetings": { "type": "integer" },
-          "no_shows": { "type": "integer" },
+          "emails": {
+            "type": "object",
+            "properties": {
+              "sent": { "type": "integer" },
+              "opens": { "type": "integer" },
+              "clicks": { "type": "integer" },
+              "replies": { "type": "integer" },
+              "bounces": { "type": "integer" }
+            }
+          },
+          "sms": {
+            "type": "object",
+            "properties": {
+              "sent": { "type": "integer" },
+              "delivered": { "type": "integer" },
+              "replies": { "type": "integer" }
+            }
+          },
           "voice_calls": {
             "type": "object",
             "properties": {
-              "total": { "type": "integer" },
-              "reached": { "type": "integer" },
-              "booked": { "type": "integer" }
+              "attempted": { "type": "integer" },
+              "connected": { "type": "integer" },
+              "avg_duration_seconds": { "type": "number" },
+              "booked_meetings": { "type": "integer" }
+            }
+          },
+          "landing_pages": {
+            "type": "object",
+            "properties": {
+              "visits": { "type": "integer" },
+              "conversions": { "type": "integer" }
+            }
+          },
+          "overall": {
+            "type": "object",
+            "properties": {
+              "leads_generated": { "type": "integer" },
+              "meetings_booked": { "type": "integer" },
+              "revenue_attributed": { "type": "number" }
             }
           }
         }
       },
       "assets": {
         "type": "object",
+        "description": "Current campaign assets",
         "properties": {
-          "emails": { "type": "array" },
-          "sms": { "type": "array" },
-          "posts": { "type": "array" },
-          "landing_pages": { "type": "array" },
-          "voice_scripts": { "type": "array" }
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "subject": { "type": "string" },
+                "body": { "type": "string" },
+                "step_order": { "type": "integer" }
+              }
+            }
+          },
+          "sms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "body": { "type": "string" },
+                "step_order": { "type": "integer" }
+              }
+            }
+          },
+          "posts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "channel": { "type": "string" }
+              }
+            }
+          },
+          "landing_pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "url_slug": { "type": "string" },
+                "sections": { "type": "array" }
+              }
+            }
+          },
+          "voice_scripts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "scenario": { "type": "string" },
+                "script": { "type": "string" }
+              }
+            }
+          },
+          "automation_steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "step_order": { "type": "integer" },
+                "type": { "type": "string" },
+                "wait_hours": { "type": "number" }
+              }
+            }
+          }
         }
       },
       "constraints": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Optimization constraints (e.g., 'Do not change brand voice')"
+        "description": "Optimization constraints (e.g., 'Do not change brand voice', 'Max 3 emails in sequence')"
       }
     }
   },
@@ -70,41 +167,86 @@
     "properties": {
       "changes": {
         "type": "array",
+        "description": "List of 0 or more specific changes to apply",
         "items": {
-          "type": "object",
-          "required": ["type", "target_id", "reason"],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": ["update_email", "update_sms", "update_post", "update_voice_script", "adjust_wait", "kill_variant", "add_step", "remove_step"]
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["type", "target_id", "reason", "new_subject", "new_body"],
+              "properties": {
+                "type": { "const": "update_email" },
+                "target_id": { "type": "string" },
+                "reason": { "type": "string" },
+                "new_subject": { "type": "string" },
+                "new_body": { "type": "string" }
+              }
             },
-            "target_id": { "type": "string" },
-            "reason": { "type": "string" },
-            "new_subject": { "type": "string" },
-            "new_body": { "type": "string" },
-            "new_message": { "type": "string" },
-            "new_script": { "type": "string" },
-            "new_delay_hours": { "type": "integer" },
-            "metadata": { "type": "object" }
-          }
+            {
+              "type": "object",
+              "required": ["type", "target_id", "reason", "new_body"],
+              "properties": {
+                "type": { "const": "update_sms" },
+                "target_id": { "type": "string" },
+                "reason": { "type": "string" },
+                "new_body": { "type": "string" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "target_id", "reason", "new_delay_hours"],
+              "properties": {
+                "type": { "const": "adjust_wait" },
+                "target_id": { "type": "string" },
+                "reason": { "type": "string" },
+                "new_delay_hours": { "type": "number" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "target_id", "reason"],
+              "properties": {
+                "type": { "const": "kill_variant" },
+                "target_id": { "type": "string" },
+                "reason": { "type": "string" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "target_id", "reason", "new_body"],
+              "properties": {
+                "type": { "const": "update_post" },
+                "target_id": { "type": "string" },
+                "reason": { "type": "string" },
+                "new_body": { "type": "string" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "target_id", "reason", "new_heading", "new_body"],
+              "properties": {
+                "type": { "const": "update_landing_section" },
+                "target_id": { "type": "string" },
+                "reason": { "type": "string" },
+                "new_heading": { "type": "string" },
+                "new_body": { "type": "string" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "target_id", "reason", "new_script"],
+              "properties": {
+                "type": { "const": "update_voice_script" },
+                "target_id": { "type": "string" },
+                "reason": { "type": "string" },
+                "new_script": { "type": "string" }
+              }
+            }
+          ]
         }
       },
       "summary": {
         "type": "string",
-        "description": "Brief summary of all optimizations and expected impact"
-      },
-      "priority_actions": {
-        "type": "array",
-        "items": { "type": "string" },
-        "description": "Top 3 most impactful changes to implement first"
-      },
-      "metrics_targets": {
-        "type": "object",
-        "properties": {
-          "expected_open_rate_improvement": { "type": "string" },
-          "expected_reply_rate_improvement": { "type": "string" },
-          "expected_meeting_rate_improvement": { "type": "string" }
-        }
+        "description": "Human-readable short explanation of what was optimized and why"
       }
     }
   },
