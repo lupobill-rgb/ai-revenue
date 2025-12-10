@@ -376,6 +376,48 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
 
     setImporting(true);
     try {
+      // First verify user has access to this workspace
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) {
+        throw new Error("Please log in to import leads");
+      }
+
+      // Verify workspace membership
+      const { data: membership, error: membershipError } = await supabase
+        .from("workspace_members")
+        .select("workspace_id")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", user.user.id)
+        .maybeSingle();
+
+      // Also check if user owns the workspace
+      const { data: ownedWorkspace } = await supabase
+        .from("workspaces")
+        .select("id")
+        .eq("id", workspaceId)
+        .eq("owner_id", user.user.id)
+        .maybeSingle();
+
+      if (!membership && !ownedWorkspace) {
+        // User doesn't have access - try to find their actual workspace
+        const { data: userWorkspace } = await supabase
+          .from("workspace_members")
+          .select("workspace_id")
+          .eq("user_id", user.user.id)
+          .limit(1)
+          .maybeSingle();
+
+        if (userWorkspace?.workspace_id) {
+          // Update to correct workspace
+          localStorage.setItem("currentWorkspaceId", userWorkspace.workspace_id);
+          setWorkspaceId(userWorkspace.workspace_id);
+          sonnerToast.info("Workspace updated. Please try the import again.");
+          return;
+        }
+
+        throw new Error("You don't have access to this workspace. Please select a valid workspace.");
+      }
+
       const csvContent = await file.text();
       
       // Use AI to automatically map CSV columns
@@ -404,7 +446,6 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
         sonnerToast.warning("Low confidence mapping - please verify imported data");
       }
 
-      const { data: user } = await supabase.auth.getUser();
       const leadsWithMetadata = data.leads.map((lead: any) => ({
         ...lead,
         created_by: user.user?.id,
@@ -413,7 +454,12 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
 
       const { error: insertError } = await supabase.from("leads").insert(leadsWithMetadata);
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        if (insertError.message?.includes("row-level security")) {
+          throw new Error("Permission denied. Please ensure you have the correct role to import leads.");
+        }
+        throw insertError;
+      }
 
       toast({
         title: "Success",
