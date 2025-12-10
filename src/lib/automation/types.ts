@@ -28,9 +28,13 @@ export interface AutomationStepConfig {
   
   // Voice config
   assistant_id?: string;
+  agent_id?: string; // VAPI or ElevenLabs agent ID
   script?: string;
+  script_template?: string; // Script template for the call
   phone_number_id?: string;
   max_duration_seconds?: number;
+  retry_on_no_answer?: boolean; // Retry if no answer
+  max_retries?: number;
   
   // Condition config
   field?: string;

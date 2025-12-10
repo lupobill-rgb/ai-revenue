@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -35,7 +36,8 @@ import {
   GripVertical,
   Trash2,
 } from 'lucide-react';
-import type { AutomationStepType, AutomationStep, AutomationStepConfig, STEP_TYPE_INFO } from '@/lib/automation/types';
+import type { AutomationStepType, AutomationStep, AutomationStepConfig } from '@/lib/automation/types';
+import { useVoiceAssistants } from '@/hooks/useVoiceAssistants';
 
 interface AutomationsTabProps {
   sequenceId: string;
@@ -60,6 +62,108 @@ const STEP_COLORS: Record<AutomationStepType, string> = {
   condition: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
   voice: 'bg-primary/10 text-primary border-primary/20',
 };
+
+// Voice Step Configuration Component
+function VoiceStepConfig({
+  config,
+  onChange,
+}: {
+  config: AutomationStepConfig;
+  onChange: (config: AutomationStepConfig) => void;
+}) {
+  const { assistants, isLoading } = useVoiceAssistants();
+
+  return (
+    <div className="space-y-4">
+      {/* Voice Agent Selection */}
+      <div className="space-y-2">
+        <Label>Voice Agent</Label>
+        <Select
+          value={config.agent_id || ''}
+          onValueChange={(v) => onChange({ ...config, agent_id: v })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={isLoading ? "Loading agents..." : "Select voice agent"} />
+          </SelectTrigger>
+          <SelectContent>
+            {assistants.map((agent) => (
+              <SelectItem key={agent.id} value={agent.id}>
+                {agent.name}
+              </SelectItem>
+            ))}
+            {assistants.length === 0 && !isLoading && (
+              <SelectItem value="" disabled>
+                No agents configured
+              </SelectItem>
+            )}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Select a VAPI or ElevenLabs voice agent
+        </p>
+      </div>
+
+      {/* Script Template */}
+      <div className="space-y-2">
+        <Label>Script Template</Label>
+        <Textarea
+          value={config.script_template || ''}
+          onChange={(e) => onChange({ ...config, script_template: e.target.value })}
+          placeholder="Enter the call script template...&#10;&#10;Use {{first_name}}, {{company}}, etc. for personalization"
+          rows={5}
+          className="font-mono text-sm"
+        />
+        <p className="text-xs text-muted-foreground">
+          Define the conversation flow for the AI voice call
+        </p>
+      </div>
+
+      {/* Retry on No Answer */}
+      <div className="flex items-center space-x-2">
+        <Checkbox
+          id="retry-no-answer"
+          checked={config.retry_on_no_answer || false}
+          onCheckedChange={(checked) =>
+            onChange({ ...config, retry_on_no_answer: checked === true })
+          }
+        />
+        <Label htmlFor="retry-no-answer" className="cursor-pointer">
+          Retry if no answer?
+        </Label>
+      </div>
+
+      {/* Max Retries (shown if retry enabled) */}
+      {config.retry_on_no_answer && (
+        <div className="space-y-2 pl-6">
+          <Label>Max Retries</Label>
+          <Input
+            type="number"
+            value={config.max_retries || 2}
+            onChange={(e) => onChange({ ...config, max_retries: parseInt(e.target.value) || 2 })}
+            min={1}
+            max={5}
+            className="w-24"
+          />
+        </div>
+      )}
+
+      {/* Max Call Duration */}
+      <div className="space-y-2">
+        <Label>Max Call Duration (seconds)</Label>
+        <Input
+          type="number"
+          value={config.max_duration_seconds || 300}
+          onChange={(e) => onChange({ ...config, max_duration_seconds: parseInt(e.target.value) })}
+          min={30}
+          max={900}
+        />
+        <p className="text-xs text-muted-foreground">
+          Maximum duration before the call is automatically ended
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export function AutomationsTab({
   sequenceId,
@@ -136,37 +240,7 @@ export function AutomationsTab({
         );
 
       case 'voice':
-        return (
-          <>
-            <div className="space-y-2">
-              <Label>Voice Assistant ID</Label>
-              <Input
-                value={newStepConfig.assistant_id || ''}
-                onChange={(e) => setNewStepConfig({ ...newStepConfig, assistant_id: e.target.value })}
-                placeholder="VAPI Assistant ID"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Call Script (Optional Override)</Label>
-              <Textarea
-                value={newStepConfig.script || ''}
-                onChange={(e) => setNewStepConfig({ ...newStepConfig, script: e.target.value })}
-                placeholder="Custom script for this call..."
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Max Call Duration (seconds)</Label>
-              <Input
-                type="number"
-                value={newStepConfig.max_duration_seconds || 300}
-                onChange={(e) => setNewStepConfig({ ...newStepConfig, max_duration_seconds: parseInt(e.target.value) })}
-                min={30}
-                max={900}
-              />
-            </div>
-          </>
-        );
+        return <VoiceStepConfig config={newStepConfig} onChange={setNewStepConfig} />;
 
       case 'wait':
         return (
