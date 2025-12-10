@@ -916,6 +916,7 @@ export type Database = {
       }
       cmo_campaigns: {
         Row: {
+          autopilot_enabled: boolean
           budget_allocation: number | null
           campaign_name: string
           campaign_type: string
@@ -925,6 +926,7 @@ export type Database = {
           end_date: string | null
           funnel_id: string | null
           funnel_stage: string | null
+          goal: string | null
           id: string
           last_optimization_at: string | null
           last_optimization_note: string | null
@@ -942,6 +944,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          autopilot_enabled?: boolean
           budget_allocation?: number | null
           campaign_name: string
           campaign_type: string
@@ -951,6 +954,7 @@ export type Database = {
           end_date?: string | null
           funnel_id?: string | null
           funnel_stage?: string | null
+          goal?: string | null
           id?: string
           last_optimization_at?: string | null
           last_optimization_note?: string | null
@@ -968,6 +972,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          autopilot_enabled?: boolean
           budget_allocation?: number | null
           campaign_name?: string
           campaign_type?: string
@@ -977,6 +982,7 @@ export type Database = {
           end_date?: string | null
           funnel_id?: string | null
           funnel_stage?: string | null
+          goal?: string | null
           id?: string
           last_optimization_at?: string | null
           last_optimization_note?: string | null
