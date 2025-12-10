@@ -1986,6 +1986,51 @@ export type Database = {
           },
         ]
       }
+      crm_contacts: {
+        Row: {
+          company_name: string | null
+          created_at: string
+          email: string | null
+          first_name: string | null
+          id: string
+          last_name: string | null
+          lifecycle_stage: string | null
+          phone: string | null
+          role_title: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          company_name?: string | null
+          created_at?: string
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          lifecycle_stage?: string | null
+          phone?: string | null
+          role_title?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          company_name?: string | null
+          created_at?: string
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          lifecycle_stage?: string | null
+          phone?: string | null
+          role_title?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cro_deal_reviews: {
         Row: {
           created_at: string | null
