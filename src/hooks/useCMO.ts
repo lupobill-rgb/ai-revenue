@@ -196,6 +196,32 @@ export function useCampaign(id: string) {
   });
 }
 
+export function useToggleCampaignAutopilot() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ campaignId, enabled }: { campaignId: string; enabled: boolean }) => 
+      cmoApi.toggleAutopilot(campaignId, enabled),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: cmoKeys.campaign(campaignId) });
+      queryClient.invalidateQueries({ queryKey: cmoKeys.all });
+    },
+  });
+}
+
+export function useUpdateCampaignGoal() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ campaignId, goal }: { campaignId: string; goal: string | null }) => 
+      cmoApi.updateCampaignGoal(campaignId, goal),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: cmoKeys.campaign(campaignId) });
+      queryClient.invalidateQueries({ queryKey: cmoKeys.all });
+    },
+  });
+}
+
 // Content Assets
 export function useContentAssets(workspaceId: string, campaignId?: string) {
   return useQuery({
