@@ -312,6 +312,52 @@ export async function updateCampaignGoal(campaignId: string, goal: string | null
   return data as unknown as CMOCampaign;
 }
 
+// Autopilot Campaign Builder
+export async function buildAutopilotCampaign(payload: {
+  icp: string;
+  offer: string;
+  channels: string[];
+  desiredResult: string;
+  workspaceId?: string;
+}) {
+  const { tenantId } = await getTenantContext();
+  
+  // Get workspace_id if not provided
+  let workspaceId = payload.workspaceId;
+  if (!workspaceId) {
+    const { data: workspace } = await supabase
+      .from("workspaces")
+      .select("id")
+      .eq("owner_id", (await supabase.auth.getUser()).data.user?.id)
+      .single();
+    workspaceId = workspace?.id;
+  }
+
+  const { data, error } = await supabase.functions.invoke("campaign-orchestrator", {
+    body: {
+      campaignName: `Autopilot: ${payload.offer.slice(0, 50)}`,
+      vertical: "AI Generated",
+      goal: payload.desiredResult,
+      autopilot: true,
+      icp: payload.icp,
+      offer: payload.offer,
+      channels: {
+        email: payload.channels.includes("email"),
+        social: payload.channels.includes("linkedin"),
+        voice: payload.channels.includes("voice"),
+        video: false,
+        landing_page: payload.channels.includes("landing_page"),
+        sms: payload.channels.includes("sms"),
+      },
+      tenantId,
+      workspaceId,
+    },
+  });
+
+  if (error) throw error;
+  return data;
+}
+
 // Content Assets
 export async function getContentAssets(workspaceId: string, campaignId?: string) {
   let query = supabase
