@@ -42,11 +42,11 @@ const NavBar = () => {
 
   // Base nav links - filtered by module access
   const allNavLinks = [
-    { path: "/dashboard", label: "Dashboard", module: null },
+    { path: "/dashboard", label: "Home", module: null },
     { path: "/os", label: "OS", module: "os_admin" as const },
-    { path: "/approvals", label: "Approvals", module: null },
-    { path: "/voice-agents", label: "Voice Agents", module: null },
-    { path: "/websites", label: "Websites", module: null },
+    { path: "/approvals", label: "Approve", module: null },
+    { path: "/voice-agents", label: "Voice", module: null },
+    { path: "/websites", label: "Sites", module: null },
     { path: "/crm", label: "CRM", module: "crm" as const },
     { path: "/outbound", label: "Outbound", module: null },
     { path: "/reports", label: "Reports", module: null },
