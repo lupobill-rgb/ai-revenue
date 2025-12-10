@@ -43,6 +43,69 @@ serve(async (req) => {
       );
     }
 
+    // Handle GET request - List voice agents
+    if (req.method === "GET") {
+      const url = new URL(req.url);
+      const tenantId = url.searchParams.get("tenantId");
+      const campaignId = url.searchParams.get("campaignId");
+
+      if (!tenantId) {
+        return new Response(
+          JSON.stringify({ error: "Missing tenantId query parameter" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Verify tenant access
+      const { data: tenantAccess } = await supabase
+        .from("user_tenants")
+        .select("tenant_id")
+        .eq("user_id", user.id)
+        .eq("tenant_id", tenantId)
+        .single();
+
+      if (!tenantAccess && user.id !== tenantId) {
+        return new Response(
+          JSON.stringify({ error: "Access denied to tenant" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Build query for voice agents
+      let query = supabase
+        .from("cmo_content_assets")
+        .select("id, title, dependencies")
+        .eq("tenant_id", tenantId)
+        .eq("content_type", "voice_agent");
+
+      if (campaignId) {
+        query = query.eq("campaign_id", campaignId);
+      }
+
+      const { data: voiceAgents, error: listError } = await query.order("created_at", { ascending: false });
+
+      if (listError) {
+        console.error("Error listing voice agents:", listError);
+        return new Response(
+          JSON.stringify({ error: "Failed to list voice agents" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Transform to expected response format
+      const agents = (voiceAgents || []).map((agent: any) => ({
+        id: agent.id,
+        name: agent.title,
+        provider: agent.dependencies?.provider || "vapi",
+      }));
+
+      return new Response(
+        JSON.stringify(agents),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Handle POST request - Create voice agent
     const body: VoiceAgentRequest = await req.json();
     const { tenantId, campaignId, brandVoice, icp, offer, constraints = [] } = body;
 
