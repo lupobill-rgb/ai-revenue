@@ -44,7 +44,7 @@ import OutboundCampaignBuilder from "./pages/OutboundCampaignBuilder";
 import OutboundCampaignDetail from "./pages/OutboundCampaignDetail";
 import OutboundLinkedInQueue from "./pages/OutboundLinkedInQueue";
 import SettingsIntegrations from "./pages/SettingsIntegrations";
-
+import LandingPages from "./pages/LandingPages";
 const queryClient = new QueryClient();
 
 const App = () => {
@@ -93,6 +93,7 @@ const App = () => {
               <Route path="/outbound/linkedin-queue" element={<OutboundLinkedInQueue />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/integrations" element={<SettingsIntegrations />} />
+              <Route path="/landing-pages" element={<LandingPages />} />
               <Route path="/profile" element={<Profile />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
