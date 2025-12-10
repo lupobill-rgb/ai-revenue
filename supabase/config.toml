@@ -21,6 +21,9 @@ verify_jwt = true
 [functions.ai-cmo-voice-agents]
 verify_jwt = true
 
+[functions.ai-cmo-voice-step-run]
+verify_jwt = false
+
 [functions.ai-chat]
 verify_jwt = true
 
