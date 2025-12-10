@@ -3930,6 +3930,23 @@ export type Database = {
         Args: { variant_asset_id: string }
         Returns: boolean
       }
+      crm_upsert_contact_and_lead: {
+        Args: {
+          in_campaign_id: string
+          in_company: string
+          in_email: string
+          in_first_name: string
+          in_job_title: string
+          in_last_name: string
+          in_phone: string
+          in_source: string
+          in_tenant_id: string
+        }
+        Returns: {
+          contact_id: string
+          lead_id: string
+        }[]
+      }
       dispatch_outbound_cron: { Args: never; Returns: undefined }
       funnel_stage_workspace_access: {
         Args: { stage_funnel_id: string }

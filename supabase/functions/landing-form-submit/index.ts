@@ -121,96 +121,33 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4. Upsert contact (by tenant_id + email)
-    const { data: existingContact } = await supabase
-      .from("crm_contacts")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("email", email)
-      .single();
-
-    let contactId: string;
-
-    if (existingContact) {
-      // Update existing contact
-      const { data: updatedContact, error: updateError } = await supabase
-        .from("crm_contacts")
-        .update({
-          first_name: firstName || undefined,
-          last_name: lastName || undefined,
-          company: formData.company || undefined,
-          job_title: formData.role || undefined,
-          phone: formData.phone || undefined,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingContact.id)
-        .select("id")
-        .single();
-
-      if (updateError) {
-        console.error("[landing-form-submit] Failed to update contact:", updateError);
-        throw updateError;
-      }
-      contactId = updatedContact!.id;
-      console.log("[landing-form-submit] Updated existing contact:", contactId);
-    } else {
-      // Create new contact
-      const { data: newContact, error: insertError } = await supabase
-        .from("crm_contacts")
-        .insert({
-          tenant_id: tenantId,
-          email,
-          first_name: firstName,
-          last_name: lastName,
-          company: formData.company || null,
-          job_title: formData.role || null,
-          phone: formData.phone || null,
-        })
-        .select("id")
-        .single();
-
-      if (insertError) {
-        console.error("[landing-form-submit] Failed to create contact:", insertError);
-        throw insertError;
-      }
-      contactId = newContact!.id;
-      console.log("[landing-form-submit] Created new contact:", contactId);
-    }
-
-    // 5. Create lead tied to campaign
+    // 4. Use centralized RPC for contact/lead upsert
     const campaignId = payload.tracking?.campaignId || landingPage.campaign_id;
     const source = `landing_page:${payload.slug}`;
 
-    // Build UTM tracking metadata
-    const trackingMeta: Record<string, string> = {};
-    if (payload.tracking?.utm_source) trackingMeta.utm_source = payload.tracking.utm_source;
-    if (payload.tracking?.utm_medium) trackingMeta.utm_medium = payload.tracking.utm_medium;
-    if (payload.tracking?.utm_campaign) trackingMeta.utm_campaign = payload.tracking.utm_campaign;
-    if (payload.tracking?.utm_term) trackingMeta.utm_term = payload.tracking.utm_term;
-    if (payload.tracking?.utm_content) trackingMeta.utm_content = payload.tracking.utm_content;
+    const { data: result, error: rpcError } = await supabase.rpc(
+      "crm_upsert_contact_and_lead",
+      {
+        in_tenant_id: tenantId,
+        in_email: email,
+        in_phone: formData.phone || null,
+        in_first_name: firstName || null,
+        in_last_name: lastName || null,
+        in_company: formData.company || null,
+        in_job_title: formData.role || null,
+        in_campaign_id: campaignId,
+        in_source: source,
+      }
+    );
 
-    const { data: lead, error: leadError } = await supabase
-      .from("crm_leads")
-      .insert({
-        tenant_id: tenantId,
-        contact_id: contactId,
-        campaign_id: campaignId,
-        source,
-        status: "new",
-        score: 0,
-        notes: Object.keys(trackingMeta).length > 0 
-          ? `UTM: ${JSON.stringify(trackingMeta)}`
-          : null,
-      })
-      .select("id")
-      .single();
-
-    if (leadError) {
-      console.error("[landing-form-submit] Failed to create lead:", leadError);
-      throw leadError;
+    if (rpcError || !result || result.length === 0) {
+      console.error("[landing-form-submit] RPC failed:", rpcError);
+      throw rpcError || new Error("Failed to create contact/lead");
     }
 
-    console.log("[landing-form-submit] Created lead:", lead!.id);
+    const contactId = result[0].contact_id;
+    const leadId = result[0].lead_id;
+    console.log("[landing-form-submit] Created contact:", contactId, "lead:", leadId);
 
     // 6. Log activity
     const activityMeta = {
@@ -225,7 +162,7 @@ Deno.serve(async (req) => {
       .insert({
         tenant_id: tenantId,
         contact_id: contactId,
-        lead_id: lead!.id,
+        lead_id: leadId,
         activity_type: "landing_form_submit",
         meta: activityMeta,
       });
@@ -248,7 +185,7 @@ Deno.serve(async (req) => {
             campaign_id: campaignId,
             payload: {
               contact_id: contactId,
-              lead_id: lead!.id,
+              lead_id: leadId,
               source: `landing_page:${payload.slug}`,
               utm: payload.tracking || {},
             },
@@ -258,7 +195,7 @@ Deno.serve(async (req) => {
       if (kernelError) {
         console.warn("[landing-form-submit] Kernel lead router failed:", kernelError);
       } else {
-        console.log("[landing-form-submit] Triggered cmo_lead_router for lead:", lead!.id);
+        console.log("[landing-form-submit] Triggered cmo_lead_router for lead:", leadId);
       }
     } catch (kernelErr) {
       console.warn("[landing-form-submit] Kernel call error:", kernelErr);
@@ -270,7 +207,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         contact_id: contactId,
-        lead_id: lead!.id,
+        lead_id: leadId,
         message: "Form submitted successfully",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
