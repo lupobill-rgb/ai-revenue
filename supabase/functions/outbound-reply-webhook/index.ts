@@ -18,6 +18,61 @@ interface InboundReplyPayload {
   received_at?: string;
 }
 
+// Forward reply to configured email using Resend API
+async function forwardReplyEmail(
+  toEmail: string,
+  fromName: string,
+  originalFrom: string,
+  subject: string,
+  textContent: string
+): Promise<boolean> {
+  const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+  if (!RESEND_API_KEY) {
+    console.log("[outbound-reply-webhook] No RESEND_API_KEY configured, skipping forward");
+    return false;
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "CRM Notifications <noreply@updates.ubigrowth.ai>",
+        to: [toEmail],
+        subject: `[Reply Received] ${subject}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1DA4FF;">New Reply from ${fromName}</h2>
+            <p><strong>From:</strong> ${originalFrom}</p>
+            <p><strong>Subject:</strong> ${subject}</p>
+            <hr style="border: 1px solid #eee; margin: 20px 0;" />
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 5px;">
+              <pre style="white-space: pre-wrap; font-family: inherit;">${textContent}</pre>
+            </div>
+            <hr style="border: 1px solid #eee; margin: 20px 0;" />
+            <p style="color: #666; font-size: 12px;">This reply was automatically forwarded from your CRM.</p>
+          </div>
+        `,
+      }),
+    });
+
+    if (response.ok) {
+      console.log(`[outbound-reply-webhook] Reply forwarded to ${toEmail}`);
+      return true;
+    } else {
+      const errorData = await response.text();
+      console.error(`[outbound-reply-webhook] Failed to forward reply: ${errorData}`);
+      return false;
+    }
+  } catch (error) {
+    console.error("[outbound-reply-webhook] Error forwarding reply:", error);
+    return false;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -54,6 +109,15 @@ serve(async (req) => {
       });
     }
 
+    // Get tenant's email settings to find forward address
+    const { data: emailSettings } = await supabase
+      .from("ai_settings_email")
+      .select("reply_to_address")
+      .eq("tenant_id", prospect.tenant_id)
+      .single();
+
+    const forwardToEmail = emailSettings?.reply_to_address;
+
     // Find active sequence run for this prospect
     const { data: sequenceRun, error: runError } = await supabase
       .from("outbound_sequence_runs")
@@ -66,7 +130,19 @@ serve(async (req) => {
 
     if (runError || !sequenceRun) {
       console.log(`[outbound-reply-webhook] No active sequence run for prospect: ${prospect.id}`);
-      return new Response(JSON.stringify({ status: "no_active_run" }), {
+      
+      // Still forward the reply even if no active sequence
+      if (forwardToEmail && payload.text) {
+        await forwardReplyEmail(
+          forwardToEmail,
+          `${prospect.first_name} ${prospect.last_name}`,
+          payload.from,
+          payload.subject || "No subject",
+          payload.text
+        );
+      }
+      
+      return new Response(JSON.stringify({ status: "no_active_run", forwarded: !!forwardToEmail }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -107,6 +183,18 @@ serve(async (req) => {
       .eq("id", sequenceRun.id);
 
     console.log(`[outbound-reply-webhook] Reply logged for ${prospect.first_name} ${prospect.last_name}, sequence paused`);
+
+    // Forward reply to configured email address
+    let forwarded = false;
+    if (forwardToEmail && payload.text) {
+      forwarded = await forwardReplyEmail(
+        forwardToEmail,
+        `${prospect.first_name} ${prospect.last_name}`,
+        payload.from,
+        payload.subject || "No subject",
+        payload.text
+      );
+    }
 
     // Optionally trigger reply suggestion agent
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -155,6 +243,8 @@ serve(async (req) => {
       prospect_id: prospect.id,
       sequence_run_id: sequenceRun.id,
       action: "sequence_paused",
+      forwarded,
+      forward_to: forwardToEmail,
       reply_suggestion: replySuggestion,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
