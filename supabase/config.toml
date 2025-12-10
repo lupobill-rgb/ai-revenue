@@ -36,6 +36,9 @@ verify_jwt = true
 [functions.ai-cmo-landing-pages-save]
 verify_jwt = true
 
+[functions.ai-cmo-landing-pages-regenerate]
+verify_jwt = true
+
 [functions.ai-chat]
 verify_jwt = true
 

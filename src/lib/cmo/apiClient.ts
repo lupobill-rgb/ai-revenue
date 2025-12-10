@@ -311,13 +311,12 @@ export async function regenerateLandingPage(
   }
 ): Promise<LandingPageDraft> {
   const { data, error } = await supabase.functions.invoke(
-    "ai-cmo-landing-pages-generate",
+    "ai-cmo-landing-pages-regenerate",
     {
       body: {
         tenant_id: tenantId,
         landing_page_id: landingPageId,
         overrides,
-        regenerate: true,
       },
     }
   );

@@ -81,6 +81,20 @@ Tone: ${brandProfile.brand_tone || 'Friendly'}
 Value Proposition: ${brandProfile.unique_value_proposition || offer}
 ` : `Brand context not available. Use the offer description for tone.`;
 
+    // Determine optimal template type based on industry, goal, and channels
+    const determineTemplateType = (industry: string | null, goal: string, channels: string[]): string => {
+      // Priority: goal > industry > channels
+      if (goal === 'meetings' || channels.includes('voice')) return 'booking';
+      if (goal === 'leads' && (industry?.toLowerCase().includes('saas') || industry?.toLowerCase().includes('software'))) return 'saas';
+      if (goal === 'leads') return 'lead_magnet';
+      if (channels.includes('webinar') || goal === 'engagement') return 'webinar';
+      if (industry?.toLowerCase().includes('consult') || industry?.toLowerCase().includes('agency') || industry?.toLowerCase().includes('service')) return 'services';
+      if (goal === 'revenue') return 'long_form';
+      return 'lead_magnet'; // Default fallback
+    };
+
+    const recommendedTemplate = determineTemplateType(brandProfile?.industry || null, desired_result, channels);
+
     // Build the AI prompt - ALWAYS include landing_page even if not explicitly in channels
     const systemPrompt = `You are an expert AI CMO campaign builder. Your job is to create comprehensive, multi-channel marketing campaigns.
 
@@ -93,6 +107,15 @@ Generate high-converting marketing assets that are:
 - Ready to deploy across channels
 
 CRITICAL: You MUST always generate at least one landing page for every campaign. Landing pages are essential for conversion.
+CRITICAL: For landing pages, use template_type: "${recommendedTemplate}" as it is optimal for this ${brandProfile?.industry || 'business'} targeting ${desired_result}.
+
+Template Type Guidelines:
+- "saas": For software/tech products - emphasize features, integrations, pricing tiers
+- "lead_magnet": For content offers - emphasize value of free resource, quick benefits
+- "webinar": For event registration - emphasize speakers, agenda, date/time
+- "services": For consulting/agencies - emphasize process, expertise, case studies
+- "booking": For scheduling calls/demos - emphasize calendar CTA, no long forms
+- "long_form": For high-ticket offers - comprehensive with testimonials, FAQs, objection handling
 
 Output ONLY valid JSON matching the exact schema requested.`;
 
@@ -107,6 +130,8 @@ ${offer}
 **Channels to use:** ${channels.join(', ')}
 
 **Primary Goal:** ${desired_result}
+
+**Recommended Landing Page Template:** ${recommendedTemplate}
 
 Generate the following assets in JSON format:
 
@@ -126,11 +151,11 @@ Generate the following assets in JSON format:
     { "step": 1, "message": "SMS text under 160 chars", "delay_days": 0 }
   ],
   "landing_pages": [
-    // REQUIRED: At least 1 landing page - this is mandatory for all campaigns
+    // REQUIRED: At least 1 landing page using template_type: "${recommendedTemplate}"
     { 
       "internal_name": "campaign-landing-page",
       "url_slug": "offer-slug",
-      "template_type": "lead_magnet|saas|webinar|services|booking",
+      "template_type": "${recommendedTemplate}",
       "hero_headline": "compelling headline targeting the ICP pain point",
       "hero_subheadline": "supporting value proposition",
       "hero_supporting_points": ["benefit 1", "benefit 2", "benefit 3"],
@@ -143,12 +168,11 @@ Generate the following assets in JSON format:
           "enabled": true
         }
       ],
-      "primary_cta_label": "Get Started Free",
-      "primary_cta_type": "form|calendar",
+      "primary_cta_label": "${desired_result === 'meetings' ? 'Book a Call' : 'Get Started Free'}",
+      "primary_cta_type": "${desired_result === 'meetings' ? 'calendar' : 'form'}",
       "form_fields": [
         { "name": "email", "label": "Email Address", "type": "email", "required": true },
-        { "name": "first_name", "label": "First Name", "type": "text", "required": true },
-        { "name": "company", "label": "Company", "type": "text", "required": false }
+        { "name": "first_name", "label": "First Name", "type": "text", "required": true }${desired_result === 'leads' ? ',\n        { "name": "company", "label": "Company", "type": "text", "required": false }' : ''}
       ]
     }
   ],
