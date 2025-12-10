@@ -190,6 +190,39 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_settings_voice: {
+        Row: {
+          default_elevenlabs_voice_id: string | null
+          default_vapi_assistant_id: string | null
+          elevenlabs_api_key: string | null
+          elevenlabs_model: string | null
+          tenant_id: string
+          updated_at: string | null
+          vapi_private_key: string | null
+          vapi_public_key: string | null
+        }
+        Insert: {
+          default_elevenlabs_voice_id?: string | null
+          default_vapi_assistant_id?: string | null
+          elevenlabs_api_key?: string | null
+          elevenlabs_model?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          vapi_private_key?: string | null
+          vapi_public_key?: string | null
+        }
+        Update: {
+          default_elevenlabs_voice_id?: string | null
+          default_vapi_assistant_id?: string | null
+          elevenlabs_api_key?: string | null
+          elevenlabs_model?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          vapi_private_key?: string | null
+          vapi_public_key?: string | null
+        }
+        Relationships: []
+      }
       asset_approvals: {
         Row: {
           approved_by: string | null
