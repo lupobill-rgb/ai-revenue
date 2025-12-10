@@ -2285,6 +2285,36 @@ export type Database = {
           },
         ]
       }
+      integration_audit_log: {
+        Row: {
+          action: string
+          changes: Json
+          created_at: string
+          id: string
+          settings_type: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          action?: string
+          changes?: Json
+          created_at?: string
+          id?: string
+          settings_type: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          changes?: Json
+          created_at?: string
+          id?: string
+          settings_type?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       lead_activities: {
         Row: {
           activity_type: string

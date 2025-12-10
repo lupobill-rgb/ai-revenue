@@ -13,12 +13,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { toast } from "@/hooks/use-toast";
 import { 
   Mail, Linkedin, Calendar, Globe, Webhook, Loader2, 
-  CheckCircle2, XCircle, Copy, ChevronDown, Settings, ArrowLeft
+  CheckCircle2, XCircle, Copy, ChevronDown, Settings, ArrowLeft,
+  History, User, Clock
 } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 
 // Types for each settings table
@@ -63,13 +64,52 @@ interface DomainSettings {
   updated_at: string | null;
 }
 
+interface AuditLogEntry {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  settings_type: string;
+  action: string;
+  changes: Record<string, { old: any; new: any }>;
+  created_at: string;
+}
+
+const SETTINGS_TYPE_LABELS: Record<string, string> = {
+  email: "Email",
+  linkedin: "LinkedIn",
+  calendar: "Calendar",
+  crm: "CRM Webhooks",
+  domain: "Domain",
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  sender_name: "Sender Name",
+  from_address: "From Address",
+  reply_to_address: "Reply-To Address",
+  smtp_host: "SMTP Host",
+  smtp_port: "SMTP Port",
+  smtp_username: "SMTP Username",
+  smtp_password: "SMTP Password",
+  linkedin_profile_url: "Profile URL",
+  daily_connection_limit: "Daily Connection Limit",
+  daily_message_limit: "Daily Message Limit",
+  calendar_provider: "Calendar Provider",
+  booking_url: "Booking URL",
+  inbound_webhook_url: "Inbound Webhook URL",
+  outbound_webhook_url: "Outbound Webhook URL",
+  domain: "Domain",
+  cname_verified: "CNAME Verified",
+};
+
 export default function SettingsIntegrations() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "email");
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
 
   // Email state
   const [emailSettings, setEmailSettings] = useState<EmailSettings | null>(null);
@@ -113,14 +153,16 @@ export default function SettingsIntegrations() {
       return;
     }
     setTenantId(user.id);
+    setUserId(user.id);
 
-    // Load all settings in parallel
-    const [emailRes, linkedinRes, calendarRes, crmRes, domainRes] = await Promise.all([
+    // Load all settings and audit logs in parallel
+    const [emailRes, linkedinRes, calendarRes, crmRes, domainRes, auditRes] = await Promise.all([
       supabase.from("ai_settings_email").select("*").eq("tenant_id", user.id).maybeSingle(),
       supabase.from("ai_settings_linkedin").select("*").eq("tenant_id", user.id).maybeSingle(),
       supabase.from("ai_settings_calendar").select("*").eq("tenant_id", user.id).maybeSingle(),
       supabase.from("ai_settings_crm_webhooks").select("*").eq("tenant_id", user.id).maybeSingle(),
       supabase.from("ai_settings_domain").select("*").eq("tenant_id", user.id).maybeSingle(),
+      supabase.from("integration_audit_log").select("*").eq("tenant_id", user.id).order("created_at", { ascending: false }).limit(20),
     ]);
 
     // Populate email
@@ -163,7 +205,57 @@ export default function SettingsIntegrations() {
       setDomain(domainRes.data.domain || "");
     }
 
+    // Populate audit logs
+    if (auditRes.data) {
+      setAuditLogs(auditRes.data as AuditLogEntry[]);
+    }
+
     setLoading(false);
+  };
+
+  const detectChanges = (oldValues: Record<string, any>, newValues: Record<string, any>): Record<string, { old: any; new: any }> => {
+    const changes: Record<string, { old: any; new: any }> = {};
+    for (const key of Object.keys(newValues)) {
+      if (key === 'tenant_id' || key === 'updated_at') continue;
+      const oldVal = oldValues?.[key] ?? null;
+      const newVal = newValues[key] ?? null;
+      // Normalize empty strings to null for comparison
+      const normalizedOld = oldVal === '' ? null : oldVal;
+      const normalizedNew = newVal === '' ? null : newVal;
+      if (normalizedOld !== normalizedNew) {
+        changes[key] = { 
+          old: key.includes('password') ? (oldVal ? '••••••••' : null) : oldVal, 
+          new: key.includes('password') ? (newVal ? '••••••••' : null) : newVal 
+        };
+      }
+    }
+    return changes;
+  };
+
+  const logAuditEntry = async (settingsType: string, changes: Record<string, { old: any; new: any }>, isCreate: boolean) => {
+    if (!tenantId || !userId || Object.keys(changes).length === 0) return;
+    
+    const { data, error } = await supabase.from("integration_audit_log").insert({
+      tenant_id: tenantId,
+      user_id: userId,
+      settings_type: settingsType,
+      action: isCreate ? 'create' : 'update',
+      changes,
+    }).select().single();
+
+    if (!error && data) {
+      setAuditLogs(prev => [data as AuditLogEntry, ...prev.slice(0, 19)]);
+    }
+  };
+
+  const formatChangesList = (changes: Record<string, { old: any; new: any }>): string[] => {
+    return Object.entries(changes).map(([field, { old: oldVal, new: newVal }]) => {
+      const label = FIELD_LABELS[field] || field;
+      if (oldVal === null || oldVal === '' || oldVal === undefined) {
+        return `Set ${label} to "${newVal}"`;
+      }
+      return `Changed ${label} from "${oldVal}" to "${newVal}"`;
+    });
   };
 
   const saveEmailSettings = async () => {
@@ -183,14 +275,39 @@ export default function SettingsIntegrations() {
         updated_at: new Date().toISOString(),
       };
 
+      const changes = detectChanges(emailSettings || {}, payload);
+      const isCreate = !emailSettings;
+
+      if (Object.keys(changes).length === 0) {
+        toast({ title: "No changes", description: "No changes were detected to save." });
+        setSaving(null);
+        return;
+      }
+
       const { error } = await supabase
         .from("ai_settings_email")
         .upsert(payload, { onConflict: "tenant_id" });
 
       if (error) throw error;
 
+      await logAuditEntry('email', changes, isCreate);
+
       setEmailSettings({ ...payload, updated_at: payload.updated_at });
-      toast({ title: "Email settings saved", description: "Your email configuration has been updated." });
+      
+      const changesList = formatChangesList(changes);
+      toast({ 
+        title: "✓ Email Settings Updated", 
+        description: (
+          <div className="mt-2 space-y-1">
+            {changesList.map((change, i) => (
+              <div key={i} className="text-sm">• {change}</div>
+            ))}
+            <div className="text-xs text-muted-foreground mt-2">
+              Saved at {format(new Date(), "h:mm a")}
+            </div>
+          </div>
+        ),
+      });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -211,14 +328,39 @@ export default function SettingsIntegrations() {
         updated_at: new Date().toISOString(),
       };
 
+      const changes = detectChanges(linkedinSettings || {}, payload);
+      const isCreate = !linkedinSettings;
+
+      if (Object.keys(changes).length === 0) {
+        toast({ title: "No changes", description: "No changes were detected to save." });
+        setSaving(null);
+        return;
+      }
+
       const { error } = await supabase
         .from("ai_settings_linkedin")
         .upsert(payload, { onConflict: "tenant_id" });
 
       if (error) throw error;
 
+      await logAuditEntry('linkedin', changes, isCreate);
+
       setLinkedinSettings({ ...payload, updated_at: payload.updated_at });
-      toast({ title: "LinkedIn settings saved", description: "Your LinkedIn configuration has been updated." });
+      
+      const changesList = formatChangesList(changes);
+      toast({ 
+        title: "✓ LinkedIn Settings Updated", 
+        description: (
+          <div className="mt-2 space-y-1">
+            {changesList.map((change, i) => (
+              <div key={i} className="text-sm">• {change}</div>
+            ))}
+            <div className="text-xs text-muted-foreground mt-2">
+              Saved at {format(new Date(), "h:mm a")}
+            </div>
+          </div>
+        ),
+      });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -238,14 +380,39 @@ export default function SettingsIntegrations() {
         updated_at: new Date().toISOString(),
       };
 
+      const changes = detectChanges(calendarSettings || {}, payload);
+      const isCreate = !calendarSettings;
+
+      if (Object.keys(changes).length === 0) {
+        toast({ title: "No changes", description: "No changes were detected to save." });
+        setSaving(null);
+        return;
+      }
+
       const { error } = await supabase
         .from("ai_settings_calendar")
         .upsert(payload, { onConflict: "tenant_id" });
 
       if (error) throw error;
 
+      await logAuditEntry('calendar', changes, isCreate);
+
       setCalendarSettings({ ...payload, updated_at: payload.updated_at });
-      toast({ title: "Calendar settings saved", description: "Your booking configuration has been updated." });
+      
+      const changesList = formatChangesList(changes);
+      toast({ 
+        title: "✓ Calendar Settings Updated", 
+        description: (
+          <div className="mt-2 space-y-1">
+            {changesList.map((change, i) => (
+              <div key={i} className="text-sm">• {change}</div>
+            ))}
+            <div className="text-xs text-muted-foreground mt-2">
+              Saved at {format(new Date(), "h:mm a")}
+            </div>
+          </div>
+        ),
+      });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -265,14 +432,39 @@ export default function SettingsIntegrations() {
         updated_at: new Date().toISOString(),
       };
 
+      const changes = detectChanges(crmSettings || {}, payload);
+      const isCreate = !crmSettings;
+
+      if (Object.keys(changes).length === 0) {
+        toast({ title: "No changes", description: "No changes were detected to save." });
+        setSaving(null);
+        return;
+      }
+
       const { error } = await supabase
         .from("ai_settings_crm_webhooks")
         .upsert(payload, { onConflict: "tenant_id" });
 
       if (error) throw error;
 
+      await logAuditEntry('crm', changes, isCreate);
+
       setCrmSettings({ ...payload, updated_at: payload.updated_at });
-      toast({ title: "CRM webhook settings saved", description: "Your webhook configuration has been updated." });
+      
+      const changesList = formatChangesList(changes);
+      toast({ 
+        title: "✓ CRM Webhook Settings Updated", 
+        description: (
+          <div className="mt-2 space-y-1">
+            {changesList.map((change, i) => (
+              <div key={i} className="text-sm">• {change}</div>
+            ))}
+            <div className="text-xs text-muted-foreground mt-2">
+              Saved at {format(new Date(), "h:mm a")}
+            </div>
+          </div>
+        ),
+      });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -292,14 +484,39 @@ export default function SettingsIntegrations() {
         updated_at: new Date().toISOString(),
       };
 
+      const changes = detectChanges(domainSettings || {}, payload);
+      const isCreate = !domainSettings;
+
+      if (Object.keys(changes).length === 0) {
+        toast({ title: "No changes", description: "No changes were detected to save." });
+        setSaving(null);
+        return;
+      }
+
       const { error } = await supabase
         .from("ai_settings_domain")
         .upsert(payload, { onConflict: "tenant_id" });
 
       if (error) throw error;
 
+      await logAuditEntry('domain', changes, isCreate);
+
       setDomainSettings({ ...payload, updated_at: payload.updated_at });
-      toast({ title: "Domain settings saved", description: "Your custom domain configuration has been updated." });
+      
+      const changesList = formatChangesList(changes);
+      toast({ 
+        title: "✓ Domain Settings Updated", 
+        description: (
+          <div className="mt-2 space-y-1">
+            {changesList.map((change, i) => (
+              <div key={i} className="text-sm">• {change}</div>
+            ))}
+            <div className="text-xs text-muted-foreground mt-2">
+              Saved at {format(new Date(), "h:mm a")}
+            </div>
+          </div>
+        ),
+      });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -355,413 +572,475 @@ export default function SettingsIntegrations() {
             </p>
           </div>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
-              <TabsTrigger value="email" className="flex items-center gap-2">
-                <Mail className="h-4 w-4" />
-                <span className="hidden sm:inline">Email</span>
-              </TabsTrigger>
-              <TabsTrigger value="linkedin" className="flex items-center gap-2">
-                <Linkedin className="h-4 w-4" />
-                <span className="hidden sm:inline">LinkedIn</span>
-              </TabsTrigger>
-              <TabsTrigger value="calendar" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                <span className="hidden sm:inline">Calendar</span>
-              </TabsTrigger>
-              <TabsTrigger value="crm" className="flex items-center gap-2">
-                <Webhook className="h-4 w-4" />
-                <span className="hidden sm:inline">CRM</span>
-              </TabsTrigger>
-              <TabsTrigger value="domain" className="flex items-center gap-2">
-                <Globe className="h-4 w-4" />
-                <span className="hidden sm:inline">Domain</span>
-              </TabsTrigger>
-            </TabsList>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+                <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
+                  <TabsTrigger value="email" className="flex items-center gap-2">
+                    <Mail className="h-4 w-4" />
+                    <span className="hidden sm:inline">Email</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="linkedin" className="flex items-center gap-2">
+                    <Linkedin className="h-4 w-4" />
+                    <span className="hidden sm:inline">LinkedIn</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="calendar" className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <span className="hidden sm:inline">Calendar</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="crm" className="flex items-center gap-2">
+                    <Webhook className="h-4 w-4" />
+                    <span className="hidden sm:inline">CRM</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="domain" className="flex items-center gap-2">
+                    <Globe className="h-4 w-4" />
+                    <span className="hidden sm:inline">Domain</span>
+                  </TabsTrigger>
+                </TabsList>
 
-            {/* Email Tab */}
-            <TabsContent value="email">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Mail className="h-5 w-5 text-primary" />
-                    Email Configuration
-                  </CardTitle>
-                  <CardDescription>
-                    Configure your outbound email sender identity and optional SMTP settings.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="sender-name">Sender Name *</Label>
-                      <Input
-                        id="sender-name"
-                        placeholder="John from Acme"
-                        value={senderName}
-                        onChange={(e) => setSenderName(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="from-address">From Address *</Label>
-                      <Input
-                        id="from-address"
-                        type="email"
-                        placeholder="john@company.com"
-                        value={fromAddress}
-                        onChange={(e) => setFromAddress(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="reply-to">Reply-To Address *</Label>
-                    <Input
-                      id="reply-to"
-                      type="email"
-                      placeholder="replies@company.com"
-                      value={replyToAddress}
-                      onChange={(e) => setReplyToAddress(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Replies to your outbound emails will be sent to this address.
-                    </p>
-                  </div>
-
-                  <Separator />
-
-                  <Collapsible open={smtpOpen} onOpenChange={setSmtpOpen}>
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" className="w-full justify-between">
-                        <span>Advanced: Custom SMTP Settings</span>
-                        <ChevronDown className={`h-4 w-4 transition-transform ${smtpOpen ? "rotate-180" : ""}`} />
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="space-y-4 pt-4">
+                {/* Email Tab */}
+                <TabsContent value="email">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Mail className="h-5 w-5 text-primary" />
+                        Email Configuration
+                      </CardTitle>
+                      <CardDescription>
+                        Configure your outbound email sender identity and optional SMTP settings.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="smtp-host">SMTP Host</Label>
+                          <Label htmlFor="sender-name">Sender Name *</Label>
                           <Input
-                            id="smtp-host"
-                            placeholder="smtp.example.com"
-                            value={smtpHost}
-                            onChange={(e) => setSmtpHost(e.target.value)}
+                            id="sender-name"
+                            placeholder="John from Acme"
+                            value={senderName}
+                            onChange={(e) => setSenderName(e.target.value)}
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="smtp-port">SMTP Port</Label>
+                          <Label htmlFor="from-address">From Address *</Label>
                           <Input
-                            id="smtp-port"
+                            id="from-address"
+                            type="email"
+                            placeholder="john@company.com"
+                            value={fromAddress}
+                            onChange={(e) => setFromAddress(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="reply-to">Reply-To Address *</Label>
+                        <Input
+                          id="reply-to"
+                          type="email"
+                          placeholder="replies@company.com"
+                          value={replyToAddress}
+                          onChange={(e) => setReplyToAddress(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Replies to your outbound emails will be sent to this address.
+                        </p>
+                      </div>
+
+                      <Separator />
+
+                      <Collapsible open={smtpOpen} onOpenChange={setSmtpOpen}>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" className="w-full justify-between">
+                            <span>Advanced: Custom SMTP Settings</span>
+                            <ChevronDown className={`h-4 w-4 transition-transform ${smtpOpen ? "rotate-180" : ""}`} />
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="space-y-4 pt-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="smtp-host">SMTP Host</Label>
+                              <Input
+                                id="smtp-host"
+                                placeholder="smtp.example.com"
+                                value={smtpHost}
+                                onChange={(e) => setSmtpHost(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="smtp-port">SMTP Port</Label>
+                              <Input
+                                id="smtp-port"
+                                type="number"
+                                placeholder="587"
+                                value={smtpPort || ""}
+                                onChange={(e) => setSmtpPort(e.target.value ? parseInt(e.target.value) : null)}
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="smtp-username">SMTP Username</Label>
+                              <Input
+                                id="smtp-username"
+                                placeholder="username"
+                                value={smtpUsername}
+                                onChange={(e) => setSmtpUsername(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="smtp-password">SMTP Password</Label>
+                              <Input
+                                id="smtp-password"
+                                type="password"
+                                placeholder="••••••••"
+                                value={smtpPassword}
+                                onChange={(e) => setSmtpPassword(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+
+                      <Separator />
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          {emailSettings?.updated_at && (
+                            <p className="text-sm text-muted-foreground">
+                              Last updated: {formatUpdatedAt(emailSettings.updated_at)}
+                            </p>
+                          )}
+                        </div>
+                        <Button onClick={saveEmailSettings} disabled={saving === "email"}>
+                          {saving === "email" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                          Save Email Settings
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* LinkedIn Tab */}
+                <TabsContent value="linkedin">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Linkedin className="h-5 w-5 text-[#0A66C2]" />
+                        LinkedIn Configuration
+                      </CardTitle>
+                      <CardDescription>
+                        Configure your LinkedIn profile and daily outreach limits.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="linkedin-url">LinkedIn Profile URL *</Label>
+                        <Input
+                          id="linkedin-url"
+                          placeholder="https://www.linkedin.com/in/yourprofile"
+                          value={linkedinProfileUrl}
+                          onChange={(e) => setLinkedinProfileUrl(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="conn-limit">Daily Connection Limit</Label>
+                          <Input
+                            id="conn-limit"
                             type="number"
-                            placeholder="587"
-                            value={smtpPort || ""}
-                            onChange={(e) => setSmtpPort(e.target.value ? parseInt(e.target.value) : null)}
+                            min={1}
+                            max={100}
+                            value={dailyConnectionLimit}
+                            onChange={(e) => setDailyConnectionLimit(parseInt(e.target.value) || 20)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="msg-limit">Daily Message Limit</Label>
+                          <Input
+                            id="msg-limit"
+                            type="number"
+                            min={1}
+                            max={150}
+                            value={dailyMessageLimit}
+                            onChange={(e) => setDailyMessageLimit(parseInt(e.target.value) || 50)}
                           />
                         </div>
                       </div>
+
+                      <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground mb-1">LinkedIn Best Practices</p>
+                        <p>LinkedIn recommends ~20–25 connection requests per day and ~50–75 messages per day to avoid account restrictions.</p>
+                      </div>
+
+                      <Separator />
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          {linkedinSettings?.updated_at && (
+                            <p className="text-sm text-muted-foreground">
+                              Last updated: {formatUpdatedAt(linkedinSettings.updated_at)}
+                            </p>
+                          )}
+                        </div>
+                        <Button onClick={saveLinkedInSettings} disabled={saving === "linkedin"}>
+                          {saving === "linkedin" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                          Save LinkedIn Settings
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* Calendar Tab */}
+                <TabsContent value="calendar">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Calendar className="h-5 w-5 text-primary" />
+                        Calendar & Booking
+                      </CardTitle>
+                      <CardDescription>
+                        Configure your meeting booking link for outbound sequences.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="smtp-username">SMTP Username</Label>
-                          <Input
-                            id="smtp-username"
-                            placeholder="username"
-                            value={smtpUsername}
-                            onChange={(e) => setSmtpUsername(e.target.value)}
-                          />
+                          <Label htmlFor="cal-provider">Calendar Provider *</Label>
+                          <Select value={calendarProvider} onValueChange={setCalendarProvider}>
+                            <SelectTrigger id="cal-provider">
+                              <SelectValue placeholder="Select provider" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="google">Google Calendar</SelectItem>
+                              <SelectItem value="outlook">Microsoft Outlook</SelectItem>
+                              <SelectItem value="calendly">Calendly</SelectItem>
+                              <SelectItem value="hubspot">HubSpot Meetings</SelectItem>
+                              <SelectItem value="cal.com">Cal.com</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="smtp-password">SMTP Password</Label>
+                          <Label htmlFor="booking-url">Booking URL *</Label>
                           <Input
-                            id="smtp-password"
-                            type="password"
-                            placeholder="••••••••"
-                            value={smtpPassword}
-                            onChange={(e) => setSmtpPassword(e.target.value)}
+                            id="booking-url"
+                            placeholder="https://calendly.com/yourname/30min"
+                            value={bookingUrl}
+                            onChange={(e) => setBookingUrl(e.target.value)}
                           />
                         </div>
                       </div>
-                    </CollapsibleContent>
-                  </Collapsible>
 
-                  <Separator />
+                      <Separator />
 
-                  <div className="flex items-center justify-between">
-                    <div>
-                      {emailSettings?.updated_at && (
-                        <p className="text-sm text-muted-foreground">
-                          Last updated: {formatUpdatedAt(emailSettings.updated_at)}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          {calendarSettings?.updated_at && (
+                            <p className="text-sm text-muted-foreground">
+                              Last updated: {formatUpdatedAt(calendarSettings.updated_at)}
+                            </p>
+                          )}
+                        </div>
+                        <Button onClick={saveCalendarSettings} disabled={saving === "calendar"}>
+                          {saving === "calendar" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                          Save Calendar Settings
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* CRM Webhooks Tab */}
+                <TabsContent value="crm">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Webhook className="h-5 w-5 text-primary" />
+                        CRM Webhooks
+                      </CardTitle>
+                      <CardDescription>
+                        Connect your CRM to receive real-time events from your outbound campaigns.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="inbound-webhook">Inbound Webhook URL</Label>
+                        <Input
+                          id="inbound-webhook"
+                          placeholder="https://your-crm.com/webhooks/inbound"
+                          value={inboundWebhookUrl}
+                          onChange={(e) => setInboundWebhookUrl(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Receives events when leads are captured, qualified, or updated in the system.
                         </p>
-                      )}
-                    </div>
-                    <Button onClick={saveEmailSettings} disabled={saving === "email"}>
-                      {saving === "email" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Save Email Settings
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                      </div>
 
-            {/* LinkedIn Tab */}
-            <TabsContent value="linkedin">
+                      <div className="space-y-2">
+                        <Label htmlFor="outbound-webhook">Outbound Webhook URL</Label>
+                        <Input
+                          id="outbound-webhook"
+                          placeholder="https://your-crm.com/webhooks/outbound"
+                          value={outboundWebhookUrl}
+                          onChange={(e) => setOutboundWebhookUrl(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Receives events when emails are sent, opened, clicked, or replied to.
+                        </p>
+                      </div>
+
+                      <Separator />
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          {crmSettings?.updated_at && (
+                            <p className="text-sm text-muted-foreground">
+                              Last updated: {formatUpdatedAt(crmSettings.updated_at)}
+                            </p>
+                          )}
+                        </div>
+                        <Button onClick={saveCRMSettings} disabled={saving === "crm"}>
+                          {saving === "crm" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                          Save Webhook Settings
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* Domain Tab */}
+                <TabsContent value="domain">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Globe className="h-5 w-5 text-primary" />
+                        Custom Domain
+                      </CardTitle>
+                      <CardDescription>
+                        Use your own domain for landing pages and email tracking links.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="custom-domain">Domain</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id="custom-domain"
+                            placeholder="campaigns.yourcompany.com"
+                            value={domain}
+                            onChange={(e) => setDomain(e.target.value)}
+                          />
+                          {domainSettings?.cname_verified ? (
+                            <Badge variant="outline" className="text-green-600 border-green-600 shrink-0">
+                              <CheckCircle2 className="h-3 w-3 mr-1" /> Verified
+                            </Badge>
+                          ) : domain ? (
+                            <Badge variant="outline" className="text-yellow-600 border-yellow-600 shrink-0">
+                              <XCircle className="h-3 w-3 mr-1" /> Not Verified
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                        <p className="text-sm font-medium">DNS Configuration</p>
+                        <p className="text-sm text-muted-foreground">
+                          Add a CNAME record pointing your subdomain to our servers:
+                        </p>
+                        <div className="flex items-center gap-2 bg-background rounded border px-3 py-2">
+                          <code className="text-sm flex-1">campaigns.ubigrowth.ai</code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard("campaigns.ubigrowth.ai")}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          {domainSettings?.updated_at && (
+                            <p className="text-sm text-muted-foreground">
+                              Last updated: {formatUpdatedAt(domainSettings.updated_at)}
+                            </p>
+                          )}
+                        </div>
+                        <Button onClick={saveDomainSettings} disabled={saving === "domain"}>
+                          {saving === "domain" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                          Save Domain Settings
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            {/* Change History Sidebar */}
+            <div className="lg:col-span-1">
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Linkedin className="h-5 w-5 text-[#0A66C2]" />
-                    LinkedIn Configuration
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <History className="h-5 w-5 text-primary" />
+                    Change History
                   </CardTitle>
                   <CardDescription>
-                    Configure your LinkedIn profile and daily outreach limits.
+                    Recent changes to your integration settings
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="linkedin-url">LinkedIn Profile URL *</Label>
-                    <Input
-                      id="linkedin-url"
-                      placeholder="https://www.linkedin.com/in/yourprofile"
-                      value={linkedinProfileUrl}
-                      onChange={(e) => setLinkedinProfileUrl(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="conn-limit">Daily Connection Limit</Label>
-                      <Input
-                        id="conn-limit"
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={dailyConnectionLimit}
-                        onChange={(e) => setDailyConnectionLimit(parseInt(e.target.value) || 20)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="msg-limit">Daily Message Limit</Label>
-                      <Input
-                        id="msg-limit"
-                        type="number"
-                        min={1}
-                        max={150}
-                        value={dailyMessageLimit}
-                        onChange={(e) => setDailyMessageLimit(parseInt(e.target.value) || 50)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
-                    <p className="font-medium text-foreground mb-1">LinkedIn Best Practices</p>
-                    <p>LinkedIn recommends ~20–25 connection requests per day and ~50–75 messages per day to avoid account restrictions.</p>
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      {linkedinSettings?.updated_at && (
-                        <p className="text-sm text-muted-foreground">
-                          Last updated: {formatUpdatedAt(linkedinSettings.updated_at)}
-                        </p>
-                      )}
-                    </div>
-                    <Button onClick={saveLinkedInSettings} disabled={saving === "linkedin"}>
-                      {saving === "linkedin" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Save LinkedIn Settings
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Calendar Tab */}
-            <TabsContent value="calendar">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-primary" />
-                    Calendar & Booking
-                  </CardTitle>
-                  <CardDescription>
-                    Configure your meeting booking link for outbound sequences.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="cal-provider">Calendar Provider *</Label>
-                      <Select value={calendarProvider} onValueChange={setCalendarProvider}>
-                        <SelectTrigger id="cal-provider">
-                          <SelectValue placeholder="Select provider" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="google">Google Calendar</SelectItem>
-                          <SelectItem value="outlook">Microsoft Outlook</SelectItem>
-                          <SelectItem value="calendly">Calendly</SelectItem>
-                          <SelectItem value="hubspot">HubSpot Meetings</SelectItem>
-                          <SelectItem value="cal.com">Cal.com</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="booking-url">Booking URL *</Label>
-                      <Input
-                        id="booking-url"
-                        placeholder="https://calendly.com/yourname/30min"
-                        value={bookingUrl}
-                        onChange={(e) => setBookingUrl(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      {calendarSettings?.updated_at && (
-                        <p className="text-sm text-muted-foreground">
-                          Last updated: {formatUpdatedAt(calendarSettings.updated_at)}
-                        </p>
-                      )}
-                    </div>
-                    <Button onClick={saveCalendarSettings} disabled={saving === "calendar"}>
-                      {saving === "calendar" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Save Calendar Settings
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* CRM Webhooks Tab */}
-            <TabsContent value="crm">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Webhook className="h-5 w-5 text-primary" />
-                    CRM Webhooks
-                  </CardTitle>
-                  <CardDescription>
-                    Connect your CRM to receive real-time events from your outbound campaigns.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="inbound-webhook">Inbound Webhook URL</Label>
-                    <Input
-                      id="inbound-webhook"
-                      placeholder="https://your-crm.com/webhooks/inbound"
-                      value={inboundWebhookUrl}
-                      onChange={(e) => setInboundWebhookUrl(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Receives events when leads are captured, qualified, or updated in the system.
+                <CardContent>
+                  {auditLogs.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No changes recorded yet
                     </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="outbound-webhook">Outbound Webhook URL</Label>
-                    <Input
-                      id="outbound-webhook"
-                      placeholder="https://your-crm.com/webhooks/outbound"
-                      value={outboundWebhookUrl}
-                      onChange={(e) => setOutboundWebhookUrl(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Receives events when emails are sent, opened, clicked, or replied to.
-                    </p>
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      {crmSettings?.updated_at && (
-                        <p className="text-sm text-muted-foreground">
-                          Last updated: {formatUpdatedAt(crmSettings.updated_at)}
-                        </p>
-                      )}
+                  ) : (
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                      {auditLogs.map((log) => (
+                        <div key={log.id} className="border-b pb-3 last:border-0 last:pb-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <Badge variant="secondary" className="text-xs">
+                              {SETTINGS_TYPE_LABELS[log.settings_type] || log.settings_type}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                            </span>
+                          </div>
+                          <div className="space-y-1 mt-2">
+                            {Object.entries(log.changes).map(([field, { old: oldVal, new: newVal }]) => (
+                              <div key={field} className="text-xs">
+                                <span className="text-muted-foreground">{FIELD_LABELS[field] || field}:</span>
+                                {oldVal === null || oldVal === '' || oldVal === undefined ? (
+                                  <span className="ml-1 text-green-600">Set to "{newVal}"</span>
+                                ) : (
+                                  <span className="ml-1">
+                                    <span className="text-red-500 line-through">{String(oldVal)}</span>
+                                    <span className="mx-1">→</span>
+                                    <span className="text-green-600">{String(newVal)}</span>
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                            <User className="h-3 w-3" />
+                            {format(new Date(log.created_at), "MMM d, yyyy 'at' h:mm a")}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <Button onClick={saveCRMSettings} disabled={saving === "crm"}>
-                      {saving === "crm" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Save Webhook Settings
-                    </Button>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
-            </TabsContent>
-
-            {/* Domain Tab */}
-            <TabsContent value="domain">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Globe className="h-5 w-5 text-primary" />
-                    Custom Domain
-                  </CardTitle>
-                  <CardDescription>
-                    Use your own domain for landing pages and email tracking links.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="custom-domain">Domain</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="custom-domain"
-                        placeholder="campaigns.yourcompany.com"
-                        value={domain}
-                        onChange={(e) => setDomain(e.target.value)}
-                      />
-                      {domainSettings?.cname_verified ? (
-                        <Badge variant="outline" className="text-green-600 border-green-600 shrink-0">
-                          <CheckCircle2 className="h-3 w-3 mr-1" /> Verified
-                        </Badge>
-                      ) : domain ? (
-                        <Badge variant="outline" className="text-yellow-600 border-yellow-600 shrink-0">
-                          <XCircle className="h-3 w-3 mr-1" /> Not Verified
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-                    <p className="text-sm font-medium">DNS Configuration</p>
-                    <p className="text-sm text-muted-foreground">
-                      Add a CNAME record pointing your subdomain to our servers:
-                    </p>
-                    <div className="flex items-center gap-2 bg-background rounded border px-3 py-2">
-                      <code className="text-sm flex-1">campaigns.ubigrowth.ai</code>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToClipboard("campaigns.ubigrowth.ai")}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      {domainSettings?.updated_at && (
-                        <p className="text-sm text-muted-foreground">
-                          Last updated: {formatUpdatedAt(domainSettings.updated_at)}
-                        </p>
-                      )}
-                    </div>
-                    <Button onClick={saveDomainSettings} disabled={saving === "domain"}>
-                      {saving === "domain" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Save Domain Settings
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         </main>
         <Footer />
       </div>
