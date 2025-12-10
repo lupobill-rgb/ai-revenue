@@ -1,0 +1,164 @@
+{
+  "agent_name": "cmo_campaign_builder",
+  "version": "2.0.0",
+  "description": "Generates complete multi-channel campaign blueprints from ICP, offer, and channel selection",
+  "model": "google/gemini-2.5-flash",
+  "temperature": 0.6,
+  "system_prompt": "You are an expert marketing campaign architect for a multi-tenant SaaS platform. Your role is to generate complete, deployment-ready campaign blueprints including all assets, automations, and channel configurations.\n\nGuidelines:\n- Create cohesive multi-channel experiences\n- Ensure messaging consistency across all touchpoints\n- Design conversion-optimized sequences\n- Include proper timing and cadence\n- Generate complete content for each asset\n- Respect channel-specific best practices\n- Never reference other tenants or leak cross-tenant data\n\nOutput must include all assets needed to deploy the campaign immediately.",
+  "input_schema": {
+    "type": "object",
+    "required": ["tenant_id", "icp", "offer", "channels", "goal"],
+    "properties": {
+      "tenant_id": {
+        "type": "string",
+        "format": "uuid",
+        "description": "Tenant identifier for multi-tenant isolation"
+      },
+      "workspace_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "icp": {
+        "type": "string",
+        "description": "Target Ideal Customer Profile description"
+      },
+      "offer": {
+        "type": "string",
+        "description": "Product/service being promoted"
+      },
+      "channels": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "boolean" },
+          "sms": { "type": "boolean" },
+          "linkedin": { "type": "boolean" },
+          "voice": { "type": "boolean" },
+          "landing_page": { "type": "boolean" }
+        },
+        "description": "Channels to include in the campaign"
+      },
+      "goal": {
+        "type": "string",
+        "enum": ["leads", "meetings", "revenue", "engagement"],
+        "description": "Primary campaign goal"
+      },
+      "budget": {
+        "type": "number",
+        "description": "Optional budget allocation"
+      },
+      "duration_days": {
+        "type": "integer",
+        "description": "Campaign duration in days"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["campaign", "assets", "automations", "summary"],
+    "properties": {
+      "campaign": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "goal": { "type": "string" },
+          "target_icp": { "type": "string" },
+          "target_offer": { "type": "string" },
+          "start_date": { "type": "string" },
+          "end_date": { "type": "string" }
+        }
+      },
+      "assets": {
+        "type": "object",
+        "properties": {
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string" },
+                "subject_line": { "type": "string" },
+                "body": { "type": "string" },
+                "cta": { "type": "string" },
+                "send_day": { "type": "integer" }
+              }
+            }
+          },
+          "sms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "message": { "type": "string" },
+                "send_day": { "type": "integer" }
+              }
+            }
+          },
+          "social_posts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "platform": { "type": "string" },
+                "content": { "type": "string" },
+                "post_day": { "type": "integer" }
+              }
+            }
+          },
+          "landing_pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string" },
+                "headline": { "type": "string" },
+                "subheadline": { "type": "string" },
+                "body_sections": { "type": "array" },
+                "cta_text": { "type": "string" },
+                "form_fields": { "type": "array" }
+              }
+            }
+          },
+          "voice_scripts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string" },
+                "opening": { "type": "string" },
+                "pitch": { "type": "string" },
+                "qualification_questions": { "type": "array" },
+                "objection_handlers": { "type": "array" },
+                "closing": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "automations": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "step_order": { "type": "integer" },
+            "step_type": { "type": "string" },
+            "channel": { "type": "string" },
+            "asset_reference": { "type": "string" },
+            "delay_hours": { "type": "integer" },
+            "conditions": { "type": "array" }
+          }
+        }
+      },
+      "summary": {
+        "type": "string",
+        "description": "Campaign overview and expected outcomes"
+      },
+      "channel_budget_split": {
+        "type": "object",
+        "description": "Recommended budget allocation per channel"
+      }
+    }
+  },
+  "db_tables": ["cmo_campaigns", "cmo_content_assets", "cmo_campaign_channels", "automation_steps"],
+  "edge_function": "cmo-campaign-builder"
+}
