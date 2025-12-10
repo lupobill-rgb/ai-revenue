@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -13,12 +13,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Sparkles, Brain, Zap, Mail, Share2, Phone, Video, Layout } from "lucide-react";
+import { Loader2, Sparkles, Brain, Zap, Mail, Share2, Phone, Video, Layout, Bot } from "lucide-react";
 import AIPromptCard from "@/components/AIPromptCard";
 import WorkflowProgress from "@/components/WorkflowProgress";
 import AICampaignPlanner from "@/components/AICampaignPlanner";
 import CampaignOptimizer from "@/components/CampaignOptimizer";
 import { useChannelPreferences } from "@/hooks/useChannelPreferences";
+import { AutopilotCampaignWizard } from "@/components/cmo/campaigns";
+import { AIBuildSectionButton } from "@/components/cmo/campaigns/AIBuildSectionButton";
 
 const verticals = [
   "Accounting & Finance",
@@ -57,6 +59,8 @@ const verticals = [
 
 const NewCampaign = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isAutopilotMode = searchParams.get('type') === 'autopilot';
   const { toast } = useToast();
   const { preferences: channelPrefs, isLoading: loadingPrefs } = useChannelPreferences();
   const [creating, setCreating] = useState(false);
@@ -67,7 +71,7 @@ const NewCampaign = () => {
   const [businessType, setBusinessType] = useState("");
   const [budget, setBudget] = useState("");
   const [aiPlan, setAiPlan] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState("create");
+  const [activeTab, setActiveTab] = useState(isAutopilotMode ? "autopilot" : "create");
   const [draftedEmailSubject, setDraftedEmailSubject] = useState("");
   const [draftedEmailContent, setDraftedEmailContent] = useState("");
   const emailContentRef = useRef<HTMLTextAreaElement>(null);
@@ -254,7 +258,11 @@ const NewCampaign = () => {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="autopilot" className="flex items-center gap-2">
+                <Bot className="h-4 w-4" />
+                Autopilot
+              </TabsTrigger>
               <TabsTrigger value="create" className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4" />
                 Quick Create
@@ -268,6 +276,13 @@ const NewCampaign = () => {
                 Self-Optimize
               </TabsTrigger>
             </TabsList>
+
+            {/* Autopilot Tab */}
+            <TabsContent value="autopilot">
+              <AutopilotCampaignWizard 
+                onComplete={() => navigate('/approvals')} 
+              />
+            </TabsContent>
 
             <TabsContent value="create">
               <form onSubmit={handleCreateCampaign}>
@@ -461,7 +476,37 @@ const NewCampaign = () => {
                       </div>
                     </div>
 
-                    {/* Drafted Email Content Section */}
+                    {/* AI Build Section */}
+                    <div className="border border-primary/20 rounded-lg p-4 bg-primary/5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Bot className="h-5 w-5 text-primary" />
+                          <div>
+                            <p className="text-sm font-medium">AI Content Generation</p>
+                            <p className="text-xs text-muted-foreground">Auto-generate content for selected channels</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <AIBuildSectionButton
+                            sectionType="email"
+                            campaignContext={{ vertical, goal }}
+                            size="sm"
+                          />
+                          <AIBuildSectionButton
+                            sectionType="social"
+                            campaignContext={{ vertical, goal }}
+                            size="sm"
+                          />
+                          <AIBuildSectionButton
+                            sectionType="all"
+                            campaignContext={{ vertical, goal }}
+                            variant="default"
+                            size="sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="border border-border rounded-lg p-4 space-y-4 bg-muted/30">
                       <div className="flex items-center gap-2">
                         <Sparkles className="h-4 w-4 text-primary" />
