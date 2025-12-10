@@ -38,13 +38,84 @@ import {
 } from 'lucide-react';
 import type { AutomationStepType, AutomationStep, AutomationStepConfig } from '@/lib/automation/types';
 import { useVoiceAssistants } from '@/hooks/useVoiceAssistants';
+import { useOptimizations } from '@/hooks/useOptimizations';
+import { format } from 'date-fns';
+import { Lightbulb, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
 
 interface AutomationsTabProps {
   sequenceId: string;
+  campaignId?: string;
   steps: AutomationStep[];
   onAddStep: (step: Omit<AutomationStep, 'id' | 'created_at' | 'updated_at'>) => void;
   onDeleteStep: (stepId: string) => void;
   onUpdateStep: (stepId: string, updates: Partial<AutomationStep>) => void;
+}
+
+// Recent Optimizations Panel
+function RecentOptimizations({ campaignId }: { campaignId?: string }) {
+  const { data, loading } = useOptimizations(campaignId);
+  
+  if (loading) return null;
+  if (!data?.length) return null;
+
+  const getPriorityColor = (priority: string | null) => {
+    switch (priority) {
+      case 'high': return 'text-destructive';
+      case 'medium': return 'text-yellow-500';
+      case 'low': return 'text-muted-foreground';
+      default: return 'text-muted-foreground';
+    }
+  };
+
+  const getStatusIcon = (status: string | null) => {
+    switch (status) {
+      case 'implemented': return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'pending': return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+      default: return <Lightbulb className="h-4 w-4 text-primary" />;
+    }
+  };
+
+  return (
+    <Card className="border-primary/20 bg-primary/5">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-primary" />
+          Recent AI Optimizations
+        </CardTitle>
+        <CardDescription className="text-xs">
+          AI-generated recommendations for your automation
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {data.slice(0, 5).map((opt) => (
+          <div
+            key={opt.id}
+            className="flex items-start gap-3 p-2 rounded-md bg-background/50 border border-border/50"
+          >
+            {getStatusIcon(opt.status)}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium truncate">{opt.title}</span>
+                {opt.priority && (
+                  <Badge variant="outline" className={`text-xs ${getPriorityColor(opt.priority)}`}>
+                    {opt.priority}
+                  </Badge>
+                )}
+              </div>
+              {opt.description && (
+                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                  {opt.description}
+                </p>
+              )}
+              <span className="text-xs text-muted-foreground">
+                {format(new Date(opt.created_at), 'MMM d, yyyy')}
+              </span>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
 }
 
 const STEP_ICONS: Record<AutomationStepType, React.ElementType> = {
@@ -167,6 +238,7 @@ function VoiceStepConfig({
 
 export function AutomationsTab({
   sequenceId,
+  campaignId,
   steps,
   onAddStep,
   onDeleteStep,
@@ -317,7 +389,10 @@ export function AutomationsTab({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Recent AI Optimizations */}
+      <RecentOptimizations campaignId={campaignId} />
+
       {/* Steps List */}
       <div className="space-y-2">
         {steps.length === 0 ? (
