@@ -2595,6 +2595,74 @@ export type Database = {
         }
         Relationships: []
       }
+      landing_pages: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          form_fields: Json
+          hero_headline: string
+          hero_subheadline: string | null
+          hero_supporting_points: string[] | null
+          id: string
+          internal_name: string
+          primary_cta_label: string
+          primary_cta_type: string
+          published: boolean
+          sections: Json
+          template_type: string
+          tenant_id: string
+          updated_at: string
+          url: string | null
+          url_slug: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          form_fields?: Json
+          hero_headline: string
+          hero_subheadline?: string | null
+          hero_supporting_points?: string[] | null
+          id?: string
+          internal_name: string
+          primary_cta_label: string
+          primary_cta_type: string
+          published?: boolean
+          sections?: Json
+          template_type: string
+          tenant_id: string
+          updated_at?: string
+          url?: string | null
+          url_slug: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          form_fields?: Json
+          hero_headline?: string
+          hero_subheadline?: string | null
+          hero_supporting_points?: string[] | null
+          id?: string
+          internal_name?: string
+          primary_cta_label?: string
+          primary_cta_type?: string
+          published?: boolean
+          sections?: Json
+          template_type?: string
+          tenant_id?: string
+          updated_at?: string
+          url?: string | null
+          url_slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "landing_pages_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_activities: {
         Row: {
           activity_type: string
