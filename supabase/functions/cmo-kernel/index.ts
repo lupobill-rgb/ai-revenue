@@ -20,7 +20,8 @@ type CMOMode =
   | 'record-metrics'
   | 'summarize-weekly'
   | 'campaign-builder'
-  | 'voice-agent-builder';
+  | 'voice-agent-builder'
+  | 'optimizer';
 
 interface KernelRequest {
   mode: CMOMode;
@@ -43,6 +44,7 @@ const MODE_TO_FUNCTION: Record<CMOMode, string> = {
   'summarize-weekly': 'cmo-summarize-weekly',
   'campaign-builder': 'cmo-campaign-builder',
   'voice-agent-builder': 'cmo-voice-agent-builder',
+  'optimizer': 'cmo-optimizer',
 };
 
 serve(async (req) => {
