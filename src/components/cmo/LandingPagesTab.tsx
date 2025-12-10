@@ -234,13 +234,17 @@ function LandingPagesTab() {
     selectedCampaignId === "all" || page.campaignId === selectedCampaignId
   ) || [];
 
-  // Auto-select first page when available
+  // Auto-select first page when available - use stable dependency
+  const firstPageId = filteredPages[0]?.id;
   useEffect(() => {
-    if (filteredPages.length && !selectedPage) {
-      setSelectedPage(filteredPages[0]);
-      setEditedPage(filteredPages[0]);
+    if (firstPageId && !selectedPage) {
+      const firstPage = filteredPages.find(p => p.id === firstPageId);
+      if (firstPage) {
+        setSelectedPage(firstPage);
+        setEditedPage(firstPage);
+      }
     }
-  }, [filteredPages, selectedPage]);
+  }, [firstPageId]);
 
   const handleSelectPage = (page: ParsedLandingPage) => {
     setSelectedPage(page);
