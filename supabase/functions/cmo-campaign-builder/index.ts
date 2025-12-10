@@ -15,39 +15,6 @@ interface CampaignBuilderInput {
   desired_result: 'leads' | 'meetings' | 'revenue' | 'engagement';
 }
 
-interface GeneratedAssets {
-  posts: Array<{
-    channel: string;
-    content: string;
-    hook: string;
-    cta: string;
-  }>;
-  emails: Array<{
-    step: number;
-    subject: string;
-    body: string;
-    delay_days: number;
-  }>;
-  sms: Array<{
-    step: number;
-    message: string;
-    delay_days: number;
-  }>;
-  landing_pages: Array<{
-    title: string;
-    headline: string;
-    subheadline: string;
-    sections: any[];
-  }>;
-  voice_scripts: Array<{
-    scenario: string;
-    opening: string;
-    pitch: string;
-    objection_handling: string;
-    close: string;
-  }>;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -64,11 +31,15 @@ serve(async (req) => {
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } }
     });
+
+    // Service role client for creating automation triggers
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
@@ -110,7 +81,7 @@ Tone: ${brandProfile.brand_tone || 'Friendly'}
 Value Proposition: ${brandProfile.unique_value_proposition || offer}
 ` : `Brand context not available. Use the offer description for tone.`;
 
-    // Build the AI prompt
+    // Build the AI prompt - ALWAYS include landing_page even if not explicitly in channels
     const systemPrompt = `You are an expert AI CMO campaign builder. Your job is to create comprehensive, multi-channel marketing campaigns.
 
 ${brandContext}
@@ -120,6 +91,8 @@ Generate high-converting marketing assets that are:
 - Aligned with the brand voice
 - Optimized for the desired outcome
 - Ready to deploy across channels
+
+CRITICAL: You MUST always generate at least one landing page for every campaign. Landing pages are essential for conversion.
 
 Output ONLY valid JSON matching the exact schema requested.`;
 
@@ -153,13 +126,29 @@ Generate the following assets in JSON format:
     { "step": 1, "message": "SMS text under 160 chars", "delay_days": 0 }
   ],
   "landing_pages": [
-    // 1 landing page structure
+    // REQUIRED: At least 1 landing page - this is mandatory for all campaigns
     { 
-      "title": "page title", 
-      "headline": "main headline", 
-      "subheadline": "supporting text",
+      "internal_name": "campaign-landing-page",
+      "url_slug": "offer-slug",
+      "template_type": "lead_magnet|saas|webinar|services|booking",
+      "hero_headline": "compelling headline targeting the ICP pain point",
+      "hero_subheadline": "supporting value proposition",
+      "hero_supporting_points": ["benefit 1", "benefit 2", "benefit 3"],
       "sections": [
-        { "type": "hero|features|testimonials|cta", "content": {} }
+        { 
+          "type": "problem_solution|features|social_proof|process|faq|pricing|booking|story", 
+          "heading": "section heading",
+          "body": "section content",
+          "bullets": ["point 1", "point 2"],
+          "enabled": true
+        }
+      ],
+      "primary_cta_label": "Get Started Free",
+      "primary_cta_type": "form|calendar",
+      "form_fields": [
+        { "name": "email", "label": "Email Address", "type": "email", "required": true },
+        { "name": "first_name", "label": "First Name", "type": "text", "required": true },
+        { "name": "company", "label": "Company", "type": "text", "required": false }
       ]
     }
   ],
@@ -179,7 +168,7 @@ Generate the following assets in JSON format:
   ]
 }
 
-Only include asset types for the channels specified. Make content compelling and conversion-focused.`;
+Only include asset types for the channels specified, EXCEPT landing_pages which must ALWAYS be included. Make content compelling and conversion-focused.`;
 
     // Call Lovable AI
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -214,7 +203,6 @@ Only include asset types for the channels specified. Make content compelling and
     // Parse the JSON from AI response
     let assets: any;
     try {
-      // Extract JSON from potential markdown code blocks
       const jsonMatch = generatedContent.match(/```json\n?([\s\S]*?)\n?```/) || 
                         generatedContent.match(/```\n?([\s\S]*?)\n?```/);
       const jsonStr = jsonMatch ? jsonMatch[1] : generatedContent;
@@ -248,6 +236,7 @@ Only include asset types for the channels specified. Make content compelling and
 
     // Store content assets
     const contentAssets = [];
+    const landingPageAssets = [];
 
     // Store posts
     if (assets.posts?.length) {
@@ -335,50 +324,136 @@ Only include asset types for the channels specified. Make content compelling and
       }
     }
 
-    // Store landing pages
+    // Store landing pages with FULL metadata and AUTO-WIRING
     if (assets.landing_pages?.length) {
       for (const page of assets.landing_pages) {
+        // Generate unique URL slug with campaign reference
+        const urlSlug = `${page.url_slug || page.internal_name}-${campaign.id.slice(0, 8)}`;
+        const publishedUrl = `https://pages.ubigrowth.ai/${tenant_id.slice(0, 8)}/${urlSlug}`;
+        
+        // Store full landing page structure in cmo_content_assets
         const { data: asset } = await supabase
           .from('cmo_content_assets')
           .insert({
             tenant_id,
             workspace_id: workspaceId,
             campaign_id: campaign.id,
-            title: page.title,
+            title: page.internal_name || page.hero_headline,
             content_type: 'landing_page',
             channel: 'web',
-            key_message: page.headline,
-            supporting_points: [page.subheadline, JSON.stringify(page.sections)],
+            key_message: page.hero_headline,
+            cta: page.primary_cta_label,
+            supporting_points: page.hero_supporting_points || [],
             status: 'draft',
           })
           .select()
           .single();
-        if (asset) contentAssets.push(asset);
+
+        if (asset) {
+          // Store full landing page data in variant for richer structure
+          const { data: variant } = await supabase
+            .from('cmo_content_variants')
+            .insert({
+              asset_id: asset.id,
+              variant_name: 'Primary',
+              variant_type: 'A',
+              headline: page.hero_headline,
+              subject_line: page.hero_subheadline,
+              body_content: JSON.stringify({
+                template_type: page.template_type || 'lead_magnet',
+                url_slug: urlSlug,
+                published_url: publishedUrl,
+                hero_supporting_points: page.hero_supporting_points || [],
+                sections: (page.sections || []).map((s: any) => ({
+                  ...s,
+                  enabled: s.enabled !== false // default enabled
+                })),
+                primary_cta_type: page.primary_cta_type || 'form',
+                form_fields: page.form_fields || [
+                  { name: 'email', label: 'Email', type: 'email', required: true },
+                  { name: 'first_name', label: 'First Name', type: 'text', required: true }
+                ],
+                // Auto-wiring metadata
+                crm_form_id: `form_${asset.id}`,
+                utm_source: 'campaign',
+                utm_campaign: campaign.id,
+              }),
+              cta_text: page.primary_cta_label,
+              metadata: {
+                auto_wired: true,
+                crm_integrated: true,
+                campaign_source: campaign.id,
+              }
+            })
+            .select()
+            .single();
+
+          // Create automation trigger for form submission
+          await supabase
+            .from('automation_steps')
+            .insert({
+              tenant_id,
+              workspace_id: workspaceId,
+              automation_id: campaign.id,
+              step_type: 'trigger_form_submit',
+              step_order: 0,
+              config: {
+                form_id: `form_${asset.id}`,
+                landing_page_id: asset.id,
+                campaign_id: campaign.id,
+                action: 'create_lead',
+                lead_source: `Landing Page: ${page.internal_name || page.hero_headline}`,
+              }
+            });
+
+          landingPageAssets.push({
+            ...asset,
+            variant,
+            published_url: publishedUrl,
+            url_slug: urlSlug,
+          });
+          contentAssets.push(asset);
+        }
       }
     }
 
-    // Store automation flow steps in automation_jobs
+    // Store automation flow steps
     if (assets.automation_steps?.length) {
       for (const step of assets.automation_steps) {
         await supabase
-          .from('automation_jobs')
+          .from('automation_steps')
           .insert({
+            tenant_id,
             workspace_id: workspaceId,
-            job_type: `campaign_${campaign.id}_step_${step.step}`,
-            status: 'pending',
-            scheduled_at: new Date(Date.now() + (step.delay_days || 0) * 86400000).toISOString(),
-            result: {
-              campaign_id: campaign.id,
-              step_type: step.type,
-              step_order: step.step,
-              config: step.config || {},
-            },
+            automation_id: campaign.id,
+            step_type: step.type,
+            step_order: step.step,
+            config: {
+              delay_days: step.delay_days || 0,
+              ...step.config,
+            }
           });
       }
     }
 
-    // Log success
-    console.log(`Campaign ${campaign.id} created with ${contentAssets.length} assets and ${assets.automation_steps?.length || 0} automation steps`);
+    // Log agent run
+    await supabase
+      .from('agent_runs')
+      .insert({
+        tenant_id,
+        workspace_id: workspaceId,
+        agent: 'cmo_campaign_builder',
+        mode: 'autopilot',
+        status: 'completed',
+        input: { icp, offer, channels, desired_result },
+        output: {
+          campaign_id: campaign.id,
+          assets_created: contentAssets.length,
+          landing_pages: landingPageAssets.length,
+        }
+      });
+
+    console.log(`Campaign ${campaign.id} created with ${contentAssets.length} assets, ${landingPageAssets.length} landing pages, and ${assets.automation_steps?.length || 0} automation steps`);
 
     return new Response(JSON.stringify({
       campaign_id: campaign.id,
@@ -387,7 +462,7 @@ Only include asset types for the channels specified. Make content compelling and
         posts: assets.posts || [],
         emails: assets.emails || [],
         sms: assets.sms || [],
-        landing_pages: assets.landing_pages || [],
+        landing_pages: landingPageAssets,
         voice_scripts: assets.voice_scripts || [],
       },
       automations: {
