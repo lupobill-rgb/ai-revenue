@@ -287,6 +287,31 @@ export async function getCampaign(id: string) {
   return data as CMOCampaign & { channels: CMOCampaignChannel[] };
 }
 
+// Autopilot Controls
+export async function toggleAutopilot(campaignId: string, enabled: boolean) {
+  const { data, error } = await supabase
+    .from("cmo_campaigns")
+    .update({ autopilot_enabled: enabled } as any)
+    .eq("id", campaignId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as unknown as CMOCampaign;
+}
+
+export async function updateCampaignGoal(campaignId: string, goal: string | null) {
+  const { data, error } = await supabase
+    .from("cmo_campaigns")
+    .update({ goal } as any)
+    .eq("id", campaignId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as unknown as CMOCampaign;
+}
+
 // Content Assets
 export async function getContentAssets(workspaceId: string, campaignId?: string) {
   let query = supabase
