@@ -55,6 +55,9 @@ serve(async (req) => {
       utmCampaign?: string;
       landingPageUrl?: string;
       customFields?: Record<string, unknown>;
+      // Landing page integration fields
+      campaignId?: string;
+      landingPageSlug?: string;
     };
 
     const {
@@ -72,6 +75,8 @@ serve(async (req) => {
       utmCampaign,
       landingPageUrl,
       customFields,
+      campaignId,
+      landingPageSlug,
     } = body;
 
     // Validate required fields
@@ -307,7 +312,12 @@ serve(async (req) => {
     // Cap score at 100
     score = Math.min(score, 100);
 
-    // Create new lead with workspace_id
+    // Build source with landing page slug for automation matching
+    const leadSource = landingPageSlug 
+      ? `landing_page:${landingPageSlug}` 
+      : "landing_page";
+
+    // Create new lead with workspace_id and campaign linking
     const { data, error } = await supabaseClient
       .from("leads")
       .insert({
@@ -318,10 +328,11 @@ serve(async (req) => {
         phone: phone || null,
         company: company || null,
         job_title: jobTitle || null,
-        source: "landing_page",
+        source: leadSource,
         status: "new",
         score,
         vertical: vertical || null,
+        campaign_id: campaignId || null,
         utm_source: utmSource || null,
         utm_medium: utmMedium || null,
         utm_campaign: utmCampaign || null,
@@ -341,11 +352,40 @@ serve(async (req) => {
       description: `New lead captured via landing page form`,
       metadata: { 
         landing_page_url: landingPageUrl,
+        landing_page_slug: landingPageSlug,
+        campaign_id: campaignId,
         initial_score: score 
       },
     });
 
-    console.log(`[lead-capture] New lead captured: ${email} (Score: ${score}) in workspace ${workspaceId}`);
+    console.log(`[lead-capture] New lead captured: ${email} (Score: ${score}) in workspace ${workspaceId}, source: ${leadSource}`);
+
+    // Auto-trigger campaign automations if campaign_id is linked
+    if (campaignId) {
+      // Find automation steps triggered by lead creation for this campaign
+      const { data: automationSteps } = await supabaseClient
+        .from("automation_steps")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .eq("automation_id", campaignId)
+        .order("step_order", { ascending: true });
+
+      if (automationSteps && automationSteps.length > 0) {
+        console.log(`[lead-capture] Found ${automationSteps.length} automation steps for campaign ${campaignId}`);
+        
+        // Log automation trigger event
+        await supabaseClient.from("lead_activities").insert({
+          lead_id: data.id,
+          workspace_id: workspaceId,
+          activity_type: "automation_triggered",
+          description: `Campaign automation triggered: ${automationSteps.length} steps queued`,
+          metadata: { 
+            campaign_id: campaignId,
+            steps_count: automationSteps.length 
+          },
+        });
+      }
+    }
 
     return new Response(
       JSON.stringify({ 
