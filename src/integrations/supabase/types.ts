@@ -2031,6 +2031,60 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_leads: {
+        Row: {
+          campaign_id: string | null
+          contact_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          score: number | null
+          source: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          contact_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          score?: number | null
+          source?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string | null
+          contact_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          score?: number | null
+          source?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_leads_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_leads_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "crm_contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cro_deal_reviews: {
         Row: {
           created_at: string | null
