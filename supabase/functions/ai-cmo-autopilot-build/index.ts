@@ -17,15 +17,6 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-    
-    if (!lovableApiKey) {
-      console.error("LOVABLE_API_KEY not configured");
-      return new Response(
-        JSON.stringify({ error: "AI service not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -112,128 +103,15 @@ serve(async (req) => {
       );
     }
 
-    // Fetch brand context
-    const { data: brandProfile } = await supabase
-      .from("cmo_brand_profiles")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
-
-    // Build AI prompt
-    const systemPrompt = `You are an AI Campaign Builder that creates complete multi-channel marketing campaigns.
-    
-Given an ICP (Ideal Customer Profile), offer, selected channels, and desired result, generate a complete campaign with:
-1. Campaign name and description
-2. For each channel, appropriate content assets
-3. Automation sequence steps
-4. Voice scripts if voice channel is selected
-
-${brandProfile ? `Brand Context:
-- Brand: ${brandProfile.brand_name}
-- Voice: ${brandProfile.brand_voice || "Professional"}
-- Tone: ${brandProfile.brand_tone || "Confident"}
-- Industry: ${brandProfile.industry || "B2B"}
-` : ""}
-
-Output JSON format:
-{
-  "campaign_name": "string",
-  "campaign_description": "string",
-  "assets": {
-    "posts": [{ "channel": "linkedin", "content": "...", "hook": "...", "cta": "..." }],
-    "emails": [{ "step": 1, "subject": "...", "body": "...", "delay_days": 0 }],
-    "sms": [{ "step": 1, "message": "...", "delay_days": 1 }],
-    "landing_pages": [{ "title": "...", "headline": "...", "subheadline": "...", "sections": [] }],
-    "voice_scripts": [{ "scenario": "cold_call", "opening": "...", "pitch": "...", "objection_handling": "...", "close": "..." }]
-  },
-  "automations": {
-    "steps": [{ "step": 1, "type": "email|sms|wait|voice", "delay_days": 0, "config": {} }]
-  },
-  "summary": "Brief description of what was created"
-}`;
-
-    const userPrompt = `Create a campaign for:
-
-ICP: ${icp}
-
-Offer: ${offer}
-
-Channels to use: ${channels.join(", ")}
-
-Desired Result: ${desiredResult}
-
-Generate appropriate content for each selected channel and create an automation sequence.`;
-
-    console.log(`Building autopilot campaign for tenant ${tenantId}, goal: ${desiredResult}`);
-
-    // Call Lovable AI
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.7,
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const status = aiResponse.status;
-      if (status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI credits exhausted. Please add funds." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errorText = await aiResponse.text();
-      console.error("AI error:", status, errorText);
-      return new Response(
-        JSON.stringify({ error: "AI generation failed" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content || "";
-    
-    // Parse JSON from response
-    let result;
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        result = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("No JSON found in response");
-      }
-    } catch (parseError) {
-      console.error("Failed to parse AI response:", parseError);
-      return new Response(
-        JSON.stringify({ error: "Failed to parse AI response" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Create campaign in database
+    // Step 1: Create campaign row first (status draft, autopilot_enabled = true, goal set)
     const { data: campaign, error: campaignError } = await supabase
       .from("cmo_campaigns")
       .insert({
         tenant_id: tenantId,
         workspace_id: workspaceId,
-        campaign_name: result.campaign_name || `Autopilot Campaign - ${desiredResult}`,
+        campaign_name: `Autopilot Campaign - ${desiredResult}`,
         campaign_type: "autopilot",
-        description: result.campaign_description || `AI-generated campaign targeting ${desiredResult}`,
+        description: `AI-generated campaign targeting ${desiredResult}`,
         target_icp: icp,
         target_offer: offer,
         goal: desiredResult,
@@ -251,6 +129,69 @@ Generate appropriate content for each selected channel and create an automation 
       );
     }
 
+    console.log(`Created draft campaign ${campaign.id} for tenant ${tenantId}`);
+
+    // Step 2: Call kernel with campaign_id and payload
+    const kernelPayload = {
+      mode: "campaign-builder",
+      tenant_id: tenantId,
+      payload: {
+        campaign_id: campaign.id,
+        icp,
+        offer,
+        channels,
+        desired_result: desiredResult,
+      },
+    };
+
+    console.log(`Calling cmo-kernel with mode campaign-builder for campaign ${campaign.id}`);
+
+    const kernelResponse = await fetch(`${supabaseUrl}/functions/v1/cmo-kernel`, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(kernelPayload),
+    });
+
+    if (!kernelResponse.ok) {
+      const status = kernelResponse.status;
+      if (status === 429) {
+        return new Response(
+          JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (status === 402) {
+        return new Response(
+          JSON.stringify({ error: "AI credits exhausted. Please add funds." }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const errorText = await kernelResponse.text();
+      console.error("Kernel error:", status, errorText);
+      return new Response(
+        JSON.stringify({ error: "Campaign builder agent failed" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Step 3: Process kernel response (assets + automations)
+    const kernelResult = await kernelResponse.json();
+    const result = kernelResult.result || kernelResult;
+
+    // Update campaign name if generated
+    if (result.campaign_name) {
+      await supabase
+        .from("cmo_campaigns")
+        .update({ 
+          campaign_name: result.campaign_name,
+          description: result.campaign_description || campaign.description,
+        })
+        .eq("id", campaign.id);
+    }
+
     // Create campaign channels
     const channelInserts = channels.map((channel: string) => ({
       campaign_id: campaign.id,
@@ -260,7 +201,7 @@ Generate appropriate content for each selected channel and create an automation 
 
     await supabase.from("cmo_campaign_channels").insert(channelInserts);
 
-    // Store content assets
+    // Store content assets from kernel response
     const assets = result.assets || {};
     const assetInserts = [];
 
@@ -330,29 +271,34 @@ Generate appropriate content for each selected channel and create an automation 
       }
     }
 
+    // Landing pages
+    if (assets.landing_pages) {
+      for (const page of assets.landing_pages) {
+        assetInserts.push({
+          tenant_id: tenantId,
+          workspace_id: workspaceId,
+          campaign_id: campaign.id,
+          title: page.title || page.headline,
+          content_type: "landing_page",
+          channel: "landing_page",
+          key_message: page.subheadline,
+          supporting_points: page.sections || [],
+          status: "draft",
+        });
+      }
+    }
+
     if (assetInserts.length > 0) {
       await supabase.from("cmo_content_assets").insert(assetInserts);
     }
 
-    // Log agent run
-    await supabase.from("agent_runs").insert({
-      tenant_id: tenantId,
-      workspace_id: workspaceId,
-      agent: "campaign_builder",
-      mode: "autopilot",
-      input: { icp, offer, channels, desiredResult },
-      output: result,
-      status: "completed",
-      completed_at: new Date().toISOString(),
-    });
-
-    console.log(`Autopilot campaign ${campaign.id} created with ${assetInserts.length} assets`);
+    console.log(`Autopilot campaign ${campaign.id} built with ${assetInserts.length} assets`);
 
     return new Response(
       JSON.stringify({
         success: true,
         campaign_id: campaign.id,
-        campaign_name: campaign.campaign_name,
+        campaign_name: result.campaign_name || campaign.campaign_name,
         assets: result.assets,
         automations: result.automations,
         summary: result.summary || `Created campaign with ${assetInserts.length} assets`,
