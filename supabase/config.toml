@@ -48,6 +48,9 @@ verify_jwt = true
 [functions.cmo-campaign-designer]
 verify_jwt = true
 
+[functions.cmo-campaign-builder]
+verify_jwt = true
+
 [functions.cmo-content-engine]
 verify_jwt = true
 

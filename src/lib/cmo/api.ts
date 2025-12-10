@@ -312,14 +312,28 @@ export async function updateCampaignGoal(campaignId: string, goal: string | null
   return data as unknown as CMOCampaign;
 }
 
-// Autopilot Campaign Builder
+// Autopilot Campaign Builder - Uses kernel campaign-builder mode
 export async function buildAutopilotCampaign(payload: {
   icp: string;
   offer: string;
   channels: string[];
-  desiredResult: string;
+  desiredResult: 'leads' | 'meetings' | 'revenue' | 'engagement';
   workspaceId?: string;
-}) {
+}): Promise<{
+  campaign_id: string;
+  campaign_name: string;
+  assets: {
+    posts: Array<{ channel: string; content: string; hook: string; cta: string }>;
+    emails: Array<{ step: number; subject: string; body: string; delay_days: number }>;
+    sms: Array<{ step: number; message: string; delay_days: number }>;
+    landing_pages: Array<{ title: string; headline: string; subheadline: string; sections: any[] }>;
+    voice_scripts: Array<{ scenario: string; opening: string; pitch: string; objection_handling: string; close: string }>;
+  };
+  automations: {
+    steps: Array<{ step: number; type: string; delay_days: number; config: any }>;
+  };
+  summary: string;
+}> {
   const { tenantId } = await getTenantContext();
   
   // Get workspace_id if not provided
@@ -333,29 +347,25 @@ export async function buildAutopilotCampaign(payload: {
     workspaceId = workspace?.id;
   }
 
-  const { data, error } = await supabase.functions.invoke("campaign-orchestrator", {
+  // Call via kernel with campaign-builder mode
+  const { data, error } = await supabase.functions.invoke("cmo-kernel", {
     body: {
-      campaignName: `Autopilot: ${payload.offer.slice(0, 50)}`,
-      vertical: "AI Generated",
-      goal: payload.desiredResult,
-      autopilot: true,
-      icp: payload.icp,
-      offer: payload.offer,
-      channels: {
-        email: payload.channels.includes("email"),
-        social: payload.channels.includes("linkedin"),
-        voice: payload.channels.includes("voice"),
-        video: false,
-        landing_page: payload.channels.includes("landing_page"),
-        sms: payload.channels.includes("sms"),
+      mode: 'campaign-builder',
+      tenant_id: tenantId,
+      workspace_id: workspaceId,
+      payload: {
+        icp: payload.icp,
+        offer: payload.offer,
+        channels: payload.channels,
+        desired_result: payload.desiredResult,
       },
-      tenantId,
-      workspaceId,
     },
   });
 
   if (error) throw error;
-  return data;
+  
+  // Return the result from the kernel response
+  return data?.result || data;
 }
 
 // Content Assets

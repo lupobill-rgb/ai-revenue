@@ -18,7 +18,8 @@ type CMOMode =
   | 'launch-campaign'
   | 'generate-content'
   | 'record-metrics'
-  | 'summarize-weekly';
+  | 'summarize-weekly'
+  | 'campaign-builder'; // New: Autopilot campaign builder
 
 interface KernelRequest {
   mode: CMOMode;
@@ -39,6 +40,7 @@ const MODE_TO_FUNCTION: Record<CMOMode, string> = {
   'generate-content': 'cmo-generate-content',
   'record-metrics': 'cmo-record-metrics',
   'summarize-weekly': 'cmo-summarize-weekly',
+  'campaign-builder': 'cmo-campaign-builder', // New
 };
 
 serve(async (req) => {
