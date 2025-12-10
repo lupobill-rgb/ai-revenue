@@ -237,26 +237,31 @@ Deno.serve(async (req) => {
       console.log("[landing-form-submit] Logged activity for contact:", contactId);
     }
 
-    // 7. Trigger automations (async, non-blocking)
+    // 7. Trigger kernel for next steps (automations, scoring, routing)
     try {
-      const { error: automationError } = await supabase.functions.invoke(
-        "trigger-user-automation",
+      const { error: kernelError } = await supabase.functions.invoke(
+        "cmo-kernel",
         {
           body: {
+            agent_name: "cmo_lead_router",
             tenant_id: tenantId,
-            trigger_type: "landing_form_submit",
-            contact_id: contactId,
-            lead_id: lead!.id,
-            landing_page_id: landingPage.id,
             campaign_id: campaignId,
+            payload: {
+              contact_id: contactId,
+              lead_id: lead!.id,
+              source: `landing_page:${payload.slug}`,
+              utm: payload.tracking || {},
+            },
           },
         }
       );
-      if (automationError) {
-        console.warn("[landing-form-submit] Automation trigger failed:", automationError);
+      if (kernelError) {
+        console.warn("[landing-form-submit] Kernel lead router failed:", kernelError);
+      } else {
+        console.log("[landing-form-submit] Triggered cmo_lead_router for lead:", lead!.id);
       }
-    } catch (automationErr) {
-      console.warn("[landing-form-submit] Automation trigger error:", automationErr);
+    } catch (kernelErr) {
+      console.warn("[landing-form-submit] Kernel call error:", kernelErr);
     }
 
     console.log("[landing-form-submit] Successfully processed form submission");
