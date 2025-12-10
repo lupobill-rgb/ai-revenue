@@ -51,6 +51,9 @@ verify_jwt = true
 [functions.cmo-campaign-builder]
 verify_jwt = true
 
+[functions.cmo-voice-agent-builder]
+verify_jwt = true
+
 [functions.cmo-content-engine]
 verify_jwt = true
 
