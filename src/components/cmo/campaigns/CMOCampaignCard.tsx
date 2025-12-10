@@ -1,9 +1,9 @@
 /**
  * CMO Campaign Card with Autopilot Controls
  * Displays campaign status, stats, and autopilot settings
+ * Uses React Query mutations for automatic cache invalidation
  */
 
-import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Bot, Target, Users, Calendar, Sparkles } from 'lucide-react';
 import type { CMOCampaign, CampaignGoal } from '@/lib/cmo/types';
-import { toggleAutopilot, updateCampaignGoal } from '@/lib/cmo/api';
+import { useToggleCampaignAutopilot, useUpdateCampaignGoal } from '@/hooks/useCMO';
 import { toast } from 'sonner';
 
 interface CMOCampaignCardProps {
@@ -40,34 +40,41 @@ const GOAL_OPTIONS: { value: CampaignGoal; label: string }[] = [
 ];
 
 export function CMOCampaignCard({ campaign, onUpdate }: CMOCampaignCardProps) {
-  const [isUpdating, setIsUpdating] = useState(false);
+  const toggleAutopilot = useToggleCampaignAutopilot();
+  const updateGoal = useUpdateCampaignGoal();
+  
+  const isUpdating = toggleAutopilot.isPending || updateGoal.isPending;
 
-  const handleToggleAutopilot = async () => {
-    setIsUpdating(true);
-    try {
-      await toggleAutopilot(campaign.id, !campaign.autopilot_enabled);
-      toast.success(
-        campaign.autopilot_enabled ? 'Autopilot disabled' : 'Autopilot enabled'
-      );
-      onUpdate?.();
-    } catch (error) {
-      toast.error('Failed to toggle autopilot');
-    } finally {
-      setIsUpdating(false);
-    }
+  const handleToggleAutopilot = () => {
+    toggleAutopilot.mutate(
+      { campaignId: campaign.id, enabled: !campaign.autopilot_enabled },
+      {
+        onSuccess: () => {
+          toast.success(
+            campaign.autopilot_enabled ? 'Autopilot disabled' : 'Autopilot enabled'
+          );
+          onUpdate?.();
+        },
+        onError: () => {
+          toast.error('Failed to toggle autopilot');
+        },
+      }
+    );
   };
 
-  const handleGoalChange = async (goal: string) => {
-    setIsUpdating(true);
-    try {
-      await updateCampaignGoal(campaign.id, goal || null);
-      toast.success('Campaign goal updated');
-      onUpdate?.();
-    } catch (error) {
-      toast.error('Failed to update goal');
-    } finally {
-      setIsUpdating(false);
-    }
+  const handleGoalChange = (goal: string) => {
+    updateGoal.mutate(
+      { campaignId: campaign.id, goal: goal || null },
+      {
+        onSuccess: () => {
+          toast.success('Campaign goal updated');
+          onUpdate?.();
+        },
+        onError: () => {
+          toast.error('Failed to update goal');
+        },
+      }
+    );
   };
 
   const channels = campaign.channels?.map((c) => c.channel_name).join(' • ') || 'No channels';
