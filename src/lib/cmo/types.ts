@@ -417,3 +417,51 @@ export interface LandingPageTemplate {
   defaultSections: LandingSection["type"][];
   suggestedFormFields: LandingFormField[];
 }
+
+// Lead Types
+export type LeadStatus = "new" | "working" | "qualified" | "unqualified" | "converted";
+
+export interface LeadRow {
+  id: string;
+  contactId: string;
+  campaignId: string | null;
+  status: LeadStatus;
+  score: number;
+  source: string;
+  createdAt: string;
+  contact: {
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    phone: string | null;
+    companyName: string | null;
+    roleTitle: string | null;
+    status: "prospect" | "customer" | "inactive" | null;
+    lifecycleStage: string | null;
+  };
+  campaign?: {
+    name: string | null;
+  };
+  lastActivity?: {
+    type: string;
+    createdAt: string;
+  } | null;
+}
+
+export interface LeadDetailsResponse {
+  lead: {
+    id: string;
+    status: LeadStatus;
+    score: number;
+    source: string;
+    createdAt: string;
+  };
+  contact: LeadRow["contact"] & { id: string };
+  campaign?: { id: string; name: string | null };
+  activities: {
+    id: string;
+    type: string;
+    createdAt: string;
+    meta: Record<string, any>;
+  }[];
+}
