@@ -54,6 +54,9 @@ verify_jwt = true
 [functions.cmo-voice-agent-builder]
 verify_jwt = true
 
+[functions.cmo-optimizer]
+verify_jwt = false
+
 [functions.cmo-content-engine]
 verify_jwt = true
 

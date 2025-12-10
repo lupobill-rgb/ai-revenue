@@ -551,6 +551,53 @@ export type Database = {
           },
         ]
       }
+      campaign_optimizations: {
+        Row: {
+          applied_at: string | null
+          campaign_id: string
+          changes: Json
+          created_at: string
+          id: string
+          metrics_snapshot: Json | null
+          optimization_type: string
+          summary: string | null
+          tenant_id: string
+          workspace_id: string
+        }
+        Insert: {
+          applied_at?: string | null
+          campaign_id: string
+          changes?: Json
+          created_at?: string
+          id?: string
+          metrics_snapshot?: Json | null
+          optimization_type: string
+          summary?: string | null
+          tenant_id: string
+          workspace_id: string
+        }
+        Update: {
+          applied_at?: string | null
+          campaign_id?: string
+          changes?: Json
+          created_at?: string
+          id?: string
+          metrics_snapshot?: Json | null
+          optimization_type?: string
+          summary?: string | null
+          tenant_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_optimizations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaigns: {
         Row: {
           asset_id: string
@@ -879,6 +926,8 @@ export type Database = {
           funnel_id: string | null
           funnel_stage: string | null
           id: string
+          last_optimization_at: string | null
+          last_optimization_note: string | null
           objective: string | null
           plan_id: string | null
           primary_kpi: Json | null
@@ -903,6 +952,8 @@ export type Database = {
           funnel_id?: string | null
           funnel_stage?: string | null
           id?: string
+          last_optimization_at?: string | null
+          last_optimization_note?: string | null
           objective?: string | null
           plan_id?: string | null
           primary_kpi?: Json | null
@@ -927,6 +978,8 @@ export type Database = {
           funnel_id?: string | null
           funnel_stage?: string | null
           id?: string
+          last_optimization_at?: string | null
+          last_optimization_note?: string | null
           objective?: string | null
           plan_id?: string | null
           primary_kpi?: Json | null
