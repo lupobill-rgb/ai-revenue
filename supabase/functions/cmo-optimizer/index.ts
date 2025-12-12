@@ -92,9 +92,21 @@ serve(async (req) => {
     const input: OptimizerInput = await req.json();
     const { tenant_id, workspace_id, campaign_id, goal, metrics, assets, constraints = [] } = input;
 
-    if (!tenant_id || !campaign_id || !goal || !metrics) {
+    // === GUARDRAIL: Validate tenant_id ===
+    if (!tenant_id) {
+      console.error('[Optimizer] GUARDRAIL VIOLATION: Missing tenant_id');
       return new Response(JSON.stringify({ 
-        error: 'Missing required fields: tenant_id, campaign_id, goal, metrics' 
+        error: 'tenant_id is required',
+        error_code: 'MISSING_TENANT_ID'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!campaign_id || !goal || !metrics) {
+      return new Response(JSON.stringify({ 
+        error: 'Missing required fields: campaign_id, goal, metrics' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -103,22 +115,45 @@ serve(async (req) => {
 
     const workspaceId = workspace_id || tenant_id;
 
-    console.log(`Optimizer: Analyzing campaign ${campaign_id} for tenant ${tenant_id}`);
+    // === GUARDRAIL: Validate campaign belongs to tenant ===
+    const { data: campaign, error: campaignError } = await supabase
+      .from('cmo_campaigns')
+      .select('*')
+      .eq('id', campaign_id)
+      .eq('tenant_id', tenant_id)
+      .single();
+
+    if (campaignError || !campaign) {
+      console.error(`[Optimizer] GUARDRAIL: Campaign ${campaign_id} not found for tenant ${tenant_id}`);
+      return new Response(JSON.stringify({ 
+        error: 'Campaign not found or does not belong to this tenant',
+        error_code: 'INVALID_CAMPAIGN_TENANT'
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // === GUARDRAIL: Check if tenant requires manual approval ===
+    let requireManualApproval = false;
+    try {
+      const { data: settings } = await supabase
+        .from('tenant_settings')
+        .select('require_manual_approval')
+        .eq('tenant_id', tenant_id)
+        .maybeSingle();
+      requireManualApproval = settings?.require_manual_approval === true;
+    } catch {
+      // Default to auto-apply if settings not configured
+    }
+
+    console.log(`Optimizer: Analyzing campaign ${campaign_id} for tenant ${tenant_id} (manual_approval=${requireManualApproval})`);
 
     // Fetch optimizer config for this tenant (with defaults)
     const optimizerConfig = await getOptimizerConfig(supabase, tenant_id);
     console.log(`Optimizer: Using config - reply_weight=${optimizerConfig.reply_weight}, click_weight=${optimizerConfig.click_weight}, open_weight=${optimizerConfig.open_weight}, prompt_version=${optimizerConfig.prompt_version}`);
 
-    // Fetch campaign details
-    const { data: campaign, error: campaignError } = await supabase
-      .from('cmo_campaigns')
-      .select('*')
-      .eq('id', campaign_id)
-      .single();
-
-    if (campaignError || !campaign) {
-      throw new Error('Campaign not found');
-    }
+    // Campaign already fetched and validated above via guardrail check
 
     // Fetch current content assets for the campaign
     const { data: contentAssets } = await supabase

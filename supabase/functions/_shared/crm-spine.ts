@@ -65,6 +65,8 @@ export function createServiceClient(): SupabaseClient {
 /**
  * Log an activity to crm_activities
  * This is the canonical way to record any customer interaction
+ * 
+ * GUARDRAIL: This operation is fail-soft - errors are logged but don't propagate
  */
 export async function logCrmActivity(
   supabase: SupabaseClient,
@@ -75,9 +77,36 @@ export async function logCrmActivity(
     activity_type: ActivityType;
     meta: Record<string, unknown>;
     new_status?: string;
+    idempotency_key?: string;
   }
-): Promise<{ success: boolean; activity_id?: string; error?: string }> {
+): Promise<{ success: boolean; activity_id?: string; error?: string; duplicate?: boolean }> {
   try {
+    // GUARDRAIL: Validate tenant_id
+    if (!params.tenant_id) {
+      console.error('[CRM Spine] GUARDRAIL VIOLATION: Missing tenant_id');
+      return { success: false, error: 'tenant_id is required' };
+    }
+
+    // GUARDRAIL: Idempotency check
+    if (params.idempotency_key) {
+      const { data: existing } = await supabase
+        .from('crm_activities')
+        .select('id')
+        .eq('tenant_id', params.tenant_id)
+        .eq('meta->>idempotency_key', params.idempotency_key)
+        .maybeSingle();
+
+      if (existing) {
+        console.log(`[CRM Spine] Idempotent skip - activity already exists: ${existing.id}`);
+        return { success: true, activity_id: existing.id, duplicate: true };
+      }
+    }
+
+    // Add idempotency key to meta
+    const metaWithKey = params.idempotency_key 
+      ? { ...params.meta, idempotency_key: params.idempotency_key }
+      : params.meta;
+
     // Use the RPC if status change is needed
     if (params.new_status) {
       const { data, error } = await supabase.rpc('crm_log_activity', {
@@ -85,7 +114,7 @@ export async function logCrmActivity(
         in_contact_id: params.contact_id,
         in_lead_id: params.lead_id || null,
         in_activity_type: params.activity_type,
-        in_meta: params.meta,
+        in_meta: metaWithKey,
         in_new_status: params.new_status
       });
 
@@ -101,7 +130,7 @@ export async function logCrmActivity(
         contact_id: params.contact_id,
         lead_id: params.lead_id,
         activity_type: params.activity_type,
-        meta: params.meta
+        meta: metaWithKey
       })
       .select('id')
       .single();
@@ -109,7 +138,8 @@ export async function logCrmActivity(
     if (error) throw error;
     return { success: true, activity_id: data?.id };
   } catch (error) {
-    console.error('[CRM Spine] Failed to log activity:', error);
+    // GUARDRAIL: Fail-soft - log error but don't crash
+    console.error('[CRM Spine] Failed to log activity (fail-soft):', error);
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
