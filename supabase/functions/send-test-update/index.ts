@@ -74,7 +74,7 @@ serve(async (req) => {
 </html>`;
 
     const result = await resend.emails.send({
-      from: "UbiGrowth Updates <updates@ubigrowth.ai>",
+      from: "UbiGrowth Updates <onboarding@resend.dev>",
       to: email,
       subject,
       html: htmlBody,
