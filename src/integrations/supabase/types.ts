@@ -508,6 +508,57 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_channel_stats_daily: {
+        Row: {
+          bounces: number
+          campaign_id: string
+          channel: string
+          clicks: number
+          created_at: string
+          day: string
+          deliveries: number
+          id: string
+          meetings_booked: number
+          opens: number
+          replies: number
+          sends: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          bounces?: number
+          campaign_id: string
+          channel: string
+          clicks?: number
+          created_at?: string
+          day: string
+          deliveries?: number
+          id?: string
+          meetings_booked?: number
+          opens?: number
+          replies?: number
+          sends?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          bounces?: number
+          campaign_id?: string
+          channel?: string
+          clicks?: number
+          created_at?: string
+          day?: string
+          deliveries?: number
+          id?: string
+          meetings_booked?: number
+          opens?: number
+          replies?: number
+          sends?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       campaign_metrics: {
         Row: {
           bounce_count: number | null
@@ -4087,6 +4138,17 @@ export type Database = {
       sequence_step_workspace_access: {
         Args: { step_sequence_id: string }
         Returns: boolean
+      }
+      upsert_campaign_daily_stat: {
+        Args: {
+          p_campaign_id: string
+          p_channel: string
+          p_day: string
+          p_increment?: number
+          p_stat_type: string
+          p_tenant_id: string
+        }
+        Returns: undefined
       }
       user_has_workspace_access: {
         Args: { _workspace_id: string }
