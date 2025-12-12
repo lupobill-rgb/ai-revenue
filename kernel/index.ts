@@ -1,6 +1,11 @@
 /**
  * UbiGrowth OS Kernel
  * Unified interface for all executive modules
+ * 
+ * ARCHITECTURE: One brain, many hands
+ * - All AI CMO operations route through the orchestrator
+ * - Specialist agents are invoked via the internal routing table
+ * - No free-floating LLM calls - everything goes through kernel
  */
 
 import { supabase } from '@/integrations/supabase/client';
@@ -17,12 +22,47 @@ import type {
   OrchestratorResponse,
 } from './types';
 
+// Internal routing table exports
+import { 
+  aiCmoAgents, 
+  getToolsForLLM, 
+  getAgentIdFromTool,
+  getToolByName,
+  orchestratorTools,
+  type AiCmoAgentId,
+  type OrchestratorTool 
+} from './ai_cmo_routes';
+
+import { 
+  executeSpecialistTool,
+  toolExecutors,
+  type ToolExecutionRequest,
+  type ToolExecutionResult
+} from './ai_cmo_tools';
+
 export * from './types';
 export * from './core';
 export * from './test/tenant-test';
 export * from './launch/module-toggle';
 export * from './health/module-health';
 export * from './prompts';
+
+// Export routing table for edge functions
+export { 
+  aiCmoAgents, 
+  getToolsForLLM, 
+  getAgentIdFromTool,
+  getToolByName,
+  orchestratorTools,
+  executeSpecialistTool,
+  toolExecutors
+};
+export type { 
+  AiCmoAgentId, 
+  OrchestratorTool,
+  ToolExecutionRequest,
+  ToolExecutionResult
+};
 
 /**
  * Run a direct agent call with standardized envelope
