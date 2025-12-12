@@ -278,3 +278,12 @@ verify_jwt = false
 
 [functions.outbound-booking-webhook]
 verify_jwt = false
+
+[functions.revenue-os-kernel]
+verify_jwt = false
+
+[functions.revenue-os-triggers]
+verify_jwt = false
+
+[functions.revenue-os-action-executor]
+verify_jwt = false
