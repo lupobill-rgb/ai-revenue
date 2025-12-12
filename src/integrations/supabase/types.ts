@@ -4214,6 +4214,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      resume_sequence_for_lead: {
+        Args: { _lead_id: string; _user_id: string }
+        Returns: undefined
+      }
       sequence_step_workspace_access: {
         Args: { step_sequence_id: string }
         Returns: boolean

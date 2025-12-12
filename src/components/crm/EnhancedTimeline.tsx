@@ -31,6 +31,8 @@ interface EnhancedTimelineProps {
 const ACTIVITY_CONFIG: Record<string, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
   call: { icon: Phone, color: "text-blue-500", bgColor: "bg-blue-500", label: "Call" },
   email: { icon: Mail, color: "text-purple-500", bgColor: "bg-purple-500", label: "Email" },
+  email_reply: { icon: Mail, color: "text-green-500", bgColor: "bg-green-500", label: "Email Reply" },
+  email_replied: { icon: Mail, color: "text-green-500", bgColor: "bg-green-500", label: "Email Reply" },
   note: { icon: MessageSquare, color: "text-amber-500", bgColor: "bg-amber-500", label: "Note" },
   status_change: { icon: ArrowRight, color: "text-green-500", bgColor: "bg-green-500", label: "Status Change" },
   meeting: { icon: Calendar, color: "text-pink-500", bgColor: "bg-pink-500", label: "Meeting" },
@@ -40,6 +42,8 @@ const ACTIVITY_CONFIG: Record<string, { icon: React.ElementType; color: string; 
   deal: { icon: DollarSign, color: "text-green-600", bgColor: "bg-green-600", label: "Deal" },
   score_change: { icon: Star, color: "text-yellow-500", bgColor: "bg-yellow-500", label: "Score Change" },
   follow_up: { icon: Bell, color: "text-red-500", bgColor: "bg-red-500", label: "Follow-up" },
+  sequence_paused_on_reply: { icon: Bell, color: "text-amber-500", bgColor: "bg-amber-500", label: "Sequence Paused" },
+  sequence_resumed: { icon: RefreshCw, color: "text-cyan-500", bgColor: "bg-cyan-500", label: "Sequence Resumed" },
 };
 
 const ACTIVITY_TYPES = [
@@ -47,9 +51,12 @@ const ACTIVITY_TYPES = [
   { value: "note", label: "Notes" },
   { value: "call", label: "Calls" },
   { value: "email", label: "Emails" },
+  { value: "email_reply", label: "Email Replies" },
   { value: "meeting", label: "Meetings" },
   { value: "task", label: "Tasks" },
   { value: "status_change", label: "Status Changes" },
+  { value: "sequence_paused_on_reply", label: "Sequence Paused" },
+  { value: "sequence_resumed", label: "Sequence Resumed" },
 ];
 
 const NEW_ACTIVITY_TYPES = [
