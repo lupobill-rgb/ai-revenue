@@ -23,9 +23,12 @@ interface OptimizerInput {
   campaign_id: string;
   goal: 'leads' | 'meetings' | 'revenue' | 'engagement';
   metrics: {
+    sends?: number;
+    deliveries?: number;
     opens?: number;
     clicks?: number;
     replies?: number;
+    bounces?: number;
     booked_meetings?: number;
     no_shows?: number;
     conversions?: number;
@@ -119,23 +122,47 @@ serve(async (req) => {
     const postAssets = contentAssets?.filter(a => a.content_type === 'social_post') || assets?.posts || [];
 
     // Calculate performance indicators
-    const openRate = metrics.opens && metrics.clicks ? (metrics.clicks / metrics.opens * 100).toFixed(1) : 'N/A';
-    const replyRate = metrics.opens && metrics.replies ? (metrics.replies / metrics.opens * 100).toFixed(1) : 'N/A';
-    const meetingRate = metrics.replies && metrics.booked_meetings ? (metrics.booked_meetings / metrics.replies * 100).toFixed(1) : 'N/A';
-    const voiceConnectRate = metrics.voice_calls ? (metrics.voice_calls.reached / metrics.voice_calls.total * 100).toFixed(1) : 'N/A';
-    const voiceBookingRate = metrics.voice_calls ? (metrics.voice_calls.booked / metrics.voice_calls.reached * 100).toFixed(1) : 'N/A';
+    const sends = metrics.sends || 0;
+    const deliveries = metrics.deliveries || sends; // Default deliveries to sends if not tracked
+    const openRate = deliveries > 0 ? (metrics.opens || 0) / deliveries * 100 : 0;
+    const clickRate = (metrics.opens || 0) > 0 ? (metrics.clicks || 0) / (metrics.opens || 1) * 100 : 0;
+    const replyRate = sends > 0 ? (metrics.replies || 0) / sends * 100 : 0;
+    const meetingRate = (metrics.replies || 0) > 0 ? (metrics.booked_meetings || 0) / (metrics.replies || 1) * 100 : 0;
+    const bounceRate = sends > 0 ? (metrics.bounces || 0) / sends * 100 : 0;
+    const voiceConnectRate = metrics.voice_calls ? (metrics.voice_calls.reached / metrics.voice_calls.total * 100) : 0;
+    const voiceBookingRate = metrics.voice_calls && metrics.voice_calls.reached > 0 ? (metrics.voice_calls.booked / metrics.voice_calls.reached * 100) : 0;
 
-    // Build the AI prompt
+    // Build the AI prompt with goal-weighted guidance
+    const goalWeighting = goal === 'meetings' || goal === 'revenue' 
+      ? `PRIORITY WEIGHTING: For "${goal}" goal, replies and booked meetings are the PRIMARY success metrics. 
+         Opens and clicks are leading indicators but replies/meetings are what matter most.
+         Optimize messaging for conversation starters and clear CTAs that drive responses.`
+      : goal === 'leads'
+      ? `PRIORITY WEIGHTING: For "leads" goal, focus on maximizing qualified responses (replies) and form submissions.
+         Click-through and reply rates are primary metrics.`
+      : `PRIORITY WEIGHTING: For "engagement" goal, optimize for opens, clicks, and social interactions.
+         Volume metrics matter alongside quality signals.`;
+
     const systemPrompt = `You are an expert marketing optimization AI. Your job is to analyze campaign performance metrics and current assets, then recommend specific, actionable changes to improve results.
 
 You must output ONLY valid JSON matching the exact schema requested. Be specific about what to change and why.
+
+METRIC HIERARCHY (most to least important for conversion):
+1. Booked Meetings - highest quality signal, indicates sales-ready interest
+2. Replies - strong engagement signal, indicates real conversation
+3. Clicks - moderate signal, shows interest in learning more
+4. Opens - weak signal, only indicates subject line effectiveness
+
+${goalWeighting}
 
 Guidelines:
 - Focus on the stated goal (${goal})
 - Respect all constraints provided
 - Prioritize high-impact, low-effort changes
 - Be specific - provide actual new copy, not just "improve this"
-- Consider the full funnel from awareness to conversion`;
+- Consider the full funnel from awareness to conversion
+- If reply rate is low but open rate is high, focus on improving body copy and CTAs
+- If meeting rate is low but reply rate is high, improve the qualification and booking flow`;
 
     const userPrompt = `Analyze this campaign and recommend optimizations:
 
@@ -144,12 +171,15 @@ Guidelines:
 **Current Status:** ${campaign.status}
 
 **Performance Metrics:**
-- Opens: ${metrics.opens || 0}
-- Clicks: ${metrics.clicks || 0} (${openRate}% click rate)
-- Replies: ${metrics.replies || 0} (${replyRate}% reply rate)
-- Booked Meetings: ${metrics.booked_meetings || 0} (${meetingRate}% meeting rate)
+- Sends: ${sends}
+- Deliveries: ${deliveries} (${sends > 0 ? ((deliveries / sends) * 100).toFixed(1) : 0}% delivery rate)
+- Opens: ${metrics.opens || 0} (${openRate.toFixed(1)}% open rate)
+- Clicks: ${metrics.clicks || 0} (${clickRate.toFixed(1)}% click rate)
+- Replies: ${metrics.replies || 0} (${replyRate.toFixed(1)}% reply rate) ← KEY ENGAGEMENT SIGNAL
+- Booked Meetings: ${metrics.booked_meetings || 0} (${meetingRate.toFixed(1)}% meeting rate from replies) ← HIGHEST VALUE
+- Bounces: ${metrics.bounces || 0} (${bounceRate.toFixed(1)}% bounce rate)
 - No-shows: ${metrics.no_shows || 0}
-${metrics.voice_calls ? `- Voice Calls: ${metrics.voice_calls.total} total, ${metrics.voice_calls.reached} reached (${voiceConnectRate}%), ${metrics.voice_calls.booked} booked (${voiceBookingRate}%)` : ''}
+${metrics.voice_calls ? `- Voice Calls: ${metrics.voice_calls.total} total, ${metrics.voice_calls.reached} reached (${voiceConnectRate.toFixed(1)}%), ${metrics.voice_calls.booked} booked (${voiceBookingRate.toFixed(1)}%)` : ''}
 
 **Current Email Assets (${emailAssets.length}):**
 ${emailAssets.map((e: any, i: number) => `${i + 1}. "${e.title}" - ${e.key_message?.substring(0, 100)}...`).join('\n') || 'None'}
