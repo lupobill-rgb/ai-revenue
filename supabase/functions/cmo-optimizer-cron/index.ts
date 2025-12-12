@@ -58,40 +58,64 @@ serve(async (req) => {
       try {
         console.log(`Triggering optimizer for: ${campaign.campaign_name} (${campaign.id})`);
 
-        // Fetch metrics snapshots for this campaign
-        const { data: metricsSnapshots } = await supabase
-          .from("cmo_metrics_snapshots")
-          .select("impressions, clicks, conversions, cost, revenue, metric_type, custom_metrics")
+        // Fetch aggregated metrics from campaign_channel_stats_daily (primary source)
+        const { data: dailyStats } = await supabase
+          .from("campaign_channel_stats_daily")
+          .select("sends, deliveries, opens, clicks, replies, bounces, meetings_booked, channel")
           .eq("campaign_id", campaign.id)
-          .order("snapshot_date", { ascending: false })
-          .limit(30);
+          .eq("tenant_id", campaign.tenant_id);
 
-        // Fetch reply count from campaign_metrics table
-        const { data: campaignMetrics } = await supabase
-          .from("campaign_metrics")
-          .select("reply_count, open_count, clicks")
-          .eq("campaign_id", campaign.id)
-          .maybeSingle();
-
-        // Aggregate metrics from snapshots
-        const snapshotMetrics = (metricsSnapshots || []).reduce(
-          (acc, m) => ({
-            opens: acc.opens + (m.impressions || 0),
-            clicks: acc.clicks + (m.clicks || 0),
-            // Count email_reply metric_type entries as replies
-            replies: acc.replies + (m.metric_type === 'email_reply' ? (m.conversions || 0) : 0),
-            conversions: acc.conversions + (m.metric_type !== 'email_reply' ? (m.conversions || 0) : 0),
+        // Aggregate all channel stats
+        const aggregatedStats = (dailyStats || []).reduce(
+          (acc, s) => ({
+            sends: acc.sends + (s.sends || 0),
+            deliveries: acc.deliveries + (s.deliveries || 0),
+            opens: acc.opens + (s.opens || 0),
+            clicks: acc.clicks + (s.clicks || 0),
+            replies: acc.replies + (s.replies || 0),
+            bounces: acc.bounces + (s.bounces || 0),
+            meetings_booked: acc.meetings_booked + (s.meetings_booked || 0),
           }),
-          { opens: 0, clicks: 0, replies: 0, conversions: 0 }
+          { sends: 0, deliveries: 0, opens: 0, clicks: 0, replies: 0, bounces: 0, meetings_booked: 0 }
         );
 
-        // Combine with campaign_metrics reply_count (prefer campaign_metrics as authoritative)
-        const metrics = {
-          opens: campaignMetrics?.open_count || snapshotMetrics.opens,
-          clicks: campaignMetrics?.clicks || snapshotMetrics.clicks,
-          replies: campaignMetrics?.reply_count || snapshotMetrics.replies,
-          booked_meetings: 0, // Will be populated from other sources
-        };
+        // Fallback to legacy metrics if daily stats empty
+        let metrics;
+        if (aggregatedStats.sends > 0 || aggregatedStats.opens > 0) {
+          metrics = {
+            sends: aggregatedStats.sends,
+            deliveries: aggregatedStats.deliveries,
+            opens: aggregatedStats.opens,
+            clicks: aggregatedStats.clicks,
+            replies: aggregatedStats.replies,
+            bounces: aggregatedStats.bounces,
+            booked_meetings: aggregatedStats.meetings_booked,
+          };
+        } else {
+          // Fallback to campaign_metrics table
+          const { data: campaignMetrics } = await supabase
+            .from("campaign_metrics")
+            .select("sent_count, delivered_count, open_count, clicks, reply_count, bounce_count")
+            .eq("campaign_id", campaign.id)
+            .maybeSingle();
+
+          metrics = {
+            sends: campaignMetrics?.sent_count || 0,
+            deliveries: campaignMetrics?.delivered_count || 0,
+            opens: campaignMetrics?.open_count || 0,
+            clicks: campaignMetrics?.clicks || 0,
+            replies: campaignMetrics?.reply_count || 0,
+            bounces: campaignMetrics?.bounce_count || 0,
+            booked_meetings: 0,
+          };
+        }
+
+        // Calculate rates for context
+        const openRate = metrics.deliveries > 0 ? (metrics.opens / metrics.deliveries * 100).toFixed(1) : 0;
+        const clickRate = metrics.opens > 0 ? (metrics.clicks / metrics.opens * 100).toFixed(1) : 0;
+        const replyRate = metrics.sends > 0 ? (metrics.replies / metrics.sends * 100).toFixed(1) : 0;
+
+        console.log(`Campaign ${campaign.id} metrics: sends=${metrics.sends}, opens=${metrics.opens}, clicks=${metrics.clicks}, replies=${metrics.replies}, meetings=${metrics.booked_meetings}`);
 
         // Call the optimizer function
         const optimizerResponse = await fetch(
