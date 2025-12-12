@@ -6,12 +6,15 @@
 import { supabase } from '@/integrations/supabase/client';
 import { getModule, getAgentForMode, getAllModules } from './core';
 import { isModuleEnabledForTenant } from './launch/module-toggle';
+import { getOrchestratorSystemPrompt, ORCHESTRATOR_CONFIG } from './prompts';
 import type { 
   ExecModule, 
   KernelRequest, 
   KernelResponse,
   AgentRequest,
   AgentResponse,
+  OrchestratorRequest,
+  OrchestratorResponse,
 } from './types';
 
 export * from './types';
@@ -19,6 +22,7 @@ export * from './core';
 export * from './test/tenant-test';
 export * from './launch/module-toggle';
 export * from './health/module-health';
+export * from './prompts';
 
 /**
  * Run a direct agent call with standardized envelope
@@ -39,9 +43,18 @@ export async function runAgent(request: AgentRequest): Promise<AgentResponse> {
     };
   }
 
-  // Determine edge function from agent name
+  // All CMO agents route through orchestrator
   const agentToFunction: Record<string, string> = {
+    // Orchestrator - master entry point
+    'cmo_orchestrator': 'cmo-orchestrator',
+    // Specialized agents (called by orchestrator, not directly)
     'cmo_campaign_builder': 'cmo-campaign-builder',
+    'cmo_landing_page_generator': 'ai-cmo-landing-pages-generate',
+    'cmo_content_humanizer': 'ai-cmo-humanize',
+    'cmo_email_reply_analyzer': 'cmo-email-reply-analyzer',
+    'cmo_campaign_optimizer': 'cmo-optimizer',
+    'cmo_voice_orchestrator': 'cmo-voice-orchestrator',
+    // Legacy aliases
     'cmo_voice_agent_builder': 'cmo-voice-agent-builder',
     'cmo_optimizer': 'cmo-optimizer',
   };
@@ -52,7 +65,7 @@ export async function runAgent(request: AgentRequest): Promise<AgentResponse> {
       success: false,
       agent_name,
       run_id: '',
-      error: `Unknown agent: ${agent_name}`,
+      error: `Unknown agent: ${agent_name}. All CMO calls should route through cmo_orchestrator.`,
       duration_ms: Date.now() - startTime,
     };
   }
@@ -162,6 +175,112 @@ export async function runAgent(request: AgentRequest): Promise<AgentResponse> {
       run_id: '',
       error: err instanceof Error ? err.message : 'Unknown error',
       duration_ms,
+    };
+  }
+}
+
+/**
+ * Run orchestrator - the unified entry point for all AI CMO operations
+ * All CMO calls should route through this function
+ */
+export async function runOrchestrator(request: OrchestratorRequest): Promise<OrchestratorResponse> {
+  const startTime = Date.now();
+  const { tenant_id, workspace_id, action, context, payload } = request;
+
+  // Validate tenant_id
+  if (!tenant_id) {
+    return {
+      success: false,
+      action_taken: 'validation_failed',
+      agents_invoked: [],
+      errors: [{
+        agent: 'orchestrator',
+        error_code: 'MISSING_TENANT',
+        message: 'tenant_id is required'
+      }]
+    };
+  }
+
+  try {
+    // Log orchestrator run
+    const { data: runData } = await supabase
+      .from('agent_runs')
+      .insert({
+        agent: 'cmo_orchestrator',
+        tenant_id,
+        workspace_id: workspace_id || tenant_id,
+        mode: action,
+        status: 'running',
+        input: { action, context, payload },
+      })
+      .select('id')
+      .single();
+
+    const run_id = runData?.id || '';
+
+    // Call the orchestrator edge function
+    const { data, error } = await supabase.functions.invoke('cmo-orchestrator', {
+      body: {
+        tenant_id,
+        workspace_id: workspace_id || tenant_id,
+        action,
+        context,
+        payload,
+        system_prompt: getOrchestratorSystemPrompt(),
+        config: ORCHESTRATOR_CONFIG,
+        run_id,
+      },
+    });
+
+    const duration_ms = Date.now() - startTime;
+
+    // Update agent run
+    if (run_id) {
+      await supabase
+        .from('agent_runs')
+        .update({
+          status: error ? 'failed' : 'completed',
+          output: data,
+          error_message: error?.message,
+          completed_at: new Date().toISOString(),
+          duration_ms,
+        })
+        .eq('id', run_id);
+    }
+
+    if (error) {
+      return {
+        success: false,
+        action_taken: 'orchestrator_error',
+        agents_invoked: [],
+        errors: [{
+          agent: 'orchestrator',
+          error_code: 'INVOKE_ERROR',
+          message: error.message
+        }]
+      };
+    }
+
+    return {
+      success: true,
+      action_taken: data?.action_taken || action,
+      agents_invoked: data?.agents_invoked || [],
+      assets_created: data?.assets_created,
+      crm_updates: data?.crm_updates,
+      next_actions: data?.next_actions,
+      errors: data?.errors,
+    };
+  } catch (err) {
+    console.error('Orchestrator error:', err);
+    return {
+      success: false,
+      action_taken: 'exception',
+      agents_invoked: [],
+      errors: [{
+        agent: 'orchestrator',
+        error_code: 'EXCEPTION',
+        message: err instanceof Error ? err.message : 'Unknown error'
+      }]
     };
   }
 }

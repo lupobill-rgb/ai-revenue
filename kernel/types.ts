@@ -120,12 +120,81 @@ export const MODULE_FUNCTION_PREFIXES: Record<ExecModule, string> = {
 };
 
 /**
- * CMO Agent Names
+ * CMO Agent Names - All routed through orchestrator
  */
 export const CMO_AGENTS = {
+  // Orchestrator - master coordination layer
+  ORCHESTRATOR: 'cmo_orchestrator',
+  // Specialized agents
   CAMPAIGN_BUILDER: 'cmo_campaign_builder',
+  LANDING_PAGE_GENERATOR: 'cmo_landing_page_generator',
+  CONTENT_HUMANIZER: 'cmo_content_humanizer',
+  EMAIL_REPLY_ANALYZER: 'cmo_email_reply_analyzer',
+  CAMPAIGN_OPTIMIZER: 'cmo_campaign_optimizer',
+  VOICE_ORCHESTRATOR: 'cmo_voice_orchestrator',
+  // Legacy aliases
   VOICE_AGENT_BUILDER: 'cmo_voice_agent_builder',
   OPTIMIZER: 'cmo_optimizer',
 } as const;
 
 export type CMOAgentName = typeof CMO_AGENTS[keyof typeof CMO_AGENTS];
+
+/**
+ * Orchestrator action types
+ */
+export type OrchestratorAction = 
+  | 'create_campaign'
+  | 'optimize_campaign'
+  | 'handle_reply'
+  | 'deploy_voice'
+  | 'regenerate_content'
+  | 'generate_landing_page';
+
+/**
+ * Orchestrator request envelope
+ */
+export interface OrchestratorRequest {
+  tenant_id: string;
+  workspace_id: string;
+  action: OrchestratorAction;
+  context?: {
+    campaign_id?: string;
+    lead_id?: string;
+    trigger_source?: 'user' | 'cron' | 'webhook' | 'automation';
+  };
+  payload: Record<string, unknown>;
+}
+
+/**
+ * Orchestrator response envelope
+ */
+export interface OrchestratorResponse {
+  success: boolean;
+  action_taken: string;
+  agents_invoked: Array<{
+    agent_name: string;
+    input_summary: string;
+    output_summary: string;
+    duration_ms: number;
+  }>;
+  assets_created?: Array<{
+    asset_type: string;
+    asset_id: string;
+    status: string;
+  }>;
+  crm_updates?: Array<{
+    entity_type: string;
+    entity_id: string;
+    action: string;
+  }>;
+  next_actions?: Array<{
+    action_type: string;
+    scheduled_at?: string;
+    reason: string;
+  }>;
+  errors?: Array<{
+    agent: string;
+    error_code: string;
+    message: string;
+  }>;
+}

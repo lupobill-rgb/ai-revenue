@@ -123,6 +123,9 @@ verify_jwt = true
 [functions.cmo-kernel]
 verify_jwt = true
 
+[functions.cmo-orchestrator]
+verify_jwt = true
+
 [functions.cmo-launch-campaign]
 verify_jwt = true
 
