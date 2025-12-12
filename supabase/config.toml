@@ -288,6 +288,9 @@ verify_jwt = false
 [functions.revenue-os-action-executor]
 verify_jwt = false
 
+[functions.revenue-os-validation]
+verify_jwt = false
+
 [functions.weekly-software-updates]
 verify_jwt = false
 
