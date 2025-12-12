@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getAgentConfig, buildTenantPrompt } from "../_shared/cmo-prompts.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -161,6 +162,13 @@ serve(async (req) => {
       .select('*')
       .eq('campaign_id', campaign_id);
 
+    // Fetch brand profile for context
+    const { data: brandProfile } = await supabase
+      .from('cmo_brand_profiles')
+      .select('brand_name, industry, brand_voice')
+      .eq('tenant_id', tenant_id)
+      .maybeSingle();
+
     // Build comprehensive asset context
     const emailAssets = contentAssets?.filter(a => a.content_type === 'email') || assets?.emails || [];
     const smsAssets = contentAssets?.filter(a => a.content_type === 'sms') || assets?.sms || [];
@@ -198,26 +206,27 @@ serve(async (req) => {
          Volume metrics matter alongside quality signals.
          Weight multipliers: Reply=${optimizerConfig.reply_weight}x, Click=${optimizerConfig.click_weight}x, Open=${optimizerConfig.open_weight}x`;
 
-    const systemPrompt = `You are an expert marketing optimization AI (prompt version: ${optimizerConfig.prompt_version}). Your job is to analyze campaign performance metrics and current assets, then recommend specific, actionable changes to improve results.
+    // Get agent config from shared prompts
+    const agentConfig = getAgentConfig('campaign_optimizer');
+    
+    // Build system prompt with brand context
+    const baseSystemPrompt = buildTenantPrompt('campaign_optimizer', {
+      company_name: brandProfile?.brand_name,
+      industry: brandProfile?.industry,
+      brand_voice: brandProfile?.brand_voice,
+    });
+    
+    const systemPrompt = `${baseSystemPrompt}
 
-You must output ONLY valid JSON matching the exact schema requested. Be specific about what to change and why.
-
-METRIC HIERARCHY (most to least important for conversion):
-1. Booked Meetings - highest quality signal, indicates sales-ready interest (weight: ${optimizerConfig.reply_weight * 2}x)
-2. Replies - strong engagement signal, indicates real conversation (weight: ${optimizerConfig.reply_weight}x)
-3. Clicks - moderate signal, shows interest in learning more (weight: ${optimizerConfig.click_weight}x)
-4. Opens - weak signal, only indicates subject line effectiveness (weight: ${optimizerConfig.open_weight}x)
+Optimizer Config (version: ${optimizerConfig.prompt_version}):
+- Reply weight: ${optimizerConfig.reply_weight}x
+- Click weight: ${optimizerConfig.click_weight}x  
+- Open weight: ${optimizerConfig.open_weight}x
 
 ${goalWeighting}
 
-Guidelines:
-- Focus on the stated goal (${goal})
-- Respect all constraints provided
-- Prioritize high-impact, low-effort changes
-- Be specific - provide actual new copy, not just "improve this"
-- Consider the full funnel from awareness to conversion
-- If reply rate is low but open rate is high, focus on improving body copy and CTAs
-- If meeting rate is low but reply rate is high, improve the qualification and booking flow`;
+You must output ONLY valid JSON matching the exact schema requested.
+Be specific about what to change and why.`;
 
     const userPrompt = `Analyze this campaign and recommend optimizations:
 
@@ -278,7 +287,7 @@ Generate optimization recommendations in this JSON format:
 
 Recommend 2-5 specific changes based on the metrics. Focus on the weakest performing areas.`;
 
-    // Call Lovable AI
+    // Call Lovable AI with agent config
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -286,12 +295,13 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: agentConfig.model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.5,
+        temperature: agentConfig.temperature,
+        max_tokens: agentConfig.maxTokens,
       }),
     });
 
