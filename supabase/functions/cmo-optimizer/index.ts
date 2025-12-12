@@ -49,6 +49,13 @@ interface OptimizerInput {
   constraints?: string[];
 }
 
+interface OptimizerConfig {
+  reply_weight: number;
+  click_weight: number;
+  open_weight: number;
+  prompt_version: string;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -98,6 +105,10 @@ serve(async (req) => {
 
     console.log(`Optimizer: Analyzing campaign ${campaign_id} for tenant ${tenant_id}`);
 
+    // Fetch optimizer config for this tenant (with defaults)
+    const optimizerConfig = await getOptimizerConfig(supabase, tenant_id);
+    console.log(`Optimizer: Using config - reply_weight=${optimizerConfig.reply_weight}, click_weight=${optimizerConfig.click_weight}, open_weight=${optimizerConfig.open_weight}, prompt_version=${optimizerConfig.prompt_version}`);
+
     // Fetch campaign details
     const { data: campaign, error: campaignError } = await supabase
       .from('cmo_campaigns')
@@ -132,26 +143,35 @@ serve(async (req) => {
     const voiceConnectRate = metrics.voice_calls ? (metrics.voice_calls.reached / metrics.voice_calls.total * 100) : 0;
     const voiceBookingRate = metrics.voice_calls && metrics.voice_calls.reached > 0 ? (metrics.voice_calls.booked / metrics.voice_calls.reached * 100) : 0;
 
+    // Build weighted score based on optimizer config
+    const weightedScore = 
+      (metrics.replies || 0) * optimizerConfig.reply_weight +
+      (metrics.clicks || 0) * optimizerConfig.click_weight +
+      (metrics.opens || 0) * optimizerConfig.open_weight;
+
     // Build the AI prompt with goal-weighted guidance
     const goalWeighting = goal === 'meetings' || goal === 'revenue' 
       ? `PRIORITY WEIGHTING: For "${goal}" goal, replies and booked meetings are the PRIMARY success metrics. 
          Opens and clicks are leading indicators but replies/meetings are what matter most.
-         Optimize messaging for conversation starters and clear CTAs that drive responses.`
+         Optimize messaging for conversation starters and clear CTAs that drive responses.
+         Weight multipliers: Reply=${optimizerConfig.reply_weight}x, Click=${optimizerConfig.click_weight}x, Open=${optimizerConfig.open_weight}x`
       : goal === 'leads'
       ? `PRIORITY WEIGHTING: For "leads" goal, focus on maximizing qualified responses (replies) and form submissions.
-         Click-through and reply rates are primary metrics.`
+         Click-through and reply rates are primary metrics.
+         Weight multipliers: Reply=${optimizerConfig.reply_weight}x, Click=${optimizerConfig.click_weight}x, Open=${optimizerConfig.open_weight}x`
       : `PRIORITY WEIGHTING: For "engagement" goal, optimize for opens, clicks, and social interactions.
-         Volume metrics matter alongside quality signals.`;
+         Volume metrics matter alongside quality signals.
+         Weight multipliers: Reply=${optimizerConfig.reply_weight}x, Click=${optimizerConfig.click_weight}x, Open=${optimizerConfig.open_weight}x`;
 
-    const systemPrompt = `You are an expert marketing optimization AI. Your job is to analyze campaign performance metrics and current assets, then recommend specific, actionable changes to improve results.
+    const systemPrompt = `You are an expert marketing optimization AI (prompt version: ${optimizerConfig.prompt_version}). Your job is to analyze campaign performance metrics and current assets, then recommend specific, actionable changes to improve results.
 
 You must output ONLY valid JSON matching the exact schema requested. Be specific about what to change and why.
 
 METRIC HIERARCHY (most to least important for conversion):
-1. Booked Meetings - highest quality signal, indicates sales-ready interest
-2. Replies - strong engagement signal, indicates real conversation
-3. Clicks - moderate signal, shows interest in learning more
-4. Opens - weak signal, only indicates subject line effectiveness
+1. Booked Meetings - highest quality signal, indicates sales-ready interest (weight: ${optimizerConfig.reply_weight * 2}x)
+2. Replies - strong engagement signal, indicates real conversation (weight: ${optimizerConfig.reply_weight}x)
+3. Clicks - moderate signal, shows interest in learning more (weight: ${optimizerConfig.click_weight}x)
+4. Opens - weak signal, only indicates subject line effectiveness (weight: ${optimizerConfig.open_weight}x)
 
 ${goalWeighting}
 
@@ -169,13 +189,14 @@ Guidelines:
 **Campaign Goal:** ${goal}
 **Campaign Name:** ${campaign.campaign_name}
 **Current Status:** ${campaign.status}
+**Weighted Score:** ${weightedScore.toFixed(1)} (based on configured weights)
 
 **Performance Metrics:**
 - Sends: ${sends}
 - Deliveries: ${deliveries} (${sends > 0 ? ((deliveries / sends) * 100).toFixed(1) : 0}% delivery rate)
-- Opens: ${metrics.opens || 0} (${openRate.toFixed(1)}% open rate)
-- Clicks: ${metrics.clicks || 0} (${clickRate.toFixed(1)}% click rate)
-- Replies: ${metrics.replies || 0} (${replyRate.toFixed(1)}% reply rate) ← KEY ENGAGEMENT SIGNAL
+- Opens: ${metrics.opens || 0} (${openRate.toFixed(1)}% open rate) [weight: ${optimizerConfig.open_weight}x]
+- Clicks: ${metrics.clicks || 0} (${clickRate.toFixed(1)}% click rate) [weight: ${optimizerConfig.click_weight}x]
+- Replies: ${metrics.replies || 0} (${replyRate.toFixed(1)}% reply rate) [weight: ${optimizerConfig.reply_weight}x] ← KEY ENGAGEMENT SIGNAL
 - Booked Meetings: ${metrics.booked_meetings || 0} (${meetingRate.toFixed(1)}% meeting rate from replies) ← HIGHEST VALUE
 - Bounces: ${metrics.bounces || 0} (${bounceRate.toFixed(1)}% bounce rate)
 - No-shows: ${metrics.no_shows || 0}
@@ -420,7 +441,11 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
         optimization_type: 'ai_optimization',
         changes: optimizations.changes || [],
         summary: optimizations.summary,
-        metrics_snapshot: metrics,
+        metrics_snapshot: {
+          ...metrics,
+          weighted_score: weightedScore,
+          config_version: optimizerConfig.prompt_version,
+        },
       });
 
     if (insertError) {
@@ -438,29 +463,47 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
       .eq('id', campaign_id);
 
     // Also insert as a recommendation for the UI
-    await supabase
-      .from('cmo_recommendations')
-      .insert({
-        tenant_id,
-        workspace_id: workspaceId,
-        campaign_id,
-        title: `AI Optimization: ${optimizations.priority_actions?.[0] || 'Performance improvements'}`,
-        description: optimizations.summary,
-        recommendation_type: 'optimization',
-        priority: 'high',
-        status: 'implemented',
-        action_items: optimizations.changes,
-        implemented_at: new Date().toISOString(),
-      });
+    if (optimizations.priority_actions?.length > 0) {
+      await supabase
+        .from('cmo_recommendations')
+        .insert({
+          tenant_id,
+          workspace_id: workspaceId,
+          campaign_id,
+          recommendation_type: 'optimization',
+          title: 'AI Optimization Recommendations',
+          description: optimizations.summary,
+          priority: 'high',
+          expected_impact: optimizations.metrics_targets?.expected_reply_rate_improvement || 'Improved performance',
+          action_items: optimizations.priority_actions,
+          status: 'pending',
+        });
+    }
 
-    console.log(`Optimizer completed for campaign ${campaign_id}: ${appliedChanges.length} changes applied`);
+    // Log to agent_runs
+    await supabase.from('agent_runs').insert({
+      tenant_id,
+      workspace_id: workspaceId,
+      agent: 'cmo_optimizer',
+      status: 'completed',
+      input: { campaign_id, goal, metrics, config: optimizerConfig },
+      output: optimizations,
+      completed_at: new Date().toISOString(),
+    });
+
+    console.log(`Optimizer: Generated ${optimizations.changes?.length || 0} changes, applied ${appliedChanges.length}`);
 
     return new Response(JSON.stringify({
+      success: true,
+      campaign_id,
+      goal,
+      config: optimizerConfig,
+      weighted_score: weightedScore,
       changes: optimizations.changes || [],
+      applied_changes: appliedChanges,
       summary: optimizations.summary,
       priority_actions: optimizations.priority_actions,
       metrics_targets: optimizations.metrics_targets,
-      applied_changes: appliedChanges,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -475,3 +518,37 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
     });
   }
 });
+
+/**
+ * Get optimizer config for a tenant, with defaults
+ */
+async function getOptimizerConfig(supabase: any, tenantId: string): Promise<OptimizerConfig> {
+  const defaults: OptimizerConfig = {
+    reply_weight: 3,
+    click_weight: 2,
+    open_weight: 1,
+    prompt_version: 'v1',
+  };
+
+  try {
+    const { data: config } = await supabase
+      .from('optimizer_configs')
+      .select('reply_weight, click_weight, open_weight, prompt_version')
+      .eq('tenant_id', tenantId)
+      .eq('channel', 'email')
+      .maybeSingle();
+
+    if (config) {
+      return {
+        reply_weight: config.reply_weight ?? defaults.reply_weight,
+        click_weight: config.click_weight ?? defaults.click_weight,
+        open_weight: config.open_weight ?? defaults.open_weight,
+        prompt_version: config.prompt_version ?? defaults.prompt_version,
+      };
+    }
+  } catch (e) {
+    console.warn('Failed to fetch optimizer config, using defaults:', e);
+  }
+
+  return defaults;
+}

@@ -7,48 +7,56 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature",
 };
 
-// Map Resend event types to our canonical types
+// Map Resend event types to internal canonical types
 const EVENT_TYPE_MAP: Record<string, string> = {
   "email.sent": "sent",
   "email.delivered": "delivered",
-  "email.opened": "open",
-  "email.clicked": "click",
-  "email.bounced": "bounce",
-  "email.complained": "complaint",
+  "email.opened": "opened",
+  "email.clicked": "clicked",
+  "email.bounced": "bounced",
+  "email.complained": "complained",
   "email.delivery_delayed": "delayed",
   // Inbound/reply events
-  "inbound": "reply",
+  "inbound": "replied",
 };
 
-// Map event types to stat fields
+// Map internal event types to stat fields
 const STAT_FIELD_MAP: Record<string, string> = {
   "sent": "sends",
   "delivered": "deliveries",
-  "open": "opens",
-  "click": "clicks",
-  "reply": "replies",
-  "bounce": "bounces",
+  "opened": "opens",
+  "clicked": "clicks",
+  "replied": "replies",
+  "bounced": "bounces",
 };
 
-// Map event types to crm_activities types
+// Map internal event types to crm_activities types
 const ACTIVITY_TYPE_MAP: Record<string, string> = {
-  "reply": "email_reply",
-  "open": "email_open",
-  "click": "email_click",
-  "bounce": "email_bounce",
+  "replied": "email_reply",
+  "opened": "email_open",
+  "clicked": "email_click",
+  "bounced": "email_bounce",
 };
+
+// Rate limit: max events per tenant per day
+const MAX_EVENTS_PER_TENANT_PER_DAY = 100000;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const rawBody = await req.text();
+  let rawBody = "";
+  let payload: any = null;
+  let providerEventType = "";
+  let eventTypeInternal = "";
+
+  try {
+    rawBody = await req.text();
 
     // Verify Resend/Svix webhook signature if configured
     const webhookSecret = Deno.env.get("RESEND_WEBHOOK_SECRET");
@@ -68,14 +76,14 @@ serve(async (req) => {
       }
     }
 
-    const payload = JSON.parse(rawBody);
-    const providerEventType = payload.type || "inbound";
-    const eventType = EVENT_TYPE_MAP[providerEventType] || providerEventType;
+    payload = JSON.parse(rawBody);
+    providerEventType = payload.type || "inbound";
+    eventTypeInternal = EVENT_TYPE_MAP[providerEventType] || providerEventType;
     
-    console.log(`[email-webhook] Received ${providerEventType} -> ${eventType}`);
+    console.log(`[email-webhook] Received ${providerEventType} -> ${eventTypeInternal}`);
 
     // Parse provider payload
-    const parsed = parseProviderPayload(payload, eventType);
+    const parsed = parseProviderPayload(payload, eventTypeInternal);
     
     if (!parsed.email) {
       console.log("[email-webhook] No email address found in payload");
@@ -85,7 +93,7 @@ serve(async (req) => {
     }
 
     // Try to get campaign_id from tags first (for outbound emails)
-    let tagCampaignId = payload.data?.tags?.find(
+    const tagCampaignId = payload.data?.tags?.find(
       (tag: any) => tag.name === "campaign_id"
     )?.value;
 
@@ -96,9 +104,41 @@ serve(async (req) => {
       console.log(`[email-webhook] No tenant found for email: ${parsed.email}`);
       // Still try to update campaign_metrics if we have campaign_id from tags
       if (tagCampaignId) {
-        await updateLegacyCampaignMetrics(supabase, tagCampaignId, eventType, payload);
+        await updateLegacyCampaignMetrics(supabase, tagCampaignId, eventTypeInternal, payload);
       }
       return new Response(JSON.stringify({ status: "no_tenant", email: parsed.email }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Rate limiting: check daily event count for tenant
+    const today = new Date().toISOString().split("T")[0];
+    const rateLimitKey = `email_webhook:${context.tenantId}:${today}`;
+    
+    const { data: rateLimitAllowed } = await supabase.rpc("check_and_increment_rate_limit", {
+      rate_key: rateLimitKey,
+      max_requests: MAX_EVENTS_PER_TENANT_PER_DAY,
+      window_seconds: 86400, // 24 hours
+      p_window_type: "day",
+    });
+
+    if (rateLimitAllowed === false) {
+      console.warn(`[email-webhook] Rate limit exceeded for tenant ${context.tenantId}`);
+      // Log rate limit error
+      await logWebhookError(supabase, {
+        tenantId: context.tenantId,
+        providerEventId: parsed.providerEventId,
+        providerMessageId: parsed.messageId,
+        providerType: "resend",
+        errorType: "rate_limit",
+        errorMessage: `Exceeded ${MAX_EVENTS_PER_TENANT_PER_DAY} events/day limit`,
+        rawPayload: payload,
+      });
+      // Return 200 to acknowledge but don't process
+      return new Response(JSON.stringify({ 
+        status: "rate_limited",
+        tenant_id: context.tenantId,
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -107,7 +147,9 @@ serve(async (req) => {
     const { error: eventError } = await supabase.from("email_events").insert({
       tenant_id: context.tenantId,
       provider: "resend",
-      event_type: eventType,
+      event_type: eventTypeInternal, // Keep for backward compat
+      event_type_internal: eventTypeInternal,
+      provider_event_type: providerEventType,
       provider_message_id: parsed.messageId,
       provider_thread_id: parsed.threadId,
       email_address: parsed.email,
@@ -120,6 +162,7 @@ serve(async (req) => {
         snippet: parsed.textPreview,
         link: parsed.clickedLink,
         raw_type: providerEventType,
+        provider_event_id: parsed.providerEventId,
       },
       occurred_at: parsed.occurredAt,
     });
@@ -127,10 +170,10 @@ serve(async (req) => {
     // Check for duplicate (unique constraint violation = code 23505)
     const isDuplicate = eventError?.code === "23505";
     if (isDuplicate) {
-      console.log(`[email-webhook] Duplicate event skipped: ${eventType} for ${parsed.messageId}`);
+      console.log(`[email-webhook] Duplicate event skipped: ${eventTypeInternal} for ${parsed.messageId}`);
       return new Response(JSON.stringify({
         status: "duplicate",
-        event_type: eventType,
+        event_type: eventTypeInternal,
         provider_message_id: parsed.messageId,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -139,12 +182,21 @@ serve(async (req) => {
 
     if (eventError) {
       console.error("[email-webhook] Error inserting email_event:", eventError);
+      await logWebhookError(supabase, {
+        tenantId: context.tenantId,
+        providerEventId: parsed.providerEventId,
+        providerMessageId: parsed.messageId,
+        providerType: "resend",
+        errorType: "insert_error",
+        errorMessage: eventError.message,
+        rawPayload: payload,
+      });
     } else {
-      console.log(`[email-webhook] Logged ${eventType} event for ${parsed.email}`);
+      console.log(`[email-webhook] Logged ${eventTypeInternal} event for ${parsed.email}`);
     }
 
     // 2) Insert crm_activities row (for meaningful events)
-    const activityType = ACTIVITY_TYPE_MAP[eventType];
+    const activityType = ACTIVITY_TYPE_MAP[eventTypeInternal];
     if (activityType && context.contactId) {
       await supabase.from("crm_activities").insert({
         tenant_id: context.tenantId,
@@ -163,35 +215,35 @@ serve(async (req) => {
     }
 
     // 3) Update lead on reply
-    if (eventType === "reply" && context.leadId) {
+    if (eventTypeInternal === "replied" && context.leadId) {
       await updateLeadOnReply(supabase, context);
     }
 
     // 4) Increment campaign_channel_stats_daily
-    if (context.campaignId && STAT_FIELD_MAP[eventType]) {
+    if (context.campaignId && STAT_FIELD_MAP[eventTypeInternal]) {
       const day = parsed.occurredAt.toISOString().split("T")[0];
       const { error: statsError } = await supabase.rpc("upsert_campaign_daily_stat", {
         p_tenant_id: context.tenantId,
         p_campaign_id: context.campaignId,
         p_channel: "email",
         p_day: day,
-        p_stat_type: STAT_FIELD_MAP[eventType],
+        p_stat_type: STAT_FIELD_MAP[eventTypeInternal],
         p_increment: 1,
       });
       if (statsError) {
         console.error("[email-webhook] Error upserting daily stat:", statsError);
       } else {
-        console.log(`[email-webhook] Incremented ${STAT_FIELD_MAP[eventType]} for campaign ${context.campaignId}`);
+        console.log(`[email-webhook] Incremented ${STAT_FIELD_MAP[eventTypeInternal]} for campaign ${context.campaignId}`);
       }
     }
 
     // 5) Update legacy campaign_metrics table
     if (context.campaignId) {
-      await updateLegacyCampaignMetrics(supabase, context.campaignId, eventType, payload);
+      await updateLegacyCampaignMetrics(supabase, context.campaignId, eventTypeInternal, payload);
     }
 
     // 6) For replies: increment reply_count and record snapshot
-    if (eventType === "reply" && context.campaignId && context.workspaceId) {
+    if (eventTypeInternal === "replied" && context.campaignId && context.workspaceId) {
       await supabase.rpc("increment_campaign_reply_count", {
         p_campaign_id: context.campaignId,
         p_workspace_id: context.workspaceId,
@@ -206,7 +258,7 @@ serve(async (req) => {
     }
 
     // 7) Pause outbound sequence on reply
-    if (eventType === "reply" && context.sequenceRunId) {
+    if (eventTypeInternal === "replied" && context.sequenceRunId) {
       await supabase
         .from("outbound_sequence_runs")
         .update({ status: "paused" })
@@ -234,7 +286,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       status: "ok",
-      event_type: eventType,
+      event_type: eventTypeInternal,
       email: parsed.email,
       tenant_id: context.tenantId,
       campaign_id: context.campaignId,
@@ -242,7 +294,7 @@ serve(async (req) => {
       logged: {
         email_events: !eventError,
         crm_activities: !!activityType && !!context.contactId,
-        daily_stats: !!context.campaignId && !!STAT_FIELD_MAP[eventType],
+        daily_stats: !!context.campaignId && !!STAT_FIELD_MAP[eventTypeInternal],
       },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -250,14 +302,58 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[email-webhook] Error:", error);
+    
+    // Log error to errors_email_webhook table
+    try {
+      await logWebhookError(supabase, {
+        tenantId: null,
+        providerEventId: payload?.id,
+        providerMessageId: payload?.data?.email_id || payload?.data?.message_id,
+        providerType: "resend",
+        errorType: "unhandled_exception",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        rawPayload: payload || rawBody,
+      });
+    } catch (logError) {
+      console.error("[email-webhook] Failed to log error:", logError);
+    }
+
+    // Always return 200 to prevent webhook retries flooding
     return new Response(JSON.stringify({
+      status: "error_logged",
       error: error instanceof Error ? error.message : "Unknown error"
     }), {
-      status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
+/**
+ * Log webhook errors to errors_email_webhook table
+ */
+async function logWebhookError(supabase: any, params: {
+  tenantId: string | null;
+  providerEventId?: string;
+  providerMessageId?: string;
+  providerType: string;
+  errorType: string;
+  errorMessage: string;
+  rawPayload?: any;
+}) {
+  try {
+    await supabase.from("errors_email_webhook").insert({
+      tenant_id: params.tenantId,
+      provider_event_id: params.providerEventId,
+      provider_message_id: params.providerMessageId,
+      provider_type: params.providerType,
+      error_type: params.errorType,
+      error_message: params.errorMessage,
+      raw_payload: params.rawPayload,
+    });
+  } catch (e) {
+    console.error("[email-webhook] Failed to insert error log:", e);
+  }
+}
 
 /**
  * Parse provider payload into canonical format
@@ -266,7 +362,7 @@ function parseProviderPayload(payload: any, eventType: string) {
   const data = payload.data || payload;
   
   // For inbound/reply events
-  if (eventType === "reply") {
+  if (eventType === "replied") {
     return {
       email: (data.from || payload.from || "").toLowerCase().trim(),
       messageId: data.message_id || payload.message_id,
@@ -275,6 +371,7 @@ function parseProviderPayload(payload: any, eventType: string) {
       textPreview: (data.text || payload.text || "").substring(0, 200),
       clickedLink: null,
       occurredAt: new Date(data.created_at || payload.created_at || Date.now()),
+      providerEventId: payload.id,
     };
   }
   
@@ -287,6 +384,7 @@ function parseProviderPayload(payload: any, eventType: string) {
     textPreview: null,
     clickedLink: data.click?.link || null,
     occurredAt: new Date(data.created_at || payload.created_at || Date.now()),
+    providerEventId: payload.id,
   };
 }
 
@@ -460,19 +558,19 @@ async function updateLegacyCampaignMetrics(supabase: any, campaignId: string, ev
     case "delivered":
       updates.delivered_count = (metrics.delivered_count || 0) + 1;
       break;
-    case "open":
+    case "opened":
       updates.open_count = (metrics.open_count || 0) + 1;
       break;
-    case "click":
+    case "clicked":
       updates.clicks = (metrics.clicks || 0) + 1;
       break;
-    case "bounce":
+    case "bounced":
       updates.bounce_count = (metrics.bounce_count || 0) + 1;
       break;
-    case "complaint":
+    case "complained":
       updates.unsubscribe_count = (metrics.unsubscribe_count || 0) + 1;
       break;
-    case "reply":
+    case "replied":
       updates.reply_count = (metrics.reply_count || 0) + 1;
       break;
   }

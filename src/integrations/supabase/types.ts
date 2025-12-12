@@ -2531,11 +2531,13 @@ export type Database = {
           contact_id: string | null
           email_address: string
           event_type: string
+          event_type_internal: string | null
           id: string
           lead_id: string | null
           meta: Json
           occurred_at: string
           provider: string
+          provider_event_type: string | null
           provider_message_id: string | null
           provider_thread_id: string | null
           received_at: string
@@ -2547,11 +2549,13 @@ export type Database = {
           contact_id?: string | null
           email_address: string
           event_type: string
+          event_type_internal?: string | null
           id?: string
           lead_id?: string | null
           meta?: Json
           occurred_at: string
           provider: string
+          provider_event_type?: string | null
           provider_message_id?: string | null
           provider_thread_id?: string | null
           received_at?: string
@@ -2563,11 +2567,13 @@ export type Database = {
           contact_id?: string | null
           email_address?: string
           event_type?: string
+          event_type_internal?: string | null
           id?: string
           lead_id?: string | null
           meta?: Json
           occurred_at?: string
           provider?: string
+          provider_event_type?: string | null
           provider_message_id?: string | null
           provider_thread_id?: string | null
           received_at?: string
@@ -2698,6 +2704,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      errors_email_webhook: {
+        Row: {
+          created_at: string
+          error_message: string
+          error_type: string
+          id: string
+          provider_event_id: string | null
+          provider_message_id: string | null
+          provider_type: string | null
+          raw_payload: Json | null
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message: string
+          error_type: string
+          id?: string
+          provider_event_id?: string | null
+          provider_message_id?: string | null
+          provider_type?: string | null
+          raw_payload?: Json | null
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string
+          error_type?: string
+          id?: string
+          provider_event_id?: string | null
+          provider_message_id?: string | null
+          provider_type?: string | null
+          raw_payload?: Json | null
+          tenant_id?: string | null
+        }
+        Relationships: []
       }
       integration_audit_log: {
         Row: {
@@ -3080,6 +3122,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      optimizer_configs: {
+        Row: {
+          channel: string
+          click_weight: number
+          created_at: string
+          id: string
+          open_weight: number
+          prompt_version: string
+          reply_weight: number
+          tenant_id: string
+        }
+        Insert: {
+          channel: string
+          click_weight?: number
+          created_at?: string
+          id?: string
+          open_weight?: number
+          prompt_version?: string
+          reply_weight?: number
+          tenant_id: string
+        }
+        Update: {
+          channel?: string
+          click_weight?: number
+          created_at?: string
+          id?: string
+          open_weight?: number
+          prompt_version?: string
+          reply_weight?: number
+          tenant_id?: string
+        }
+        Relationships: []
       }
       os_tenant_registry: {
         Row: {
@@ -4127,6 +4202,10 @@ export type Database = {
         Returns: boolean
       }
       must_change_password: { Args: { _user_id: string }; Returns: boolean }
+      rebuild_campaign_daily_stats: {
+        Args: { _date_from: string; _date_to: string; _tenant_id: string }
+        Returns: undefined
+      }
       record_reply_metric_snapshot: {
         Args: {
           p_campaign_id: string
