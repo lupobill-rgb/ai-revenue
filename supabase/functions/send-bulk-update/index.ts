@@ -78,11 +78,14 @@ serve(async (req) => {
       
       try {
         const result = await resend.emails.send({
-          from: "UbiGrowth Updates <onboarding@resend.dev>",
+          from: "UbiGrowth Updates <updates@ubigrowth.ai>",
           to: user.email,
           subject,
           html: htmlBody,
         });
+
+        // Add delay to avoid rate limiting (2 req/sec limit)
+        await new Promise(resolve => setTimeout(resolve, 600));
 
         if (result.error) {
           results.push({ email: user.email, success: false, error: result.error.message });
