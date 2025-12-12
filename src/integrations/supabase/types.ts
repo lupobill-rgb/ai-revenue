@@ -4069,6 +4069,44 @@ export type Database = {
         }
         Relationships: []
       }
+      release_notes: {
+        Row: {
+          body_md: string
+          created_at: string
+          created_by: string | null
+          id: string
+          released_at: string
+          tenant_id: string | null
+          title: string
+        }
+        Insert: {
+          body_md: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          released_at?: string
+          tenant_id?: string | null
+          title: string
+        }
+        Update: {
+          body_md?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          released_at?: string
+          tenant_id?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "release_notes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       revenue_events: {
         Row: {
           account_id: string | null
@@ -4787,6 +4825,7 @@ export type Database = {
           role: string | null
           tenant_id: string
           user_id: string
+          wants_product_updates: boolean
         }
         Insert: {
           created_at?: string
@@ -4794,6 +4833,7 @@ export type Database = {
           role?: string | null
           tenant_id: string
           user_id: string
+          wants_product_updates?: boolean
         }
         Update: {
           created_at?: string
@@ -4801,6 +4841,7 @@ export type Database = {
           role?: string | null
           tenant_id?: string
           user_id?: string
+          wants_product_updates?: boolean
         }
         Relationships: []
       }
