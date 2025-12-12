@@ -103,7 +103,7 @@ serve(async (req) => {
       });
     }
 
-    // 1) Insert raw email_events row
+    // 1) Insert raw email_events row (with idempotency - skip duplicates)
     const { error: eventError } = await supabase.from("email_events").insert({
       tenant_id: context.tenantId,
       provider: "resend",
@@ -123,6 +123,19 @@ serve(async (req) => {
       },
       occurred_at: parsed.occurredAt,
     });
+
+    // Check for duplicate (unique constraint violation = code 23505)
+    const isDuplicate = eventError?.code === "23505";
+    if (isDuplicate) {
+      console.log(`[email-webhook] Duplicate event skipped: ${eventType} for ${parsed.messageId}`);
+      return new Response(JSON.stringify({
+        status: "duplicate",
+        event_type: eventType,
+        provider_message_id: parsed.messageId,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (eventError) {
       console.error("[email-webhook] Error inserting email_event:", eventError);
