@@ -14,8 +14,8 @@ const corsHeaders = {
  * 
  * Architecture: One brain, many hands
  * - Orchestrator coordinates and sequences agents
- * - Specialized agents handle specific tasks
- * - All actions are tenant-scoped and CRM-integrated
+ * - Specialized agents are invoked via the internal routing table
+ * - No free-floating LLM calls - everything goes through kernel
  */
 
 interface OrchestratorRequest {
@@ -26,6 +26,7 @@ interface OrchestratorRequest {
     campaign_id?: string;
     lead_id?: string;
     trigger_source?: string;
+    brand_profile?: Record<string, unknown>;
   };
   payload: Record<string, unknown>;
   system_prompt?: string;
@@ -38,8 +39,33 @@ interface OrchestratorRequest {
   run_id?: string;
 }
 
-// Agent routing map - orchestrator delegates to specialized agents
+/**
+ * Internal Routing Table
+ * Maps agent IDs to their edge function endpoints
+ * This is the ONLY way to invoke specialist agents
+ */
+const AI_CMO_AGENTS = {
+  campaignBuilder: "ai_cmo_campaign_builder",
+  landingGenerator: "ai_cmo_landing_page_generator",
+  humanizer: "ai_cmo_content_humanizer",
+  emailReplyAnalyzer: "ai_cmo_email_reply_analyzer",
+  optimizer: "ai_cmo_campaign_optimizer",
+  voiceOrchestrator: "ai_cmo_voice_orchestrator"
+} as const;
+
+type AiCmoAgentId = typeof AI_CMO_AGENTS[keyof typeof AI_CMO_AGENTS];
+
+/**
+ * Agent to Edge Function mapping
+ */
 const AGENT_FUNCTIONS: Record<string, string> = {
+  [AI_CMO_AGENTS.campaignBuilder]: 'cmo-campaign-builder',
+  [AI_CMO_AGENTS.landingGenerator]: 'ai-cmo-landing-pages-generate',
+  [AI_CMO_AGENTS.humanizer]: 'ai-cmo-humanize',
+  [AI_CMO_AGENTS.emailReplyAnalyzer]: 'cmo-email-reply-analyzer',
+  [AI_CMO_AGENTS.optimizer]: 'cmo-optimizer',
+  [AI_CMO_AGENTS.voiceOrchestrator]: 'cmo-voice-agent-builder',
+  // Legacy mappings for backward compatibility
   'campaign_builder': 'cmo-campaign-builder',
   'landing_page_generator': 'ai-cmo-landing-pages-generate',
   'content_humanizer': 'ai-cmo-humanize',
@@ -48,14 +74,144 @@ const AGENT_FUNCTIONS: Record<string, string> = {
   'voice_orchestrator': 'cmo-voice-agent-builder',
 };
 
-// Action to agent mapping
-const ACTION_TO_AGENTS: Record<string, string[]> = {
-  'create_campaign': ['campaign_builder', 'landing_page_generator', 'content_humanizer'],
-  'optimize_campaign': ['campaign_optimizer'],
-  'handle_reply': ['email_reply_analyzer'],
-  'deploy_voice': ['voice_orchestrator'],
-  'regenerate_content': ['content_humanizer'],
-  'generate_landing_page': ['landing_page_generator'],
+/**
+ * Action to Agent routing
+ * Defines which agents are invoked for each orchestrator action
+ */
+const ACTION_TO_AGENTS: Record<string, AiCmoAgentId[]> = {
+  'create_campaign': [AI_CMO_AGENTS.campaignBuilder, AI_CMO_AGENTS.landingGenerator, AI_CMO_AGENTS.humanizer],
+  'build_campaign': [AI_CMO_AGENTS.campaignBuilder],
+  'optimize_campaign': [AI_CMO_AGENTS.optimizer],
+  'handle_reply': [AI_CMO_AGENTS.emailReplyAnalyzer],
+  'analyze_reply': [AI_CMO_AGENTS.emailReplyAnalyzer],
+  'deploy_voice': [AI_CMO_AGENTS.voiceOrchestrator],
+  'orchestrate_voice': [AI_CMO_AGENTS.voiceOrchestrator],
+  'regenerate_content': [AI_CMO_AGENTS.humanizer],
+  'humanize_content': [AI_CMO_AGENTS.humanizer],
+  'generate_landing_page': [AI_CMO_AGENTS.landingGenerator],
+};
+
+/**
+ * Tool definitions exposed to the orchestrator LLM
+ * These are the ONLY ways the orchestrator can invoke specialist agents
+ */
+const ORCHESTRATOR_TOOLS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "call_campaign_builder",
+      description: "Build a complete multi-channel campaign including content, landing pages, automations, and voice scripts",
+      parameters: {
+        type: "object",
+        properties: {
+          icp_description: { type: "string", description: "Target ICP description" },
+          offer_details: { type: "string", description: "Product/service offer details" },
+          channels: { type: "string", description: "Comma-separated channels: email,sms,linkedin,voice,landing_page" },
+          goal: { type: "string", description: "Primary goal: leads, meetings, revenue, engagement" },
+          campaign_name: { type: "string", description: "Name for the campaign" }
+        },
+        required: ["icp_description", "offer_details", "channels", "goal"]
+      }
+    }
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "call_landing_generator",
+      description: "Generate a conversion-optimized landing page connected to CRM",
+      parameters: {
+        type: "object",
+        properties: {
+          template_type: { type: "string", description: "Template: saas, lead_magnet, webinar, services, booking, long_form" },
+          headline: { type: "string", description: "Main headline for the page" },
+          offer: { type: "string", description: "What is being offered" },
+          icp: { type: "string", description: "Target audience description" },
+          cta_type: { type: "string", description: "CTA type: form, booking, download" }
+        },
+        required: ["template_type", "offer", "icp"]
+      }
+    }
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "call_humanizer",
+      description: "Refine AI-generated content to remove robotic tone and improve realism",
+      parameters: {
+        type: "object",
+        properties: {
+          content: { type: "string", description: "The content to humanize" },
+          content_type: { type: "string", description: "Type: email, social, landing, voice_script" },
+          brand_voice: { type: "string", description: "Brand voice guidelines" },
+          intensity: { type: "string", description: "Humanization level: light, medium, heavy" }
+        },
+        required: ["content", "content_type"]
+      }
+    }
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "call_email_reply_analyzer",
+      description: "Analyze an inbound email reply, classify intent, and recommend next actions",
+      parameters: {
+        type: "object",
+        properties: {
+          reply_text: { type: "string", description: "The email reply content" },
+          original_message: { type: "string", description: "The original outbound message" },
+          lead_context: { type: "string", description: "JSON context about the lead" },
+          campaign_goal: { type: "string", description: "The campaign's primary goal" }
+        },
+        required: ["reply_text"]
+      }
+    }
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "call_optimizer",
+      description: "Analyze campaign performance and recommend optimizations",
+      parameters: {
+        type: "object",
+        properties: {
+          campaign_id: { type: "string", description: "Campaign ID to optimize" },
+          metrics: { type: "string", description: "JSON performance metrics" },
+          assets: { type: "string", description: "JSON current campaign assets" },
+          goal: { type: "string", description: "Optimization goal: leads, meetings, revenue" }
+        },
+        required: ["campaign_id", "metrics"]
+      }
+    }
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "call_voice_orchestrator",
+      description: "Deploy and manage AI voice agents within sequences",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", description: "Action: create_agent, update_script, handle_outcome, select_agent" },
+          lead_context: { type: "string", description: "JSON context about the lead" },
+          campaign_context: { type: "string", description: "JSON campaign details" },
+          call_outcome: { type: "string", description: "For handle_outcome: the call result" }
+        },
+        required: ["action"]
+      }
+    }
+  }
+];
+
+/**
+ * Tool name to agent ID mapping
+ */
+const TOOL_TO_AGENT: Record<string, AiCmoAgentId> = {
+  'call_campaign_builder': AI_CMO_AGENTS.campaignBuilder,
+  'call_landing_generator': AI_CMO_AGENTS.landingGenerator,
+  'call_humanizer': AI_CMO_AGENTS.humanizer,
+  'call_email_reply_analyzer': AI_CMO_AGENTS.emailReplyAnalyzer,
+  'call_optimizer': AI_CMO_AGENTS.optimizer,
+  'call_voice_orchestrator': AI_CMO_AGENTS.voiceOrchestrator,
 };
 
 serve(async (req) => {
