@@ -48,7 +48,8 @@ export default function RevenueOSLayout() {
     }
   }, [user]);
 
-  // Check feature flag
+  // Check feature flag - but only after confirming user is logged in
+  // If not enabled, show message rather than redirect (prevents loop)
   if (flagsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -58,7 +59,19 @@ export default function RevenueOSLayout() {
   }
 
   if (!revenue_os_enabled) {
-    return <Navigate to="/dashboard" replace />;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-md p-6">
+          <h1 className="text-2xl font-bold text-foreground mb-2">Revenue OS Not Enabled</h1>
+          <p className="text-muted-foreground mb-4">
+            Revenue OS is not enabled for your account. Please contact your administrator to enable this feature.
+          </p>
+          <Button onClick={() => navigate("/login")} variant="outline">
+            Return to Login
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const handleLogout = async () => {
