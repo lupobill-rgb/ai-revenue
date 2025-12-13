@@ -305,3 +305,6 @@ verify_jwt = false
 
 [functions.cfo-weekly-snapshot]
 verify_jwt = false
+
+[functions.weekly-cfo-digest]
+verify_jwt = false
