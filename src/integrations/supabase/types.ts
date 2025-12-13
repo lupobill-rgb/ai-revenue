@@ -5148,6 +5148,22 @@ export type Database = {
         Args: { p_campaign_id: string }
         Returns: Json
       }
+      weekly_cfo_snapshot: {
+        Args: never
+        Returns: {
+          cac_blended: number
+          contribution_margin_pct: number
+          econ_actions_hurt: number
+          econ_actions_improved: number
+          econ_actions_total: number
+          gross_margin_pct: number
+          payback_months: number
+          revenue_per_fte: number
+          sales_efficiency_ratio: number
+          tenant_id: string
+          tenant_name: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "sales" | "manager"
