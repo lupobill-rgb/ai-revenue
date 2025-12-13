@@ -99,15 +99,19 @@ const Login = () => {
     setIsResetting(true);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(result.data, {
-        redirectTo: `${window.location.origin}/change-password`,
+      // Use custom edge function for branded emails
+      const response = await supabase.functions.invoke('auth-send-reset-email', {
+        body: {
+          email: result.data,
+          redirectTo: `${window.location.origin}/change-password`,
+        },
       });
 
-      if (error) {
+      if (response.error) {
         toast({
           variant: "destructive",
           title: "Reset failed",
-          description: error.message,
+          description: "Unable to send reset email. Please try again.",
         });
       } else {
         toast({
