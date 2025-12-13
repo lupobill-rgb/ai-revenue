@@ -5060,6 +5060,24 @@ export type Database = {
         Returns: boolean
       }
       gc_rate_limit_counters: { Args: never; Returns: undefined }
+      get_weekly_cfo_snapshot: {
+        Args: never
+        Returns: {
+          cac_blended: number
+          cfo_enabled: boolean
+          cfo_gates_triggered: number
+          contribution_margin_pct: number
+          econ_actions_hurt: number
+          econ_actions_improved: number
+          econ_actions_total: number
+          gross_margin_pct: number
+          payback_months: number
+          revenue_per_fte: number
+          sales_efficiency_ratio: number
+          tenant_id: string
+          tenant_name: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

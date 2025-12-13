@@ -9,15 +9,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
-// Canonical economic metric IDs
-const CFO_METRIC_IDS = [
-  "payback_months",
-  "gross_margin_pct",
-  "contribution_margin_pct", 
-  "cac_blended",
-  "revenue_per_fte",
-  "sales_efficiency_ratio",
-];
+// Metrics are now handled by the get_weekly_cfo_snapshot RPC function
 
 interface TenantSnapshot {
   tenant_id: string;
@@ -49,117 +41,33 @@ serve(async (req) => {
     // Parse request - can specify recipient email
     const body = await req.json().catch(() => ({}));
     const recipientEmail = body.email || "team@ubigrowth.ai"; // Default recipient
-    const weekStart = new Date(Date.now() - 7 * 86400000).toISOString();
 
     console.log(`[CFO Snapshot] Generating weekly report for ${recipientEmail}`);
 
-    // 1. Get all tenants with CFO expansion status
-    const { data: tenants, error: tenantsError } = await supabase
-      .from("tenants")
-      .select("id, name, config")
-      .eq("status", "active");
+    // Use optimized RPC function for weekly CFO snapshot
+    const { data: snapshotData, error: snapshotError } = await supabase.rpc('get_weekly_cfo_snapshot');
 
-    if (tenantsError) {
-      throw new Error(`Failed to fetch tenants: ${tenantsError.message}`);
+    if (snapshotError) {
+      throw new Error(`Failed to fetch CFO snapshot: ${snapshotError.message}`);
     }
 
-    const snapshots: TenantSnapshot[] = [];
-
-    for (const tenant of tenants || []) {
-      const tenantId = tenant.id;
-      const cfoEnabled = tenant.config?.cfo_expansion_enabled === true;
-
-      // 2. Get latest CFO metrics (all canonical economic metrics)
-      const { data: metrics } = await supabase
-        .from("metric_snapshots_daily")
-        .select("metric_id, value")
-        .eq("tenant_id", tenantId)
-        .in("metric_id", CFO_METRIC_IDS)
-        .order("date", { ascending: false })
-        .limit(CFO_METRIC_IDS.length * 2); // Get enough rows to cover all metrics
-
-      const metricsMap = new Map<string, number>();
-      for (const m of metrics || []) {
-        if (!metricsMap.has(m.metric_id)) {
-          metricsMap.set(m.metric_id, m.value);
-        }
-      }
-
-      // 3. Count optimization actions by economic outcome (last 7 days)
-      // Join to optimization_actions via action_id to get full context
-      const { data: actionResults } = await supabase
-        .from("optimization_action_results")
-        .select("delta_direction, economic_deltas, optimization_action_id")
-        .eq("tenant_id", tenantId)
-        .gte("created_at", weekStart);
-
-      let improvedEconomics = 0;
-      let hurtEconomics = 0;
-      let neutralEconomics = 0;
-
-      for (const result of actionResults || []) {
-        const deltas = result.economic_deltas as Record<string, number> | null;
-        
-        // Evaluate using delta_direction (canonical: increase | decrease | neutral)
-        if (result.delta_direction === "decrease") {
-          // For economics, "decrease" in payback/CAC = improved
-          // Need to check what metric was targeted
-          improvedEconomics++;
-        } else if (result.delta_direction === "increase") {
-          // For economics, "increase" in margin = improved, but increase in payback = hurt
-          // Use economic_deltas for more nuance if available
-          if (deltas) {
-            const paybackDelta = deltas.delta_payback_months ?? 0;
-            const marginDelta = deltas.delta_margin_pct ?? 0;
-            const cacDelta = deltas.delta_cac ?? 0;
-            const revenuePerFteDelta = deltas.delta_revenue_per_fte ?? 0;
-            
-            // Score: positive = improved economics, negative = hurt
-            const economicScore = 
-              (marginDelta > 0 ? 1 : marginDelta < 0 ? -1 : 0) +
-              (paybackDelta < 0 ? 1 : paybackDelta > 0 ? -1 : 0) +
-              (cacDelta < 0 ? 1 : cacDelta > 0 ? -1 : 0) +
-              (revenuePerFteDelta > 0 ? 1 : revenuePerFteDelta < 0 ? -1 : 0);
-            
-            if (economicScore > 0) improvedEconomics++;
-            else if (economicScore < 0) hurtEconomics++;
-            else neutralEconomics++;
-          } else {
-            hurtEconomics++;
-          }
-        } else if (result.delta_direction === "neutral") {
-          neutralEconomics++;
-        }
-      }
-
-      // 4. Count cycles with CFO gates triggered
-      const { data: cycles } = await supabase
-        .from("optimization_cycles")
-        .select("cfo_gates_active")
-        .eq("tenant_id", tenantId)
-        .gte("invoked_at", weekStart);
-
-      const cfoGatesTriggered = (cycles || []).filter(
-        (c) => c.cfo_gates_active && c.cfo_gates_active.length > 0
-      ).length;
-
-      snapshots.push({
-        tenant_id: tenantId,
-        tenant_name: tenant.name || tenantId,
-        cfo_enabled: cfoEnabled,
-        payback_months: metricsMap.get("payback_months") ?? null,
-        gross_margin_pct: metricsMap.get("gross_margin_pct") ?? null,
-        contribution_margin_pct: metricsMap.get("contribution_margin_pct") ?? null,
-        cac_blended: metricsMap.get("cac_blended") ?? null,
-        revenue_per_fte: metricsMap.get("revenue_per_fte") ?? null,
-        sales_efficiency_ratio: metricsMap.get("sales_efficiency_ratio") ?? null,
-        actions_improved_economics: improvedEconomics,
-        actions_hurt_economics: hurtEconomics,
-        actions_neutral: neutralEconomics,
-        total_actions: (actionResults || []).length,
-        cfo_gates_triggered: cfoGatesTriggered,
-      });
-    }
+    // Map RPC results to TenantSnapshot interface
+    const snapshots: TenantSnapshot[] = (snapshotData || []).map((row: any) => ({
+      tenant_id: row.tenant_id,
+      tenant_name: row.tenant_name,
+      cfo_enabled: row.cfo_enabled,
+      payback_months: row.payback_months,
+      gross_margin_pct: row.gross_margin_pct,
+      contribution_margin_pct: row.contribution_margin_pct,
+      cac_blended: row.cac_blended,
+      revenue_per_fte: row.revenue_per_fte,
+      sales_efficiency_ratio: row.sales_efficiency_ratio,
+      actions_improved_economics: Number(row.econ_actions_improved) || 0,
+      actions_hurt_economics: Number(row.econ_actions_hurt) || 0,
+      actions_neutral: Number(row.econ_actions_total) - Number(row.econ_actions_improved) - Number(row.econ_actions_hurt),
+      total_actions: Number(row.econ_actions_total) || 0,
+      cfo_gates_triggered: Number(row.cfo_gates_triggered) || 0,
+    }));
 
     // 5. Build email HTML
     const emailHtml = buildEmailHtml(snapshots);
