@@ -34,7 +34,7 @@ const Logo = ({ className = "h-8", showTagline = false }: LogoProps) => {
     fetchProfile();
   }, []);
 
-  const businessName = profile?.business_name || "Marketing Platform";
+  const businessName = profile?.business_name || "Revenue Platform";
   const logoUrl = profile?.logo_url;
 
   return (
