@@ -349,9 +349,15 @@ async function evaluateActionResults(supabase: any, tenantId?: string) {
       .order('date', { ascending: false })
       .limit(economicMetrics.length);
 
+    // Fetch prior results for this action to compute economic deltas
+    const { data: priorResultsData } = await supabase
+      .from('optimization_action_results')
+      .select('metric_id, baseline_value')
+      .eq('action_id', action.id);
+
     const economicDeltas: Record<string, number> = {};
     for (const es of economicSnapshots || []) {
-      const baselineEcon = (priorResults || []).find((r: any) => r.metric_id === es.metric_id);
+      const baselineEcon = (priorResultsData || []).find((r: any) => r.metric_id === es.metric_id);
       if (baselineEcon?.baseline_value) {
         economicDeltas[`delta_${es.metric_id}`] = es.value - baselineEcon.baseline_value;
       }
