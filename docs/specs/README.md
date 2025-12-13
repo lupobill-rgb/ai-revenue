@@ -1,12 +1,13 @@
-# Revenue OS v1 Baseline
+# Revenue OS v1.1 (CFO) Baseline
 
-> **Version**: revenue_os_v1  
-> **Baseline Tag**: `revenue-os-v1-baseline`  
-> **Established**: 2024-12-12
+> **Version**: revenue_os_v1.1  
+> **Current Tag**: `revenue-os-v1.1-cfo`  
+> **Established**: 2024-12-13  
+> **Status**: 🔒 PRODUCTION FROZEN — See [FROZEN-v1.1-cfo.md](./FROZEN-v1.1-cfo.md)
 
 ## Overview
 
-This document establishes the v1 baseline for the Revenue OS unified kernel. All future changes MUST update specs first and re-run the 4-step validation loop.
+This document establishes the v1.1 baseline for the Revenue OS unified kernel with CFO gating. All future changes MUST update specs first and re-run the 6-step validation loop.
 
 ---
 
