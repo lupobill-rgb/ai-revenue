@@ -856,6 +856,75 @@ export type Database = {
           },
         ]
       }
+      channel_spend_daily: {
+        Row: {
+          attribution_model: string
+          attribution_window_days: number
+          channel_id: string
+          clicks: number
+          created_at: string
+          currency: string
+          date: string
+          id: string
+          impressions: number
+          leads: number
+          opportunities: number
+          revenue_booked: number
+          spend: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attribution_model?: string
+          attribution_window_days?: number
+          channel_id: string
+          clicks?: number
+          created_at?: string
+          currency?: string
+          date: string
+          id?: string
+          impressions?: number
+          leads?: number
+          opportunities?: number
+          revenue_booked?: number
+          spend?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attribution_model?: string
+          attribution_window_days?: number
+          channel_id?: string
+          clicks?: number
+          created_at?: string
+          currency?: string
+          date?: string
+          id?: string
+          impressions?: number
+          leads?: number
+          opportunities?: number
+          revenue_booked?: number
+          spend?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_spend_daily_channel_fk"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_campaign_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_spend_daily_tenant_fk"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cmo_brand_profiles: {
         Row: {
           brand_colors: Json | null
