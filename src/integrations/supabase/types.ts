@@ -4743,6 +4743,66 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_targets: {
+        Row: {
+          cash_risk_tolerance: string | null
+          created_at: string
+          email_enabled: boolean | null
+          experiment_exposure_pct: number | null
+          landing_pages_enabled: boolean | null
+          linkedin_enabled: boolean | null
+          margin_floor_pct: number | null
+          max_cac: number | null
+          max_cac_by_segment: Json | null
+          monthly_budget_cap: number | null
+          sms_enabled: boolean | null
+          target_bookings: number | null
+          target_payback_months: number | null
+          target_pipeline: number | null
+          tenant_id: string
+          updated_at: string
+          voice_enabled: boolean | null
+        }
+        Insert: {
+          cash_risk_tolerance?: string | null
+          created_at?: string
+          email_enabled?: boolean | null
+          experiment_exposure_pct?: number | null
+          landing_pages_enabled?: boolean | null
+          linkedin_enabled?: boolean | null
+          margin_floor_pct?: number | null
+          max_cac?: number | null
+          max_cac_by_segment?: Json | null
+          monthly_budget_cap?: number | null
+          sms_enabled?: boolean | null
+          target_bookings?: number | null
+          target_payback_months?: number | null
+          target_pipeline?: number | null
+          tenant_id: string
+          updated_at?: string
+          voice_enabled?: boolean | null
+        }
+        Update: {
+          cash_risk_tolerance?: string | null
+          created_at?: string
+          email_enabled?: boolean | null
+          experiment_exposure_pct?: number | null
+          landing_pages_enabled?: boolean | null
+          linkedin_enabled?: boolean | null
+          margin_floor_pct?: number | null
+          max_cac?: number | null
+          max_cac_by_segment?: Json | null
+          monthly_budget_cap?: number | null
+          sms_enabled?: boolean | null
+          target_bookings?: number | null
+          target_payback_months?: number | null
+          target_pipeline?: number | null
+          tenant_id?: string
+          updated_at?: string
+          voice_enabled?: boolean | null
+        }
+        Relationships: []
+      }
       tenants: {
         Row: {
           billing_plan: string

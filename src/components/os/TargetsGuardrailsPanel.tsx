@@ -5,6 +5,8 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Target, 
   Shield, 
@@ -16,26 +18,29 @@ import {
   Mail,
   Phone,
   MessageSquare,
-  Globe
+  Globe,
+  Linkedin,
+  Save,
+  Loader2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
-interface MetricTarget {
-  id: string;
-  label: string;
-  current: number;
-  target: number;
-  unit: string;
-  icon: React.ReactNode;
-  status: "on_track" | "at_risk" | "off_track";
-}
-
-interface Guardrail {
-  id: string;
-  label: string;
-  enabled: boolean;
-  value?: number;
-  unit?: string;
+interface TenantTargets {
+  tenant_id: string;
+  target_pipeline: number;
+  target_bookings: number;
+  target_payback_months: number;
+  margin_floor_pct: number;
+  max_cac: number;
+  cash_risk_tolerance: "low" | "medium" | "high";
+  monthly_budget_cap: number;
+  experiment_exposure_pct: number;
+  email_enabled: boolean;
+  voice_enabled: boolean;
+  sms_enabled: boolean;
+  landing_pages_enabled: boolean;
+  linkedin_enabled: boolean;
 }
 
 interface Props {
@@ -43,192 +48,387 @@ interface Props {
 }
 
 export default function TargetsGuardrailsPanel({ tenantId }: Props) {
-  const [metrics, setMetrics] = useState<MetricTarget[]>([
-    { id: "pipeline", label: "Pipeline", current: 0, target: 500000, unit: "$", icon: <TrendingUp className="h-4 w-4" />, status: "on_track" },
-    { id: "bookings", label: "Bookings", current: 0, target: 150000, unit: "$", icon: <DollarSign className="h-4 w-4" />, status: "on_track" },
-    { id: "cac", label: "CAC", current: 0, target: 2500, unit: "$", icon: <DollarSign className="h-4 w-4" />, status: "on_track" },
-    { id: "payback", label: "Payback", current: 0, target: 12, unit: "mo", icon: <Clock className="h-4 w-4" />, status: "on_track" },
-    { id: "margin", label: "Gross Margin", current: 0, target: 75, unit: "%", icon: <Percent className="h-4 w-4" />, status: "on_track" },
-  ]);
-
-  const [guardrails, setGuardrails] = useState<Guardrail[]>([
-    { id: "budget_cap", label: "Monthly Budget Cap", enabled: true, value: 50000, unit: "$" },
-    { id: "payback_target", label: "Target Payback Months", enabled: true, value: 12, unit: "mo" },
-    { id: "payback_threshold", label: "Max Payback Months", enabled: true, value: 18, unit: "mo" },
-    { id: "margin_floor", label: "Gross Margin Floor", enabled: true, value: 50, unit: "%" },
-    { id: "max_cac", label: "Max CAC", enabled: false, value: 2500, unit: "$" },
-    { id: "cash_risk", label: "Cash Risk Tolerance", enabled: true, value: 2, unit: "" }, // 1=low, 2=medium, 3=high
-    { id: "experiment_risk", label: "Experiment Exposure Limit", enabled: true, value: 20, unit: "%" },
-  ]);
-
-  const [levers, setLevers] = useState([
-    { id: "email", label: "Email Campaigns", icon: <Mail className="h-4 w-4" />, enabled: true },
-    { id: "voice", label: "Voice/AI Calling", icon: <Phone className="h-4 w-4" />, enabled: true },
-    { id: "sms", label: "SMS Sequences", icon: <MessageSquare className="h-4 w-4" />, enabled: false },
-    { id: "landing", label: "Landing Pages", icon: <Globe className="h-4 w-4" />, enabled: true },
-  ]);
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  
+  const [config, setConfig] = useState<TenantTargets>({
+    tenant_id: "",
+    target_pipeline: 500000,
+    target_bookings: 150000,
+    target_payback_months: 12,
+    margin_floor_pct: 60,
+    max_cac: 2500,
+    cash_risk_tolerance: "medium",
+    monthly_budget_cap: 50000,
+    experiment_exposure_pct: 20,
+    email_enabled: true,
+    voice_enabled: true,
+    sms_enabled: false,
+    landing_pages_enabled: true,
+    linkedin_enabled: false,
+  });
 
   useEffect(() => {
     if (!tenantId) return;
     
-    const fetchMetrics = async () => {
-      const { data } = await supabase
-        .from("metric_snapshots_daily")
+    const fetchConfig = async () => {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from("tenant_targets")
         .select("*")
         .eq("tenant_id", tenantId)
-        .order("date", { ascending: false })
-        .limit(10);
+        .single();
 
-      if (data && data.length > 0) {
-        setMetrics(prev => prev.map(m => {
-          const snapshot = data.find(d => d.metric_id === m.id);
-          if (snapshot) {
-            const current = Number(snapshot.value) || 0;
-            const ratio = m.target > 0 ? current / m.target : 0;
-            let status: "on_track" | "at_risk" | "off_track" = "on_track";
-            if (m.id === "cac" || m.id === "payback") {
-              status = ratio <= 1 ? "on_track" : ratio <= 1.2 ? "at_risk" : "off_track";
-            } else {
-              status = ratio >= 0.9 ? "on_track" : ratio >= 0.7 ? "at_risk" : "off_track";
-            }
-            return { ...m, current, status };
-          }
-          return m;
-        }));
+      if (data) {
+        setConfig(data as TenantTargets);
+      } else if (error?.code === "PGRST116") {
+        // No row exists, create one with defaults
+        const { data: newData } = await supabase
+          .from("tenant_targets")
+          .insert({ tenant_id: tenantId })
+          .select()
+          .single();
+        if (newData) setConfig(newData as TenantTargets);
       }
+      setIsLoading(false);
     };
 
-    fetchMetrics();
+    fetchConfig();
   }, [tenantId]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "on_track": return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
-      case "at_risk": return "bg-amber-500/10 text-amber-400 border-amber-500/20";
-      case "off_track": return "bg-destructive/10 text-destructive border-destructive/20";
-      default: return "bg-muted text-muted-foreground";
-    }
+  const updateConfig = <K extends keyof TenantTargets>(key: K, value: TenantTargets[K]) => {
+    setConfig(prev => ({ ...prev, [key]: value }));
+    setHasChanges(true);
   };
 
-  const formatValue = (value: number, unit: string) => {
-    if (unit === "$") return `$${value.toLocaleString()}`;
-    if (unit === "%") return `${value}%`;
-    if (unit === "mo") return `${value} mo`;
-    return value.toString();
+  const handleSave = async () => {
+    if (!tenantId) return;
+    
+    setIsSaving(true);
+    const { error } = await supabase
+      .from("tenant_targets")
+      .upsert({
+        ...config,
+        tenant_id: tenantId,
+      });
+
+    if (error) {
+      toast({
+        title: "Error saving",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Saved",
+        description: "Targets and guardrails updated successfully.",
+      });
+      setHasChanges(false);
+    }
+    setIsSaving(false);
   };
+
+  const formatCurrency = (value: number) => `$${value.toLocaleString()}`;
+
+  if (isLoading) {
+    return (
+      <Card className="border-border/50 bg-card/50 backdrop-blur">
+        <CardContent className="py-12 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="border-border/50 bg-card/50 backdrop-blur">
       <CardHeader className="pb-4">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Target className="h-5 w-5 text-primary" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Target className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-lg">Targets & Guardrails</CardTitle>
+              <CardDescription>Define what good looks like and what's off-limits</CardDescription>
+            </div>
           </div>
-          <div>
-            <CardTitle className="text-lg">Targets & Guardrails</CardTitle>
-            <CardDescription>Define what good looks like and what's off-limits</CardDescription>
-          </div>
+          {hasChanges && (
+            <Button onClick={handleSave} disabled={isSaving} size="sm">
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              Save Changes
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Revenue Targets */}
+        {/* Growth Targets */}
         <div>
           <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
-            Revenue & Efficiency Targets
+            Growth Targets
           </h3>
           <div className="grid gap-3">
-            {metrics.map((metric) => (
-              <div key={metric.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 rounded bg-primary/10 text-primary">
-                    {metric.icon}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{metric.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatValue(metric.current, metric.unit)} / {formatValue(metric.target, metric.unit)}
-                    </p>
-                  </div>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded bg-primary/10 text-primary">
+                  <TrendingUp className="h-4 w-4" />
                 </div>
-                <Badge variant="outline" className={getStatusColor(metric.status)}>
-                  {metric.status.replace("_", " ")}
-                </Badge>
+                <div>
+                  <p className="text-sm font-medium">Target Pipeline</p>
+                  <p className="text-xs text-muted-foreground">Total pipeline value goal</p>
+                </div>
               </div>
-            ))}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  value={config.target_pipeline}
+                  onChange={(e) => updateConfig("target_pipeline", Number(e.target.value))}
+                  className="w-32 h-8 text-right"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded bg-primary/10 text-primary">
+                  <DollarSign className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Target Bookings</p>
+                  <p className="text-xs text-muted-foreground">Monthly bookings goal</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  value={config.target_bookings}
+                  onChange={(e) => updateConfig("target_bookings", Number(e.target.value))}
+                  className="w-32 h-8 text-right"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
         <Separator className="bg-border/50" />
 
-        {/* Guardrails */}
+        {/* Economics Guardrails */}
         <div>
           <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
             <Shield className="h-4 w-4" />
-            Guardrails & Limits
+            Economics Guardrails
           </h3>
           <div className="grid gap-3">
-            {guardrails.map((guardrail) => (
-              <div key={guardrail.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
-                <div className="flex items-center gap-3">
-                  <Switch 
-                    checked={guardrail.enabled}
-                    onCheckedChange={(checked) => {
-                      setGuardrails(prev => prev.map(g => 
-                        g.id === guardrail.id ? { ...g, enabled: checked } : g
-                      ));
-                    }}
-                  />
-                  <Label className="text-sm">{guardrail.label}</Label>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded bg-amber-500/10 text-amber-400">
+                  <Clock className="h-4 w-4" />
                 </div>
-                {guardrail.value !== undefined && (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      value={guardrail.value}
-                      onChange={(e) => {
-                        setGuardrails(prev => prev.map(g =>
-                          g.id === guardrail.id ? { ...g, value: Number(e.target.value) } : g
-                        ));
-                      }}
-                      className="w-24 h-8 text-right"
-                      disabled={!guardrail.enabled}
-                    />
-                    <span className="text-sm text-muted-foreground w-6">{guardrail.unit}</span>
-                  </div>
-                )}
+                <div>
+                  <p className="text-sm font-medium">Target Payback</p>
+                  <p className="text-xs text-muted-foreground">Months to recover CAC</p>
+                </div>
               </div>
-            ))}
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={config.target_payback_months}
+                  onChange={(e) => updateConfig("target_payback_months", Number(e.target.value))}
+                  className="w-20 h-8 text-right"
+                />
+                <span className="text-sm text-muted-foreground w-8">mo</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded bg-emerald-500/10 text-emerald-400">
+                  <Percent className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Margin Floor</p>
+                  <p className="text-xs text-muted-foreground">Minimum gross margin %</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={config.margin_floor_pct}
+                  onChange={(e) => updateConfig("margin_floor_pct", Number(e.target.value))}
+                  className="w-20 h-8 text-right"
+                />
+                <span className="text-sm text-muted-foreground w-8">%</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded bg-destructive/10 text-destructive">
+                  <DollarSign className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Max CAC</p>
+                  <p className="text-xs text-muted-foreground">Customer acquisition cost cap</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  value={config.max_cac}
+                  onChange={(e) => updateConfig("max_cac", Number(e.target.value))}
+                  className="w-24 h-8 text-right"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded bg-primary/10 text-primary">
+                  <Shield className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Cash Risk Tolerance</p>
+                  <p className="text-xs text-muted-foreground">How aggressive with spend</p>
+                </div>
+              </div>
+              <Select
+                value={config.cash_risk_tolerance}
+                onValueChange={(value) => updateConfig("cash_risk_tolerance", value as "low" | "medium" | "high")}
+              >
+                <SelectTrigger className="w-32 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded bg-primary/10 text-primary">
+                  <DollarSign className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Monthly Budget Cap</p>
+                  <p className="text-xs text-muted-foreground">Max spend per month</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  value={config.monthly_budget_cap}
+                  onChange={(e) => updateConfig("monthly_budget_cap", Number(e.target.value))}
+                  className="w-28 h-8 text-right"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded bg-amber-500/10 text-amber-400">
+                  <Percent className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Experiment Exposure</p>
+                  <p className="text-xs text-muted-foreground">Max budget for experiments</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={config.experiment_exposure_pct}
+                  onChange={(e) => updateConfig("experiment_exposure_pct", Number(e.target.value))}
+                  className="w-20 h-8 text-right"
+                />
+                <span className="text-sm text-muted-foreground w-8">%</span>
+              </div>
+            </div>
           </div>
         </div>
 
         <Separator className="bg-border/50" />
 
-        {/* Allowed Levers */}
+        {/* Allowed Channels */}
         <div>
           <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
             <Zap className="h-4 w-4" />
-            OS Allowed Levers
+            OS Allowed Channels
           </h3>
           <div className="grid grid-cols-2 gap-2">
-            {levers.map((lever) => (
-              <div key={lever.id} className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50">
-                <div className="flex items-center gap-2">
-                  <div className={`p-1 rounded ${lever.enabled ? 'text-primary' : 'text-muted-foreground'}`}>
-                    {lever.icon}
-                  </div>
-                  <span className="text-sm">{lever.label}</span>
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-2">
+                <div className={`p-1 rounded ${config.email_enabled ? 'text-primary' : 'text-muted-foreground'}`}>
+                  <Mail className="h-4 w-4" />
                 </div>
-                <Switch
-                  checked={lever.enabled}
-                  onCheckedChange={(checked) => {
-                    setLevers(prev => prev.map(l =>
-                      l.id === lever.id ? { ...l, enabled: checked } : l
-                    ));
-                  }}
-                />
+                <span className="text-sm">Email</span>
               </div>
-            ))}
+              <Switch
+                checked={config.email_enabled}
+                onCheckedChange={(checked) => updateConfig("email_enabled", checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-2">
+                <div className={`p-1 rounded ${config.voice_enabled ? 'text-primary' : 'text-muted-foreground'}`}>
+                  <Phone className="h-4 w-4" />
+                </div>
+                <span className="text-sm">Voice/AI</span>
+              </div>
+              <Switch
+                checked={config.voice_enabled}
+                onCheckedChange={(checked) => updateConfig("voice_enabled", checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-2">
+                <div className={`p-1 rounded ${config.sms_enabled ? 'text-primary' : 'text-muted-foreground'}`}>
+                  <MessageSquare className="h-4 w-4" />
+                </div>
+                <span className="text-sm">SMS</span>
+              </div>
+              <Switch
+                checked={config.sms_enabled}
+                onCheckedChange={(checked) => updateConfig("sms_enabled", checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50">
+              <div className="flex items-center gap-2">
+                <div className={`p-1 rounded ${config.landing_pages_enabled ? 'text-primary' : 'text-muted-foreground'}`}>
+                  <Globe className="h-4 w-4" />
+                </div>
+                <span className="text-sm">Landing Pages</span>
+              </div>
+              <Switch
+                checked={config.landing_pages_enabled}
+                onCheckedChange={(checked) => updateConfig("landing_pages_enabled", checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50 col-span-2">
+              <div className="flex items-center gap-2">
+                <div className={`p-1 rounded ${config.linkedin_enabled ? 'text-primary' : 'text-muted-foreground'}`}>
+                  <Linkedin className="h-4 w-4" />
+                </div>
+                <span className="text-sm">LinkedIn</span>
+              </div>
+              <Switch
+                checked={config.linkedin_enabled}
+                onCheckedChange={(checked) => updateConfig("linkedin_enabled", checked)}
+              />
+            </div>
           </div>
         </div>
       </CardContent>
