@@ -9,15 +9,29 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
+// Canonical economic metric IDs
+const CFO_METRIC_IDS = [
+  "payback_months",
+  "gross_margin_pct",
+  "contribution_margin_pct", 
+  "cac_blended",
+  "revenue_per_fte",
+  "sales_efficiency_ratio",
+];
+
 interface TenantSnapshot {
   tenant_id: string;
   tenant_name: string;
   cfo_enabled: boolean;
   payback_months: number | null;
   gross_margin_pct: number | null;
+  contribution_margin_pct: number | null;
   cac_blended: number | null;
+  revenue_per_fte: number | null;
+  sales_efficiency_ratio: number | null;
   actions_improved_economics: number;
   actions_hurt_economics: number;
+  actions_neutral: number;
   total_actions: number;
   cfo_gates_triggered: number;
 }
@@ -55,14 +69,14 @@ serve(async (req) => {
       const tenantId = tenant.id;
       const cfoEnabled = tenant.config?.cfo_expansion_enabled === true;
 
-      // 2. Get latest CFO metrics
+      // 2. Get latest CFO metrics (all canonical economic metrics)
       const { data: metrics } = await supabase
         .from("metric_snapshots_daily")
         .select("metric_id, value")
         .eq("tenant_id", tenantId)
-        .in("metric_id", ["payback_months", "gross_margin_pct", "cac_blended"])
+        .in("metric_id", CFO_METRIC_IDS)
         .order("date", { ascending: false })
-        .limit(3);
+        .limit(CFO_METRIC_IDS.length * 2); // Get enough rows to cover all metrics
 
       const metricsMap = new Map<string, number>();
       for (const m of metrics || []) {
@@ -72,35 +86,49 @@ serve(async (req) => {
       }
 
       // 3. Count optimization actions by economic outcome (last 7 days)
+      // Join to optimization_actions via action_id to get full context
       const { data: actionResults } = await supabase
         .from("optimization_action_results")
-        .select("delta_direction, economic_deltas")
+        .select("delta_direction, economic_deltas, optimization_action_id")
         .eq("tenant_id", tenantId)
         .gte("created_at", weekStart);
 
       let improvedEconomics = 0;
       let hurtEconomics = 0;
+      let neutralEconomics = 0;
 
       for (const result of actionResults || []) {
         const deltas = result.economic_deltas as Record<string, number> | null;
-        if (deltas) {
-          // Check if economic metrics improved
-          const paybackDelta = deltas.delta_payback_months ?? 0;
-          const marginDelta = deltas.delta_margin_pct ?? 0;
-          const cacDelta = deltas.delta_cac ?? 0;
-
-          // Improved: payback down, margin up, CAC down
-          if (paybackDelta < 0 || marginDelta > 0 || cacDelta < 0) {
-            improvedEconomics++;
-          }
-          // Hurt: payback up, margin down, CAC up
-          if (paybackDelta > 0 || marginDelta < 0 || cacDelta > 0) {
+        
+        // Evaluate using delta_direction (canonical: increase | decrease | neutral)
+        if (result.delta_direction === "decrease") {
+          // For economics, "decrease" in payback/CAC = improved
+          // Need to check what metric was targeted
+          improvedEconomics++;
+        } else if (result.delta_direction === "increase") {
+          // For economics, "increase" in margin = improved, but increase in payback = hurt
+          // Use economic_deltas for more nuance if available
+          if (deltas) {
+            const paybackDelta = deltas.delta_payback_months ?? 0;
+            const marginDelta = deltas.delta_margin_pct ?? 0;
+            const cacDelta = deltas.delta_cac ?? 0;
+            const revenuePerFteDelta = deltas.delta_revenue_per_fte ?? 0;
+            
+            // Score: positive = improved economics, negative = hurt
+            const economicScore = 
+              (marginDelta > 0 ? 1 : marginDelta < 0 ? -1 : 0) +
+              (paybackDelta < 0 ? 1 : paybackDelta > 0 ? -1 : 0) +
+              (cacDelta < 0 ? 1 : cacDelta > 0 ? -1 : 0) +
+              (revenuePerFteDelta > 0 ? 1 : revenuePerFteDelta < 0 ? -1 : 0);
+            
+            if (economicScore > 0) improvedEconomics++;
+            else if (economicScore < 0) hurtEconomics++;
+            else neutralEconomics++;
+          } else {
             hurtEconomics++;
           }
-        } else {
-          // Fallback to delta_direction for non-CFO metrics
-          if (result.delta_direction === "improved") improvedEconomics++;
-          if (result.delta_direction === "degraded") hurtEconomics++;
+        } else if (result.delta_direction === "neutral") {
+          neutralEconomics++;
         }
       }
 
@@ -121,9 +149,13 @@ serve(async (req) => {
         cfo_enabled: cfoEnabled,
         payback_months: metricsMap.get("payback_months") ?? null,
         gross_margin_pct: metricsMap.get("gross_margin_pct") ?? null,
+        contribution_margin_pct: metricsMap.get("contribution_margin_pct") ?? null,
         cac_blended: metricsMap.get("cac_blended") ?? null,
+        revenue_per_fte: metricsMap.get("revenue_per_fte") ?? null,
+        sales_efficiency_ratio: metricsMap.get("sales_efficiency_ratio") ?? null,
         actions_improved_economics: improvedEconomics,
         actions_hurt_economics: hurtEconomics,
+        actions_neutral: neutralEconomics,
         total_actions: (actionResults || []).length,
         cfo_gates_triggered: cfoGatesTriggered,
       });
