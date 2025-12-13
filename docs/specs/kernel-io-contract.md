@@ -1,7 +1,7 @@
 # Kernel I/O Contract
 
-> Version: revenue_os_v1  
-> Last Updated: 2024-12-12
+> Version: revenue_os_v1.1 (CFO Expansion)  
+> Last Updated: 2024-12-13
 
 ## Overview
 
@@ -44,6 +44,16 @@ interface KernelInput {
     max_experiment_exposure_pct?: number;
     allowed_levers: ('campaigns' | 'channels' | 'sequences' | 'pricing')[];
     blocked_actions?: string[]; // action types to never execute
+  };
+  
+  // NEW v1.1: CFO-specific guardrails for gating logic
+  cfo_guardrails: {
+    payback_target_months: number;      // Target payback period
+    payback_tolerance_months: number;   // Acceptable variance before gating
+    margin_floor_pct: number;           // Minimum gross margin percentage
+    max_cac_by_segment?: Record<string, number>; // Optional per-segment CAC caps
+    cash_risk_tolerance: 'low' | 'medium' | 'high';
+    runway_threshold_months?: number;   // Below this triggers cash gate
   };
   
   // Required: Latest metrics snapshot
@@ -94,6 +104,13 @@ interface KernelInput {
     delta: number;
     confidence: number;
     outcome: 'successful' | 'failed' | 'inconclusive';
+    // NEW v1.1: Economic deltas from prior actions
+    economic_deltas?: {
+      delta_cac?: number;
+      delta_payback_months?: number;
+      delta_margin_pct?: number;
+      delta_revenue_per_fte?: number;
+    };
   }[];
   
   // Optional: Tenant configuration overrides
@@ -115,7 +132,7 @@ interface KernelOutput {
   tenant_id: string;
   cycle_id: string; // Generated UUID for this cycle
   executed_at: string; // ISO 8601 timestamp
-  version: 'revenue_os_v1';
+  version: 'revenue_os_v1.1';
   
   // Required: Cycle summary
   cycle_summary: {
@@ -123,6 +140,8 @@ interface KernelOutput {
     priority_metric: string; // metric_id from dictionary
     diagnosis: string; // Human-readable summary (1-2 sentences)
     confidence: number; // 0-1
+    // NEW v1.1: CFO gate status
+    cfo_gates_triggered: ('payback_exceeded' | 'margin_below_floor' | 'cash_constrained')[];
   };
   
   // Required: Recommended actions (3-7 max)
@@ -134,6 +153,8 @@ interface KernelOutput {
   // Required: Learning plan
   learning_plan: {
     metrics_to_monitor: string[]; // metric_ids
+    // NEW v1.1: Economic metrics always monitored
+    economic_metrics_to_monitor: string[]; // ['gross_margin_pct', 'payback_months', 'cac_blended', 'revenue_per_fte']
     observation_window_days: number;
     expected_outcomes: {
       metric_id: string;
@@ -166,6 +187,9 @@ interface Action {
     new_value: any;
   };
   
+  // NEW v1.1: CFO score for ranking
+  cfo_score: number; // Internal score, higher = better economics
+  
   // Required: Guardrails for this action
   guardrails: {
     max_additional_spend?: number;
@@ -197,6 +221,13 @@ interface Action {
     confidence: number;
   };
   
+  // NEW v1.1: Expected economic impact
+  expected_economic_impact?: {
+    delta_cac?: number;
+    delta_payback_months?: number;
+    delta_margin_pct?: number;
+  };
+  
   // Required: Human-readable
   notes_for_humans: string; // 1-2 sentence explanation
 }
@@ -213,6 +244,36 @@ interface DataQualityAction {
 
 ---
 
+## CFO Gating Logic (v1.1)
+
+The kernel applies CFO gating BEFORE generating actions:
+
+| Gate | Trigger Condition | Effect |
+|------|-------------------|--------|
+| `payback_exceeded` | `payback_months > target + tolerance` | Suppress demand-scaling actions; prefer conversion/efficiency |
+| `margin_below_floor` | `gross_margin_pct < margin_floor` | Block channel scaling; prioritize pricing/cost actions |
+| `cash_constrained` | `runway_months < threshold` | Enforce spend caps; reduce experiment exposure; short observation windows only |
+
+Gates are evaluated from `cfo_guardrails` input against current `metrics` snapshot.
+
+---
+
+## Action Scoring (v1.1)
+
+Actions are ranked using CFO-weighted scoring:
+
+```
+action_score = 
+  (revenue_impact × 0.3)
+  + (payback_improvement × 0.25)
+  + (margin_protection × 0.25)
+  - (cash_risk × 0.2)
+```
+
+Actions with negative scores are suppressed unless no alternatives exist.
+
+---
+
 ## Validation Rules
 
 ### Input Validation
@@ -222,6 +283,7 @@ interface DataQualityAction {
 3. `metrics` array must include at least: `pipeline_total`, `bookings_new`, `cac_blended`
 4. `targets` must have at least one target defined
 5. `guardrails.allowed_levers` must not be empty
+6. **NEW v1.1**: `cfo_guardrails` must include `payback_target_months` and `margin_floor_pct`
 
 ### Output Validation
 
@@ -230,6 +292,8 @@ interface DataQualityAction {
 3. Each `action.owner_subsystem` must map to an executor in the executor map
 4. `cycle_summary.binding_constraint` must be one of the four allowed values
 5. All `action_id` values must be unique within the cycle
+6. **NEW v1.1**: Each action must have `cfo_score` populated
+7. **NEW v1.1**: `learning_plan.economic_metrics_to_monitor` must not be empty
 
 ---
 
@@ -256,7 +320,18 @@ interface KernelError {
 
 ## Versioning
 
-- Current version: `revenue_os_v1`
+- Current version: `revenue_os_v1.1`
 - Version is included in output payload
 - Breaking changes require new version
 - Old versions deprecated with 90-day notice
+
+### Changelog
+
+**v1.1 (2024-12-13) - CFO Expansion**
+- Added `cfo_guardrails` to input schema
+- Added `cfo_gates_triggered` to cycle_summary
+- Added `cfo_score` to actions
+- Added `expected_economic_impact` to actions
+- Added `economic_metrics_to_monitor` to learning_plan
+- Added CFO gating logic documentation
+- Added action scoring formula
