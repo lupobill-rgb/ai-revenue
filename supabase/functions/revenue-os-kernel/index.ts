@@ -159,14 +159,29 @@ serve(async (req) => {
     // 3. Validate data quality
     const dataQuality = validateDataQuality(inputBundle.metrics);
     
-    // 4. Get CFO guardrails (from tenant config or defaults)
+    // 4. Check if CFO expansion is enabled for this tenant
+    const cfoExpansionEnabled = inputBundle.tenantConfig?.cfo_expansion_enabled === true;
+    console.log(`[Revenue OS] Tenant ${tenant_id}: CFO expansion ${cfoExpansionEnabled ? 'ENABLED' : 'DISABLED'}`);
+    
+    // 5. Get CFO guardrails (from tenant config or defaults)
     const cfoGuardrails: CFOGuardrails = {
       ...DEFAULT_CFO_GUARDRAILS,
       ...(inputBundle.tenantConfig?.cfo_guardrails || {}),
     };
     
-    // 5. Evaluate CFO gates
-    const cfoGates = evaluateCFOGates(inputBundle.metrics, cfoGuardrails);
+    // 6. Evaluate CFO gates (only if expansion enabled, otherwise no gates)
+    const cfoGates: CFOGateStatus = cfoExpansionEnabled 
+      ? evaluateCFOGates(inputBundle.metrics, cfoGuardrails)
+      : { 
+          payback_gate_triggered: false, 
+          margin_gate_triggered: false, 
+          cash_runway_gate_triggered: false,
+          suppress_demand_scaling: false,
+          reduce_experiment_exposure: false,
+          current_payback_months: null,
+          current_margin_pct: null,
+          current_runway_months: null,
+        };
     
     let bindingConstraint: BindingConstraint;
     let actions: Action[] = [];
