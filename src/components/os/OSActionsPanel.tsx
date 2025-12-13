@@ -1,22 +1,21 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { 
   Zap, 
   Play, 
-  Pause, 
-  RotateCcw,
   CheckCircle2,
   Clock,
   AlertTriangle,
   XCircle,
-  ChevronRight,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Minus,
+  Target,
+  Shield
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { format, addDays, formatDistanceToNow } from "date-fns";
 
 interface OptimizationAction {
   id: string;
@@ -31,22 +30,45 @@ interface OptimizationAction {
       description?: string;
     };
     guardrails?: {
-      max_additional_spend?: number;
+      max_budget?: number;
+      exposure_pct?: number;
     };
     notes_for_humans?: string;
   };
   expected_observation_window_days: number;
   created_at: string;
+  updated_at?: string;
   result?: {
     baseline_value?: number;
     observed_value?: number;
     delta?: number;
     delta_direction?: string;
+    metric_id?: string;
   };
 }
 
 interface Props {
   tenantId: string | null;
+}
+
+// Metrics where LOWER is better
+const LOWER_IS_BETTER = ["payback_months", "cac_blended", "churn_rate", "avg_sales_cycle_days"];
+
+function getOutcomeTag(action: OptimizationAction): "improved" | "hurt" | "neutral" | null {
+  if (action.status !== "completed" || !action.result) return null;
+  
+  const { delta, delta_direction, metric_id } = action.result;
+  if (delta === undefined || delta === null || !delta_direction) return "neutral";
+  
+  const isLowerBetter = LOWER_IS_BETTER.includes(metric_id || action.target_metric);
+  
+  if (delta === 0) return "neutral";
+  
+  if (isLowerBetter) {
+    return delta_direction === "decrease" ? "improved" : "hurt";
+  } else {
+    return delta_direction === "increase" ? "improved" : "hurt";
+  }
 }
 
 export default function OSActionsPanel({ tenantId }: Props) {
@@ -67,12 +89,13 @@ export default function OSActionsPanel({ tenantId }: Props) {
             baseline_value,
             observed_value,
             delta,
-            delta_direction
+            delta_direction,
+            metric_id
           )
         `)
         .eq("tenant_id", tenantId)
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(100);
 
       if (data) {
         setActions(data.map(d => ({
@@ -87,7 +110,6 @@ export default function OSActionsPanel({ tenantId }: Props) {
 
     fetchActions();
 
-    // Real-time subscription
     const channel = supabase
       .channel("os-actions")
       .on(
@@ -104,12 +126,12 @@ export default function OSActionsPanel({ tenantId }: Props) {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "completed": return <CheckCircle2 className="h-4 w-4 text-emerald-400" />;
-      case "executing": return <Play className="h-4 w-4 text-primary" />;
-      case "pending": return <Clock className="h-4 w-4 text-amber-400" />;
-      case "aborted": return <XCircle className="h-4 w-4 text-destructive" />;
-      case "scheduled": return <Clock className="h-4 w-4 text-blue-400" />;
-      default: return <AlertTriangle className="h-4 w-4 text-muted-foreground" />;
+      case "completed": return <CheckCircle2 className="h-4 w-4" />;
+      case "executing": return <Play className="h-4 w-4" />;
+      case "pending": return <Clock className="h-4 w-4" />;
+      case "failed": return <XCircle className="h-4 w-4" />;
+      case "aborted": return <XCircle className="h-4 w-4" />;
+      default: return <AlertTriangle className="h-4 w-4" />;
     }
   };
 
@@ -118,28 +140,38 @@ export default function OSActionsPanel({ tenantId }: Props) {
       case "completed": return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
       case "executing": return "bg-primary/10 text-primary border-primary/20";
       case "pending": return "bg-amber-500/10 text-amber-400 border-amber-500/20";
-      case "scheduled": return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-      case "aborted": return "bg-destructive/10 text-destructive border-destructive/20";
+      case "failed": return "bg-destructive/10 text-destructive border-destructive/20";
+      case "aborted": return "bg-muted text-muted-foreground border-muted";
       default: return "bg-muted text-muted-foreground";
     }
   };
 
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case "experiment": return "Experiment";
-      case "config_change": return "Config Change";
-      case "data_correction": return "Data Fix";
-      case "alert": return "Alert";
-      case "forecast_update": return "Forecast";
-      default: return type;
+  const getOutcomeColor = (outcome: "improved" | "hurt" | "neutral") => {
+    switch (outcome) {
+      case "improved": return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+      case "hurt": return "bg-destructive/10 text-destructive border-destructive/20";
+      case "neutral": return "bg-muted text-muted-foreground border-muted";
     }
   };
 
-  const handleAction = async (actionId: string, newStatus: string) => {
-    await supabase
-      .from("optimization_actions")
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
-      .eq("id", actionId);
+  const getOutcomeIcon = (outcome: "improved" | "hurt" | "neutral") => {
+    switch (outcome) {
+      case "improved": return <TrendingUp className="h-3 w-3" />;
+      case "hurt": return <TrendingDown className="h-3 w-3" />;
+      case "neutral": return <Minus className="h-3 w-3" />;
+    }
+  };
+
+  const getObservationWindowEnd = (action: OptimizationAction) => {
+    if (action.status !== "executing") return null;
+    const startDate = new Date(action.updated_at || action.created_at);
+    const endDate = addDays(startDate, action.expected_observation_window_days);
+    const now = new Date();
+    
+    if (endDate <= now) {
+      return "Ending soon";
+    }
+    return `Ends ${formatDistanceToNow(endDate, { addSuffix: true })}`;
   };
 
   return (
@@ -151,7 +183,7 @@ export default function OSActionsPanel({ tenantId }: Props) {
           </div>
           <div>
             <CardTitle className="text-lg">OS Actions & Experiments</CardTitle>
-            <CardDescription>AI decisions and their impact on revenue</CardDescription>
+            <CardDescription>Autonomous decisions scheduled and executed by the kernel</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -164,120 +196,107 @@ export default function OSActionsPanel({ tenantId }: Props) {
           </div>
         ) : actions.length > 0 ? (
           <div className="space-y-3">
-            {actions.map((action) => (
-              <div 
-                key={action.id} 
-                className="p-4 rounded-lg bg-secondary/30 border border-border/50 hover:border-primary/30 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline" className="text-xs">
-                        P{action.priority_rank}
+            {actions.map((action) => {
+              const outcome = getOutcomeTag(action);
+              const windowEnd = getObservationWindowEnd(action);
+              
+              return (
+                <div 
+                  key={action.id} 
+                  className="p-4 rounded-lg bg-secondary/30 border border-border/50"
+                >
+                  {/* Header row: status badges */}
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <Badge variant="outline" className={`text-xs ${getStatusColor(action.status)}`}>
+                      {getStatusIcon(action.status)}
+                      <span className="ml-1 capitalize">{action.status}</span>
+                    </Badge>
+                    <Badge variant="outline" className="text-xs capitalize">
+                      {action.owner_subsystem}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      P{action.priority_rank}
+                    </Badge>
+                    {outcome && (
+                      <Badge variant="outline" className={`text-xs ${getOutcomeColor(outcome)}`}>
+                        {getOutcomeIcon(outcome)}
+                        <span className="ml-1 capitalize">{outcome}</span>
                       </Badge>
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {action.owner_subsystem}
-                      </Badge>
-                      <Badge variant="outline" className={`text-xs ${getStatusColor(action.status)}`}>
-                        {getStatusIcon(action.status)}
-                        <span className="ml-1">{action.status}</span>
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {getTypeLabel(action.type)}
+                    )}
+                  </div>
+                  
+                  {/* Description */}
+                  <p className="text-sm font-medium mb-2">
+                    {action.config?.proposed_change?.description || action.action_id}
+                  </p>
+                  
+                  {/* Metrics row */}
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground mb-2 flex-wrap">
+                    <span className="flex items-center gap-1">
+                      <Target className="h-3 w-3" />
+                      {action.target_metric}
+                    </span>
+                    {action.config?.guardrails && (
+                      <span className="flex items-center gap-1">
+                        <Shield className="h-3 w-3" />
+                        {action.config.guardrails.max_budget !== undefined && (
+                          <span>Budget: ${action.config.guardrails.max_budget.toLocaleString()}</span>
+                        )}
+                        {action.config.guardrails.exposure_pct !== undefined && (
+                          <span>Exposure: {action.config.guardrails.exposure_pct}%</span>
+                        )}
                       </span>
-                    </div>
-                    
-                    <p className="text-sm font-medium mb-1">
-                      {action.config?.proposed_change?.description || action.action_id}
-                    </p>
-                    
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Target: <span className="text-foreground">{action.target_metric}</span>
-                      {" • "}
-                      Window: <span className="text-foreground">{action.expected_observation_window_days} days</span>
-                    </p>
-
-                    {action.config?.notes_for_humans && (
-                      <p className="text-xs text-muted-foreground italic">
-                        "{action.config.notes_for_humans}"
-                      </p>
                     )}
+                    <span>{action.expected_observation_window_days}d window</span>
+                  </div>
 
-                    {/* Results display */}
-                    {action.result && action.status === "completed" && (
-                      <div className="mt-3 p-2 rounded bg-background/50 border border-border/30">
-                        <div className="flex items-center gap-4 text-xs">
-                          <span className="text-muted-foreground">Before: {action.result.baseline_value?.toLocaleString()}</span>
-                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">After: {action.result.observed_value?.toLocaleString()}</span>
-                          <span className={`flex items-center gap-1 ${
-                            action.result.delta_direction === "increase" ? "text-emerald-400" : 
-                            action.result.delta_direction === "decrease" ? "text-destructive" : 
-                            "text-muted-foreground"
-                          }`}>
-                            {action.result.delta_direction === "increase" ? (
-                              <TrendingUp className="h-3 w-3" />
-                            ) : action.result.delta_direction === "decrease" ? (
-                              <TrendingDown className="h-3 w-3" />
-                            ) : null}
-                            {action.result.delta !== undefined && (
-                              <span>{action.result.delta > 0 ? "+" : ""}{action.result.delta.toLocaleString()}</span>
-                            )}
+                  {/* Status-specific content */}
+                  {action.status === "pending" && (
+                    <p className="text-xs text-amber-400/80 italic">
+                      Scheduled by OS — waiting for execution slot
+                    </p>
+                  )}
+
+                  {action.status === "executing" && windowEnd && (
+                    <p className="text-xs text-primary/80">
+                      Active • {windowEnd}
+                    </p>
+                  )}
+
+                  {/* Results for completed/failed */}
+                  {(action.status === "completed" || action.status === "failed") && action.result && (
+                    <div className="mt-2 p-2 rounded bg-background/50 border border-border/30">
+                      <div className="flex items-center gap-4 text-xs flex-wrap">
+                        <span className="text-muted-foreground">
+                          Before: <span className="text-foreground">{action.result.baseline_value?.toLocaleString() ?? "—"}</span>
+                        </span>
+                        <span className="text-muted-foreground">→</span>
+                        <span className="text-muted-foreground">
+                          After: <span className="text-foreground">{action.result.observed_value?.toLocaleString() ?? "—"}</span>
+                        </span>
+                        {action.result.delta !== undefined && (
+                          <span className={outcome === "improved" ? "text-emerald-400" : outcome === "hurt" ? "text-destructive" : "text-muted-foreground"}>
+                            {action.result.delta > 0 ? "+" : ""}{action.result.delta.toLocaleString()}
                           </span>
-                        </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
-                  <div className="flex items-center gap-1">
-                    {action.status === "pending" && (
-                      <>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          className="h-8 w-8 p-0"
-                          onClick={() => handleAction(action.id, "executing")}
-                        >
-                          <Play className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          className="h-8 w-8 p-0 text-destructive"
-                          onClick={() => handleAction(action.id, "aborted")}
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
-                    {action.status === "executing" && (
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        className="h-8 w-8 p-0"
-                        onClick={() => handleAction(action.id, "pending")}
-                      >
-                        <Pause className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {action.status === "completed" && (
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        className="h-8 w-8 p-0"
-                        onClick={() => handleAction(action.id, "pending")}
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                      </Button>
-                    )}
+                  {/* Notes */}
+                  {action.config?.notes_for_humans && (
+                    <p className="text-xs text-muted-foreground italic mt-2">
+                      "{action.config.notes_for_humans}"
+                    </p>
+                  )}
+
+                  {/* Timestamp */}
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {format(new Date(action.created_at), "MMM d, yyyy 'at' h:mm a")}
                   </div>
                 </div>
-
-                <div className="mt-2 text-xs text-muted-foreground">
-                  {format(new Date(action.created_at), "MMM d, yyyy 'at' h:mm a")}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-12 text-muted-foreground">
