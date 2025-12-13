@@ -3589,6 +3589,7 @@ export type Database = {
         Row: {
           baseline_value: number | null
           confidence: number | null
+          context_snapshot: Json | null
           created_at: string
           delta: number | null
           delta_direction: string | null
@@ -3605,6 +3606,7 @@ export type Database = {
         Insert: {
           baseline_value?: number | null
           confidence?: number | null
+          context_snapshot?: Json | null
           created_at?: string
           delta?: number | null
           delta_direction?: string | null
@@ -3621,6 +3623,7 @@ export type Database = {
         Update: {
           baseline_value?: number | null
           confidence?: number | null
+          context_snapshot?: Json | null
           created_at?: string
           delta?: number | null
           delta_direction?: string | null
@@ -3653,6 +3656,8 @@ export type Database = {
       }
       optimization_actions: {
         Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
           action_id: string
           config: Json | null
           created_at: string
@@ -3665,6 +3670,7 @@ export type Database = {
           optimization_cycle_id: string
           owner_subsystem: string | null
           priority_rank: number | null
+          requires_acknowledgment: boolean | null
           status: string | null
           target_direction: string | null
           target_metric: string | null
@@ -3673,6 +3679,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
           action_id: string
           config?: Json | null
           created_at?: string
@@ -3685,6 +3693,7 @@ export type Database = {
           optimization_cycle_id: string
           owner_subsystem?: string | null
           priority_rank?: number | null
+          requires_acknowledgment?: boolean | null
           status?: string | null
           target_direction?: string | null
           target_metric?: string | null
@@ -3693,6 +3702,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
           action_id?: string
           config?: Json | null
           created_at?: string
@@ -3705,6 +3716,7 @@ export type Database = {
           optimization_cycle_id?: string
           owner_subsystem?: string | null
           priority_rank?: number | null
+          requires_acknowledgment?: boolean | null
           status?: string | null
           target_direction?: string | null
           target_metric?: string | null
@@ -5004,6 +5016,7 @@ export type Database = {
           default_currency: string
           id: string
           name: string
+          revenue_os_activated_at: string | null
           revenue_os_enabled: boolean
           slug: string
           status: string
@@ -5017,6 +5030,7 @@ export type Database = {
           default_currency?: string
           id?: string
           name: string
+          revenue_os_activated_at?: string | null
           revenue_os_enabled?: boolean
           slug: string
           status?: string
@@ -5030,6 +5044,7 @@ export type Database = {
           default_currency?: string
           id?: string
           name?: string
+          revenue_os_activated_at?: string | null
           revenue_os_enabled?: boolean
           slug?: string
           status?: string

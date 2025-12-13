@@ -59,6 +59,16 @@ serve(async (req) => {
       });
     }
 
+    if (operation === 'acknowledge_action') {
+      // Human acknowledges action - allows execution to proceed
+      const { user_id } = await req.json();
+      await acknowledgeAction(supabase, action_id, user_id);
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({ error: 'Unknown operation' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -76,7 +86,7 @@ serve(async (req) => {
 });
 
 async function executePendingActions(supabase: any, tenantId?: string) {
-  // Get pending actions
+  // Get pending actions (excludes pending_acknowledgment which need human approval)
   let query = supabase
     .from('optimization_actions')
     .select('*, optimization_cycles(tenant_id)')
@@ -91,10 +101,23 @@ async function executePendingActions(supabase: any, tenantId?: string) {
   const { data: actions, error } = await query;
   if (error) throw error;
 
-  const results: { action_id: string; status: string; error?: string }[] = [];
+  const results: { action_id: string; status: string; error?: string; requires_ack?: boolean }[] = [];
 
   for (const action of actions || []) {
+    // Skip actions that require acknowledgment but haven't been acknowledged
+    if (action.requires_acknowledgment && !action.acknowledged_at) {
+      results.push({ 
+        action_id: action.action_id, 
+        status: 'awaiting_acknowledgment',
+        requires_ack: true 
+      });
+      continue;
+    }
+
     try {
+      // Snapshot metric state BEFORE execution for auditability
+      const contextSnapshot = await captureContextSnapshot(supabase, action.tenant_id, action.target_metric);
+      
       // Execute based on action type
       const executed = await executeAction(supabase, action);
       
@@ -105,8 +128,8 @@ async function executePendingActions(supabase: any, tenantId?: string) {
           .update({ status: 'executing', updated_at: new Date().toISOString() })
           .eq('id', action.id);
 
-        // Record baseline metrics
-        await recordActionBaseline(supabase, action.tenant_id, action.id);
+        // Record baseline metrics WITH context snapshot
+        await recordActionBaseline(supabase, action.tenant_id, action.id, contextSnapshot);
         
         results.push({ action_id: action.action_id, status: 'executing' });
       } else {
@@ -131,6 +154,47 @@ async function executePendingActions(supabase: any, tenantId?: string) {
   }
 
   return results;
+}
+
+// Capture full metric state before execution for CFO audit trail
+async function captureContextSnapshot(supabase: any, tenantId: string, targetMetric: string): Promise<Record<string, any>> {
+  const keyMetrics = [
+    targetMetric,
+    'cac_blended', 'cac_paid', 'payback_months', 'gross_margin_pct',
+    'pipeline_total', 'bookings_count', 'roas_paid', 'spend_paid_total'
+  ];
+
+  const { data: metrics } = await supabase
+    .from('metric_snapshots_daily')
+    .select('metric_id, value, date')
+    .eq('tenant_id', tenantId)
+    .in('metric_id', keyMetrics)
+    .order('date', { ascending: false })
+    .limit(keyMetrics.length * 3); // Last 3 days for trend
+
+  // Build snapshot with latest values and 3-day trend
+  const snapshot: Record<string, any> = {
+    captured_at: new Date().toISOString(),
+    metrics: {},
+  };
+
+  const latestByMetric = new Map<string, any[]>();
+  for (const m of metrics || []) {
+    if (!latestByMetric.has(m.metric_id)) {
+      latestByMetric.set(m.metric_id, []);
+    }
+    latestByMetric.get(m.metric_id)!.push({ value: m.value, date: m.date });
+  }
+
+  for (const [metricId, values] of latestByMetric) {
+    const sorted = values.sort((a, b) => b.date.localeCompare(a.date));
+    snapshot.metrics[metricId] = {
+      current: sorted[0]?.value,
+      trend_3d: sorted.map(v => ({ date: v.date, value: v.value })),
+    };
+  }
+
+  return snapshot;
 }
 
 async function executeAction(supabase: any, action: any): Promise<boolean> {
@@ -224,7 +288,7 @@ async function setupExperiment(supabase: any, tenantId: string, action: any): Pr
   return true;
 }
 
-async function recordActionBaseline(supabase: any, tenantId: string, actionId: string) {
+async function recordActionBaseline(supabase: any, tenantId: string, actionId: string, contextSnapshot?: Record<string, any>) {
   // Get the action details
   const { data: action } = await supabase
     .from('optimization_actions')
@@ -266,6 +330,8 @@ async function recordActionBaseline(supabase: any, tenantId: string, actionId: s
     metric_id: metricId,
     baseline_value: data.value,
     observation_start_date: new Date().toISOString().split('T')[0],
+    // Include full context snapshot for auditability
+    context_snapshot: contextSnapshot || null,
   }));
 
   if (baselineRecords.length > 0) {
@@ -403,4 +469,22 @@ async function abortAction(supabase: any, actionId: string) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', actionId);
+}
+
+// Human acknowledges an action - transitions from pending_acknowledgment to pending
+async function acknowledgeAction(supabase: any, actionId: string, userId?: string) {
+  const { error } = await supabase
+    .from('optimization_actions')
+    .update({
+      status: 'pending',
+      acknowledged_at: new Date().toISOString(),
+      acknowledged_by: userId || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', actionId)
+    .eq('status', 'pending_acknowledgment'); // Only acknowledge if still pending
+
+  if (error) throw error;
+  
+  console.log(`[ACTION ACKNOWLEDGED] Action ${actionId} acknowledged by user ${userId || 'unknown'}`);
 }
