@@ -3533,6 +3533,58 @@ export type Database = {
           },
         ]
       }
+      opportunity_channel_attribution: {
+        Row: {
+          channel_id: string
+          created_at: string
+          id: string
+          opportunity_id: string
+          role: string
+          tenant_id: string
+          weight: number
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          id?: string
+          opportunity_id: string
+          role?: string
+          tenant_id: string
+          weight?: number
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          id?: string
+          opportunity_id?: string
+          role?: string
+          tenant_id?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opp_channel_attr_channel_fk"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "cmo_campaign_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opp_channel_attr_opp_fk"
+            columns: ["opportunity_id"]
+            isOneToOne: false
+            referencedRelation: "opportunities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opp_channel_attr_tenant_fk"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       optimization_action_results: {
         Row: {
           baseline_value: number | null
