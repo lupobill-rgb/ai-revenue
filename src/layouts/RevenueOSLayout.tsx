@@ -48,8 +48,12 @@ export default function RevenueOSLayout() {
     }
   }, [user]);
 
-  // Check feature flag - but only after confirming user is logged in
-  // If not enabled, show message rather than redirect (prevents loop)
+  // If user is not authenticated, redirect to login immediately
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Check feature flag - only after confirming user is logged in
   if (flagsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -58,6 +62,7 @@ export default function RevenueOSLayout() {
     );
   }
 
+  // If authenticated but feature not enabled, show message (not redirect to prevent loop)
   if (!revenue_os_enabled) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -67,7 +72,7 @@ export default function RevenueOSLayout() {
             Revenue OS is not enabled for your account. Please contact your administrator to enable this feature.
           </p>
           <Button onClick={() => navigate("/login")} variant="outline">
-            Return to Login
+            Sign Out
           </Button>
         </div>
       </div>
