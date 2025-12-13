@@ -57,19 +57,19 @@ const Index = () => {
   ];
 
   const steps = [
-    { num: "01", title: "Set Targets & Guardrails", desc: "Define pipeline goals, payback limits, and margin floors." },
-    { num: "02", title: "OS Analyzes Your Data", desc: "Revenue spine ingests metrics across marketing, sales, and finance." },
-    { num: "03", title: "Kernel Generates Actions", desc: "AI produces prioritized, economics-aware optimization moves." },
-    { num: "04", title: "Autonomous Execution", desc: "Actions execute automatically with full observability and rollback." },
+    { num: "01", title: "Set Targets", desc: "Define your revenue goals and economic guardrails." },
+    { num: "02", title: "Connect Data", desc: "OS ingests metrics across marketing, sales, and finance." },
+    { num: "03", title: "AI Optimizes", desc: "OS generates prioritized actions to hit your targets." },
+    { num: "04", title: "Auto-Execute", desc: "Actions run automatically. You stay in control." },
   ];
 
   const keyFeatures = [
-    { icon: Brain, title: "Unified Kernel", desc: "One AI brain optimizing across CMO, CRO, and CFO lenses" },
-    { icon: Activity, title: "Revenue Spine", desc: "Single source of truth for all revenue metrics" },
-    { icon: Gauge, title: "Targets & Guardrails", desc: "Define what 'good' looks like—once—and the OS respects it" },
-    { icon: Zap, title: "Autonomous Actions", desc: "AI-generated experiments that execute and learn" },
-    { icon: LineChart, title: "Economics-First", desc: "Every action checked against payback and margin constraints" },
-    { icon: PieChart, title: "Closed-Loop Learning", desc: "Results feed back into the kernel for continuous improvement" },
+    { icon: Brain, title: "Unified AI", desc: "One system optimizing pipeline, conversion, and economics together" },
+    { icon: Activity, title: "Revenue Spine", desc: "Single source of truth for all your metrics" },
+    { icon: Gauge, title: "Targets & Guardrails", desc: "Set goals once—OS respects your constraints" },
+    { icon: Zap, title: "Auto-Optimization", desc: "AI experiments that execute and learn on their own" },
+    { icon: LineChart, title: "Economics-First", desc: "Every action checked against payback and margin" },
+    { icon: PieChart, title: "Continuous Learning", desc: "Results feed back into the OS automatically" },
   ];
 
   const metrics = [
@@ -114,15 +114,14 @@ const Index = () => {
         <div className="mx-auto max-w-[1200px] text-center relative">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/30 bg-primary/5 text-primary text-sm mb-8">
             <Zap className="h-4 w-4" />
-            <span className="tracking-wide">CMO + CRO + CFO in One Autonomous Kernel</span>
+            <span className="tracking-wide">Marketing + Sales + Finance — Unified</span>
           </div>
           <h1 className="font-display text-6xl md:text-8xl font-bold tracking-tight mb-8">
             Revenue OS.{" "}
-            <span className="gold-gradient-text">One Brain.</span>
+            <span className="gold-gradient-text">One System.</span>
           </h1>
           <p className="text-xl md:text-2xl text-muted-foreground max-w-4xl mx-auto mb-14 leading-relaxed tracking-wide">
-            A unified AI kernel that optimizes pipeline, conversions, and economics together — 
-            not as separate dashboards, but as one autonomous revenue system.
+            AI that optimizes your pipeline, conversions, and economics together — automatically.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-5 mb-20">
             <Button onClick={() => navigate("/revenue-os/targets")} size="lg" className="gold-gradient text-primary-foreground font-semibold text-lg px-10 h-16 gold-glow tracking-wide">
@@ -160,11 +159,10 @@ const Index = () => {
         <div className="mx-auto max-w-[1400px]">
           <div className="text-center mb-20">
             <h2 className="font-display text-4xl md:text-6xl font-bold mb-6 tracking-tight">
-              Three Lenses. <span className="gold-gradient-text">One Kernel.</span>
+              Three Functions. <span className="gold-gradient-text">One OS.</span>
             </h2>
             <p className="text-xl text-muted-foreground tracking-wide max-w-3xl mx-auto">
-              The kernel reasons through CMO, CRO, and CFO perspectives internally, 
-              then outputs unified, economics-aware actions.
+              Revenue OS thinks across marketing, sales, and finance — then acts.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -307,7 +305,7 @@ const Index = () => {
                   </div>
                   <div className="p-6 rounded-xl bg-background border border-border">
                     <div className="text-4xl font-bold gold-gradient-text font-display">1</div>
-                    <div className="text-sm text-muted-foreground mt-1 tracking-wide">Kernel</div>
+                    <div className="text-sm text-muted-foreground mt-1 tracking-wide">OS</div>
                   </div>
                   <div className="p-6 rounded-xl bg-background border border-border">
                     <div className="text-4xl font-bold gold-gradient-text font-display">0</div>
@@ -340,13 +338,13 @@ const Index = () => {
             </div>
             <div className="p-8 rounded-2xl border border-border bg-background text-center">
               <Lock className="h-14 w-14 text-primary mx-auto mb-6" />
-              <h3 className="text-xl font-semibold mb-3 tracking-tight">Full Audit Logging</h3>
-              <p className="text-muted-foreground leading-relaxed">Every kernel decision tracked and traceable</p>
+              <h3 className="text-xl font-semibold mb-3 tracking-tight">Full Audit Trail</h3>
+              <p className="text-muted-foreground leading-relaxed">Every decision tracked and traceable</p>
             </div>
             <div className="p-8 rounded-2xl border border-border bg-background text-center">
               <CreditCard className="h-14 w-14 text-primary mx-auto mb-6" />
-              <h3 className="text-xl font-semibold mb-3 tracking-tight">CFO Spend Gates</h3>
-              <p className="text-muted-foreground leading-relaxed">Economics constraints enforced at kernel level</p>
+              <h3 className="text-xl font-semibold mb-3 tracking-tight">Spend Controls</h3>
+              <p className="text-muted-foreground leading-relaxed">Economic guardrails built into the OS</p>
             </div>
           </div>
           <p className="text-center text-muted-foreground tracking-wide">
@@ -360,7 +358,7 @@ const Index = () => {
         <div className="mx-auto max-w-5xl text-center">
           <div className="h-px gold-gradient mb-20 opacity-50" />
           <h2 className="font-display text-4xl md:text-6xl font-bold mb-8 tracking-tight">
-            Revenue doesn't need <span className="gold-gradient-text">three dashboards.</span>
+            Stop juggling <span className="gold-gradient-text">dashboards.</span>
           </h2>
           <p className="text-xl text-muted-foreground mb-14 tracking-wide">
             Revenue OS unifies CMO, CRO, and CFO into one autonomous kernel.
