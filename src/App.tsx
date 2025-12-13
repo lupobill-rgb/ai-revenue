@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "./hooks/useAuth";
 import WelcomeModal from "./components/WelcomeModal";
 import ProductTour from "./components/ProductTour";
@@ -19,7 +19,32 @@ import RevenueOSLayout from "./layouts/RevenueOSLayout";
 import TargetsGuardrailsPage from "./pages/revenue-os/TargetsGuardrailsPage";
 import RevenueSpinePage from "./pages/revenue-os/RevenueSpinePage";
 import OSActionsPage from "./pages/revenue-os/OSActionsPage";
+
 const queryClient = new QueryClient();
+
+// Routes where training assistants should NOT appear
+const AUTH_ROUTES = ['/login', '/signup', '/change-password'];
+
+const TrainingAssistants = ({ onStartTour, showTour, onTourComplete }: { 
+  onStartTour: () => void; 
+  showTour: boolean; 
+  onTourComplete: () => void;
+}) => {
+  const location = useLocation();
+  
+  // Don't show on auth pages or landing page
+  if (AUTH_ROUTES.includes(location.pathname) || location.pathname === '/') {
+    return null;
+  }
+  
+  return (
+    <>
+      <AIChatWidget />
+      <WelcomeModal onStartTour={onStartTour} />
+      <ProductTour forceShow={showTour} onComplete={onTourComplete} />
+    </>
+  );
+};
 
 const App = () => {
   const [showTour, setShowTour] = useState(false);
@@ -57,9 +82,11 @@ const App = () => {
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
             </Routes>
-            <AIChatWidget />
-            <WelcomeModal onStartTour={() => setShowTour(true)} />
-            <ProductTour forceShow={showTour} onComplete={() => setShowTour(false)} />
+            <TrainingAssistants 
+              onStartTour={() => setShowTour(true)} 
+              showTour={showTour} 
+              onTourComplete={() => setShowTour(false)} 
+            />
           </BrowserRouter>
         </TooltipProvider>
       </AuthProvider>
