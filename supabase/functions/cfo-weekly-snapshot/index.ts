@@ -28,6 +28,19 @@ interface TenantSnapshot {
   cfo_gates_triggered: number;
 }
 
+interface PortfolioSummary {
+  tenants_active: number;
+  avg_payback_months: number | null;
+  avg_cac_blended: number | null;
+  avg_gross_margin_pct: number | null;
+  avg_contribution_margin_pct: number | null;
+  avg_revenue_per_fte: number | null;
+  avg_sales_efficiency_ratio: number | null;
+  total_econ_actions: number;
+  total_econ_actions_improved: number;
+  total_econ_actions_hurt: number;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -44,15 +57,18 @@ serve(async (req) => {
 
     console.log(`[CFO Snapshot] Generating weekly report for ${recipientEmail}`);
 
-    // Use optimized RPC function for weekly CFO snapshot
-    const { data: snapshotData, error: snapshotError } = await supabase.rpc('get_weekly_cfo_snapshot');
+    // Use optimized RPC functions for weekly CFO snapshot
+    const [snapshotResult, portfolioResult] = await Promise.all([
+      supabase.rpc('get_weekly_cfo_snapshot'),
+      supabase.rpc('get_weekly_cfo_portfolio_summary')
+    ]);
 
-    if (snapshotError) {
-      throw new Error(`Failed to fetch CFO snapshot: ${snapshotError.message}`);
+    if (snapshotResult.error) {
+      throw new Error(`Failed to fetch CFO snapshot: ${snapshotResult.error.message}`);
     }
 
     // Map RPC results to TenantSnapshot interface
-    const snapshots: TenantSnapshot[] = (snapshotData || []).map((row: any) => ({
+    const snapshots: TenantSnapshot[] = (snapshotResult.data || []).map((row: any) => ({
       tenant_id: row.tenant_id,
       tenant_name: row.tenant_name,
       cfo_enabled: row.cfo_enabled,
@@ -69,8 +85,25 @@ serve(async (req) => {
       cfo_gates_triggered: Number(row.cfo_gates_triggered) || 0,
     }));
 
-    // 5. Build email HTML
-    const emailHtml = buildEmailHtml(snapshots);
+    // Map portfolio summary
+    const portfolioRow = portfolioResult.data?.[0];
+    const portfolio: PortfolioSummary | null = portfolioRow ? {
+      tenants_active: Number(portfolioRow.tenants_active) || 0,
+      avg_payback_months: portfolioRow.avg_payback_months,
+      avg_cac_blended: portfolioRow.avg_cac_blended,
+      avg_gross_margin_pct: portfolioRow.avg_gross_margin_pct,
+      avg_contribution_margin_pct: portfolioRow.avg_contribution_margin_pct,
+      avg_revenue_per_fte: portfolioRow.avg_revenue_per_fte,
+      avg_sales_efficiency_ratio: portfolioRow.avg_sales_efficiency_ratio,
+      total_econ_actions: Number(portfolioRow.total_econ_actions) || 0,
+      total_econ_actions_improved: Number(portfolioRow.total_econ_actions_improved) || 0,
+      total_econ_actions_hurt: Number(portfolioRow.total_econ_actions_hurt) || 0,
+    } : null;
+
+    console.log(`[CFO Snapshot] Portfolio summary:`, portfolio);
+
+    // Build email HTML with portfolio summary
+    const emailHtml = buildEmailHtml(snapshots, portfolio);
 
     // 6. Send email via Resend
     const emailResponse = await resend.emails.send({
@@ -105,7 +138,7 @@ serve(async (req) => {
   }
 });
 
-function buildEmailHtml(snapshots: TenantSnapshot[]): string {
+function buildEmailHtml(snapshots: TenantSnapshot[], portfolio: PortfolioSummary | null): string {
   const cfoEnabledTenants = snapshots.filter((s) => s.cfo_enabled);
   const cfoDisabledTenants = snapshots.filter((s) => !s.cfo_enabled);
 
@@ -127,6 +160,45 @@ function buildEmailHtml(snapshots: TenantSnapshot[]): string {
       <td style="padding: 12px 8px; text-align: center;">${s.cfo_gates_triggered}</td>
     </tr>
   `;
+
+  // Portfolio summary section
+  const portfolioSection = portfolio ? `
+    <div style="background: linear-gradient(135deg, #1e3a5f 0%, #0d1b2a 100%); border-radius: 12px; padding: 24px; margin-bottom: 24px; color: white;">
+      <h2 style="margin: 0 0 16px; font-size: 18px; font-weight: 600;">📈 Portfolio Scoreboard</h2>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+        <div style="text-align: center;">
+          <div style="font-size: 32px; font-weight: 700;">${portfolio.tenants_active}</div>
+          <div style="font-size: 11px; opacity: 0.7; text-transform: uppercase;">Active Tenants</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 32px; font-weight: 700;">${formatMetric(portfolio.avg_payback_months, "")}</div>
+          <div style="font-size: 11px; opacity: 0.7; text-transform: uppercase;">Avg Payback (mo)</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 32px; font-weight: 700;">${formatMetric(portfolio.avg_gross_margin_pct ? portfolio.avg_gross_margin_pct * 100 : null, "%")}</div>
+          <div style="font-size: 11px; opacity: 0.7; text-transform: uppercase;">Avg Margin</div>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.2);">
+        <div style="text-align: center;">
+          <div style="font-size: 20px; font-weight: 600;">${formatMetric(portfolio.avg_cac_blended, "")}</div>
+          <div style="font-size: 10px; opacity: 0.6;">Avg CAC</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 20px; font-weight: 600;">${portfolio.total_econ_actions}</div>
+          <div style="font-size: 10px; opacity: 0.6;">Total Actions</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 20px; font-weight: 600; color: #4ade80;">${portfolio.total_econ_actions_improved}</div>
+          <div style="font-size: 10px; opacity: 0.6;">Improved ▲</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 20px; font-weight: 600; color: #f87171;">${portfolio.total_econ_actions_hurt}</div>
+          <div style="font-size: 10px; opacity: 0.6;">Hurt ▼</div>
+        </div>
+      </div>
+    </div>
+  ` : '';
 
   return `
     <!DOCTYPE html>
@@ -161,6 +233,8 @@ function buildEmailHtml(snapshots: TenantSnapshot[]): string {
         </div>
         
         <div class="content">
+          ${portfolioSection}
+          
           <div class="summary-grid">
             <div class="summary-card">
               <div class="summary-value">${cfoEnabledTenants.length}</div>

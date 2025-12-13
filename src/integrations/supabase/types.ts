@@ -5060,6 +5060,21 @@ export type Database = {
         Returns: boolean
       }
       gc_rate_limit_counters: { Args: never; Returns: undefined }
+      get_weekly_cfo_portfolio_summary: {
+        Args: never
+        Returns: {
+          avg_cac_blended: number
+          avg_contribution_margin_pct: number
+          avg_gross_margin_pct: number
+          avg_payback_months: number
+          avg_revenue_per_fte: number
+          avg_sales_efficiency_ratio: number
+          tenants_active: number
+          total_econ_actions: number
+          total_econ_actions_hurt: number
+          total_econ_actions_improved: number
+        }[]
+      }
       get_weekly_cfo_snapshot: {
         Args: never
         Returns: {
