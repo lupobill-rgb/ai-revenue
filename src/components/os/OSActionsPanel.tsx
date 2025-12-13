@@ -12,7 +12,8 @@ import {
   TrendingDown,
   Minus,
   Target,
-  Shield
+  Shield,
+  DollarSign
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format, addDays, formatDistanceToNow } from "date-fns";
@@ -288,6 +289,19 @@ export default function OSActionsPanel({ tenantId }: Props) {
                     <p className="text-xs text-muted-foreground italic mt-2">
                       "{action.config.notes_for_humans}"
                     </p>
+                  )}
+
+                  {/* Paid channel hint - show if action involves paid metrics */}
+                  {(action.target_metric?.includes("paid") || 
+                    action.owner_subsystem === "campaigns" ||
+                    action.action_id?.includes("budget") ||
+                    action.action_id?.includes("channel")) && (
+                    <div className="mt-2 p-2 rounded bg-primary/5 border border-primary/10">
+                      <p className="text-xs text-primary/80">
+                        <DollarSign className="h-3 w-3 inline mr-1" />
+                        Paid channel context available in Revenue Spine
+                      </p>
+                    </div>
                   )}
 
                   {/* Timestamp */}
