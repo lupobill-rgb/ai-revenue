@@ -3,11 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/Logo";
-import {
-  ArrowRight,
-  Check,
-  X,
-} from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -27,12 +23,12 @@ const Index = () => {
   ];
 
   const stackItems = [
-    { name: "CRM", replaced: true },
-    { name: "Outreach tool", replaced: true },
-    { name: "Email automation", replaced: true },
-    { name: "Analytics dashboard", replaced: true },
-    { name: "Lead scoring", replaced: true },
-    { name: "Marketing automation", replaced: true },
+    { name: "CRM" },
+    { name: "Outreach Tools" },
+    { name: "Email Automation" },
+    { name: "Analytics & Reporting" },
+    { name: "Lead Scoring" },
+    { name: "Marketing Automation" },
   ];
 
   const differences = [
@@ -118,27 +114,18 @@ const Index = () => {
             Replace this stack
           </h2>
           <p className="text-center text-muted-foreground mb-12 text-lg">
-            One system instead of many tools.
+            One system instead of many disconnected tools.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-[700px] mx-auto">
             {stackItems.map((item, i) => (
               <div 
                 key={i} 
-                className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card"
+                className="p-5 rounded-xl border border-border bg-card text-center"
               >
-                <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
-                  <X className="w-3 h-3 text-primary" />
-                </div>
-                <span className="text-muted-foreground line-through">{item.name}</span>
+                <div className="font-semibold text-foreground mb-1">{item.name}</div>
+                <div className="text-xs text-primary">Unified inside UbiGrowth</div>
               </div>
             ))}
-          </div>
-          <div className="mt-10 p-6 rounded-2xl border-2 border-primary/30 bg-primary/5 max-w-[400px] mx-auto text-center">
-            <div className="w-10 h-10 rounded-full gold-gradient flex items-center justify-center mx-auto mb-4">
-              <Check className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <div className="text-xl font-semibold">UbiGrowth</div>
-            <div className="text-muted-foreground text-sm mt-1">Revenue, automated.</div>
           </div>
         </div>
       </section>
