@@ -79,11 +79,41 @@ serve(async (req) => {
       throw new Error("Asset must be approved before deployment");
     }
 
-    // Fetch business profile to get sender name
+    // Fetch user and tenant settings
     const { data: { user } } = await supabaseClient.auth.getUser();
-    let senderName = "Marketing Team";
     
-    if (user) {
+    // Get tenant_id from workspace
+    let tenantId: string | null = null;
+    if (asset.workspace_id) {
+      const { data: workspace } = await supabaseClient
+        .from("workspaces")
+        .select("owner_id")
+        .eq("id", asset.workspace_id)
+        .single();
+      tenantId = workspace?.owner_id || null;
+    }
+
+    // Fetch email settings from ai_settings_email
+    let fromAddress = "onboarding@resend.dev";
+    let replyToAddress = "noreply@resend.dev";
+    let senderName = "Marketing Team";
+
+    if (tenantId) {
+      const { data: emailSettings } = await supabaseClient
+        .from("ai_settings_email")
+        .select("from_address, reply_to_address, sender_name")
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+
+      if (emailSettings) {
+        if (emailSettings.from_address) fromAddress = emailSettings.from_address;
+        if (emailSettings.reply_to_address) replyToAddress = emailSettings.reply_to_address;
+        if (emailSettings.sender_name) senderName = emailSettings.sender_name;
+      }
+    }
+
+    // Fallback: Fetch business profile for sender name if not configured
+    if (senderName === "Marketing Team" && user) {
       const { data: profile } = await supabaseClient
         .from("business_profiles")
         .select("business_name")
@@ -214,7 +244,8 @@ serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: `${senderName} <onboarding@resend.dev>`,
+            from: `${senderName} <${fromAddress}>`,
+            reply_to: replyToAddress,
             to: [recipientEmail],
             subject: personalizedSubject,
             html: personalizedBody,
