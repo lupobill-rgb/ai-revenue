@@ -87,12 +87,12 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
   const [analyzingLeads, setAnalyzingLeads] = useState(false);
   const baseLeads = showSampleData && leads.length === 0 ? SAMPLE_LEADS : leads;
 
-  // Auto-analyze leads when data changes
+  // Auto-analyze leads when data changes (only if workspaceId is available)
   useEffect(() => {
-    if (baseLeads.length > 0 && !aiAnalysis && !analyzingLeads) {
+    if (baseLeads.length > 0 && !aiAnalysis && !analyzingLeads && workspaceId) {
       analyzeLeads();
     }
-  }, [baseLeads.length]);
+  }, [baseLeads.length, workspaceId]);
 
   const analyzeLeads = async () => {
     if (baseLeads.length === 0) return;
