@@ -6,15 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-/**
- * CMO Kernel
- * 
- * Routes legacy mode-based calls to the new orchestrator architecture.
- * All new code should use cmo-orchestrator directly.
- * 
- * Legacy modes are mapped to orchestrator actions.
- */
-
 type CMOMode = 
   | 'brand-intake' 
   | 'plan-90day' 
@@ -30,21 +21,15 @@ type CMOMode =
   | 'summarize-weekly'
   | 'campaign-builder'
   | 'voice-agent-builder'
-  | 'optimizer'
-  // New orchestrator actions
-  | 'orchestrate';
+  | 'optimizer';
 
 interface KernelRequest {
   mode: CMOMode;
   tenant_id: string;
   payload: any;
-  // For orchestrator mode
-  action?: string;
-  context?: any;
 }
 
-// Legacy mode to function mapping
-const MODE_TO_FUNCTION: Record<string, string> = {
+const MODE_TO_FUNCTION: Record<CMOMode, string> = {
   'brand-intake': 'cmo-brand-intake',
   'plan-90day': 'cmo-plan-90day',
   'funnel-architect': 'cmo-funnel-architect',
@@ -61,14 +46,6 @@ const MODE_TO_FUNCTION: Record<string, string> = {
   'voice-agent-builder': 'cmo-voice-agent-builder',
   'optimizer': 'cmo-optimizer',
 };
-
-// Modes that should route through orchestrator
-const ORCHESTRATOR_MODES = new Set([
-  'orchestrate',
-  'campaign-builder',
-  'optimizer',
-  'voice-agent-builder',
-]);
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -101,7 +78,7 @@ serve(async (req) => {
       });
     }
 
-    const { mode, tenant_id, payload, action, context }: KernelRequest = await req.json();
+    const { mode, tenant_id, payload }: KernelRequest = await req.json();
 
     if (!mode || !tenant_id) {
       return new Response(JSON.stringify({ error: 'mode and tenant_id are required' }), {
@@ -110,70 +87,18 @@ serve(async (req) => {
       });
     }
 
-    // Route through orchestrator for new-style calls
-    if (mode === 'orchestrate' || ORCHESTRATOR_MODES.has(mode)) {
-      console.log(`CMO Kernel routing to orchestrator: mode=${mode}, action=${action || mode}`);
-      
-      const orchestratorUrl = `${SUPABASE_URL}/functions/v1/cmo-orchestrator`;
-      const orchestratorResponse = await fetch(orchestratorUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tenant_id,
-          workspace_id: tenant_id,
-          action: action || mode.replace('-', '_'),
-          context,
-          payload,
-        }),
-      });
-
-      const orchestratorResult = await orchestratorResponse.json();
-      const duration = Date.now() - startTime;
-
-      // Log the kernel run
-      await supabase
-        .from('agent_runs')
-        .insert({
-          workspace_id: tenant_id,
-          tenant_id: tenant_id,
-          agent: 'cmo-kernel',
-          mode: mode,
-          input: { payload, action, context },
-          status: orchestratorResponse.ok ? 'completed' : 'failed',
-          output: orchestratorResult,
-          duration_ms: duration,
-          completed_at: new Date().toISOString(),
-        });
-
-      return new Response(JSON.stringify({
-        success: orchestratorResponse.ok,
-        mode,
-        routed_to: 'cmo-orchestrator',
-        duration_ms: duration,
-        result: orchestratorResult
-      }), {
-        status: orchestratorResponse.status,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Legacy mode routing
     const functionName = MODE_TO_FUNCTION[mode];
     if (!functionName) {
       return new Response(JSON.stringify({ 
         error: `Invalid mode: ${mode}`,
-        validModes: Object.keys(MODE_TO_FUNCTION),
-        hint: 'Use mode=orchestrate with action parameter for new API'
+        validModes: Object.keys(MODE_TO_FUNCTION)
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`CMO Kernel routing (legacy): mode=${mode} -> function=${functionName}`);
+    console.log(`CMO Kernel routing: mode=${mode} -> function=${functionName}`);
 
     // Log the kernel run
     const { data: agentRun } = await supabase

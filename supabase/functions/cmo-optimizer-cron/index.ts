@@ -6,9 +6,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
-// Execution loop modes
-type CronMode = 'optimize' | 'summarize' | 'full';
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -37,35 +34,68 @@ serve(async (req) => {
       );
     }
 
-    const mode: CronMode = body.mode || 'optimize';
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log(`CMO Orchestration Cron: Starting ${mode} run at ${new Date().toISOString()}`);
+    console.log("CMO Optimizer Cron: Starting daily optimization run...");
 
-    // Get all unique tenant IDs that have autopilot campaigns
-    const { data: tenants, error: tenantsError } = await supabase
+    // Query all autopilot-enabled campaigns
+    const { data: campaigns, error: campaignsError } = await supabase
       .from("cmo_campaigns")
-      .select("tenant_id")
+      .select("id, tenant_id, workspace_id, campaign_name, goal")
       .eq("autopilot_enabled", true)
       .eq("status", "active");
 
-    if (tenantsError) {
-      throw new Error(`Failed to fetch tenants: ${tenantsError.message}`);
+    if (campaignsError) {
+      console.error("Error fetching campaigns:", campaignsError);
+      throw new Error(`Failed to fetch campaigns: ${campaignsError.message}`);
     }
 
-    // Deduplicate tenant IDs
-    const uniqueTenantIds = [...new Set(tenants?.map(t => t.tenant_id) || [])];
-    console.log(`Found ${uniqueTenantIds.length} tenants with autopilot campaigns`);
+    console.log(`Found ${campaigns?.length || 0} autopilot campaigns to optimize`);
 
-    const tenantResults: any[] = [];
+    const results: any[] = [];
 
-    for (const tenantId of uniqueTenantIds) {
+    for (const campaign of campaigns || []) {
       try {
-        console.log(`Processing tenant: ${tenantId}`);
+        console.log(`Triggering optimizer for: ${campaign.campaign_name} (${campaign.id})`);
 
-        // Route through orchestrator for unified execution
-        const orchestratorResponse = await fetch(
-          `${supabaseUrl}/functions/v1/cmo-orchestrator`,
+        // Fetch metrics snapshots for this campaign
+        const { data: metricsSnapshots } = await supabase
+          .from("cmo_metrics_snapshots")
+          .select("impressions, clicks, conversions, cost, revenue, metric_type, custom_metrics")
+          .eq("campaign_id", campaign.id)
+          .order("snapshot_date", { ascending: false })
+          .limit(30);
+
+        // Fetch reply count from campaign_metrics table
+        const { data: campaignMetrics } = await supabase
+          .from("campaign_metrics")
+          .select("reply_count, open_count, clicks")
+          .eq("campaign_id", campaign.id)
+          .maybeSingle();
+
+        // Aggregate metrics from snapshots
+        const snapshotMetrics = (metricsSnapshots || []).reduce(
+          (acc, m) => ({
+            opens: acc.opens + (m.impressions || 0),
+            clicks: acc.clicks + (m.clicks || 0),
+            // Count email_reply metric_type entries as replies
+            replies: acc.replies + (m.metric_type === 'email_reply' ? (m.conversions || 0) : 0),
+            conversions: acc.conversions + (m.metric_type !== 'email_reply' ? (m.conversions || 0) : 0),
+          }),
+          { opens: 0, clicks: 0, replies: 0, conversions: 0 }
+        );
+
+        // Combine with campaign_metrics reply_count (prefer campaign_metrics as authoritative)
+        const metrics = {
+          opens: campaignMetrics?.open_count || snapshotMetrics.opens,
+          clicks: campaignMetrics?.clicks || snapshotMetrics.clicks,
+          replies: campaignMetrics?.reply_count || snapshotMetrics.replies,
+          booked_meetings: 0, // Will be populated from other sources
+        };
+
+        // Call the optimizer function
+        const optimizerResponse = await fetch(
+          `${supabaseUrl}/functions/v1/cmo-optimizer`,
           {
             method: "POST",
             headers: {
@@ -73,229 +103,61 @@ serve(async (req) => {
               "x-internal-secret": internalSecret || "",
             },
             body: JSON.stringify({
-              tenant_id: tenantId,
-              action: mode === 'full' ? 'run_daily_loop' : 
-                      mode === 'summarize' ? 'generate_weekly_summary' :
-                      'optimize_all_autopilot_campaigns',
-              context: {
-                triggered_by: 'cron',
-                run_time: new Date().toISOString(),
-              },
+              tenant_id: campaign.tenant_id,
+              workspace_id: campaign.workspace_id,
+              campaign_id: campaign.id,
+              goal: campaign.goal || "leads",
+              metrics,
+              constraints: [
+                "Do not change brand voice or tone",
+                "Keep within existing budget allocation",
+              ],
             }),
           }
         );
 
-        if (orchestratorResponse.ok) {
-          const result = await orchestratorResponse.json();
-          tenantResults.push({
-            tenantId,
-            status: "success",
-            agentsInvoked: result.agents_invoked || [],
-            assetsUpdated: result.assets_updated || 0,
-            summary: result.summary,
+        if (optimizerResponse.ok) {
+          const optimizerResult = await optimizerResponse.json();
+          results.push({
+            campaignId: campaign.id,
+            campaignName: campaign.campaign_name,
+            status: "optimized",
+            changesApplied: optimizerResult.applied_changes?.length || 0,
+            summary: optimizerResult.summary,
           });
         } else {
-          const errorText = await orchestratorResponse.text();
-          console.error(`Orchestrator failed for tenant ${tenantId}:`, errorText);
-          tenantResults.push({
-            tenantId,
+          const errorText = await optimizerResponse.text();
+          console.error(`Optimizer failed for ${campaign.id}:`, errorText);
+          results.push({
+            campaignId: campaign.id,
+            campaignName: campaign.campaign_name,
             status: "error",
             error: errorText,
           });
         }
-
-        // Log agent run for audit trail
-        await supabase.from("agent_runs").insert({
-          tenant_id: tenantId,
-          workspace_id: tenantId,
-          agent: "cmo_orchestrator_cron",
-          mode: mode,
-          input: { triggered_by: 'cron', mode },
-          output: tenantResults[tenantResults.length - 1],
-          status: tenantResults[tenantResults.length - 1].status === "success" ? "completed" : "failed",
-        });
-
-      } catch (tenantError) {
-        console.error(`Error processing tenant ${tenantId}:`, tenantError);
-        tenantResults.push({
-          tenantId,
+      } catch (campaignError) {
+        console.error(`Error optimizing campaign ${campaign.id}:`, campaignError);
+        results.push({
+          campaignId: campaign.id,
+          campaignName: campaign.campaign_name,
           status: "error",
-          error: tenantError instanceof Error ? tenantError.message : "Unknown error",
+          error: campaignError instanceof Error ? campaignError.message : "Unknown error",
         });
       }
     }
 
-    // If mode is 'full', also run individual campaign optimizations
-    if (mode === 'full' || mode === 'optimize') {
-      const campaignResults = await optimizeAllCampaigns(supabase, supabaseUrl, internalSecret || '');
-      
-      console.log(`CMO Optimizer Cron: Completed. Processed ${campaignResults.length} campaigns`);
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          mode,
-          tenants_processed: tenantResults.length,
-          campaigns_processed: campaignResults.length,
-          tenant_results: tenantResults,
-          campaign_results: campaignResults,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    console.log(`CMO Optimizer Cron: Completed. Processed ${results.length} campaigns`);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        mode,
-        tenants_processed: tenantResults.length,
-        tenant_results: tenantResults,
-      }),
+      JSON.stringify({ success: true, processed: results.length, results }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("CMO Orchestration Cron error:", error);
+    console.error("CMO Optimizer Cron error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
-
-// Helper function to optimize all campaigns
-async function optimizeAllCampaigns(
-  supabase: any, 
-  supabaseUrl: string, 
-  internalSecret: string
-): Promise<any[]> {
-  // Query all autopilot-enabled campaigns
-  const { data: campaigns, error: campaignsError } = await supabase
-    .from("cmo_campaigns")
-    .select("id, tenant_id, workspace_id, campaign_name, goal")
-    .eq("autopilot_enabled", true)
-    .eq("status", "active");
-
-  if (campaignsError) {
-    console.error("Error fetching campaigns:", campaignsError);
-    throw new Error(`Failed to fetch campaigns: ${campaignsError.message}`);
-  }
-
-  console.log(`Found ${campaigns?.length || 0} autopilot campaigns to optimize`);
-
-  const results: any[] = [];
-
-  for (const campaign of campaigns || []) {
-    try {
-      console.log(`Optimizing campaign: ${campaign.campaign_name} (${campaign.id})`);
-
-      // Fetch aggregated metrics from campaign_channel_stats_daily
-      const { data: dailyStats } = await supabase
-        .from("campaign_channel_stats_daily")
-        .select("sends, deliveries, opens, clicks, replies, bounces, meetings_booked, channel")
-        .eq("campaign_id", campaign.id)
-        .eq("tenant_id", campaign.tenant_id);
-
-      // Aggregate all channel stats
-      const aggregatedStats = (dailyStats || []).reduce(
-        (acc: any, s: any) => ({
-          sends: acc.sends + (s.sends || 0),
-          deliveries: acc.deliveries + (s.deliveries || 0),
-          opens: acc.opens + (s.opens || 0),
-          clicks: acc.clicks + (s.clicks || 0),
-          replies: acc.replies + (s.replies || 0),
-          bounces: acc.bounces + (s.bounces || 0),
-          meetings_booked: acc.meetings_booked + (s.meetings_booked || 0),
-        }),
-        { sends: 0, deliveries: 0, opens: 0, clicks: 0, replies: 0, bounces: 0, meetings_booked: 0 }
-      );
-
-      // Fallback to legacy metrics if daily stats empty
-      let metrics;
-      if (aggregatedStats.sends > 0 || aggregatedStats.opens > 0) {
-        metrics = aggregatedStats;
-      } else {
-        const { data: campaignMetrics } = await supabase
-          .from("campaign_metrics")
-          .select("sent_count, delivered_count, open_count, clicks, reply_count, bounce_count")
-          .eq("campaign_id", campaign.id)
-          .maybeSingle();
-
-        metrics = {
-          sends: campaignMetrics?.sent_count || 0,
-          deliveries: campaignMetrics?.delivered_count || 0,
-          opens: campaignMetrics?.open_count || 0,
-          clicks: campaignMetrics?.clicks || 0,
-          replies: campaignMetrics?.reply_count || 0,
-          bounces: campaignMetrics?.bounce_count || 0,
-          booked_meetings: 0,
-        };
-      }
-
-      console.log(`Campaign ${campaign.id} metrics:`, metrics);
-
-      // Call the optimizer function
-      const optimizerResponse = await fetch(
-        `${supabaseUrl}/functions/v1/cmo-optimizer`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-internal-secret": internalSecret,
-          },
-          body: JSON.stringify({
-            tenant_id: campaign.tenant_id,
-            workspace_id: campaign.workspace_id,
-            campaign_id: campaign.id,
-            goal: campaign.goal || "leads",
-            metrics,
-            constraints: [
-              "Do not change brand voice or tone",
-              "Keep within existing budget allocation",
-            ],
-          }),
-        }
-      );
-
-      if (optimizerResponse.ok) {
-        const optimizerResult = await optimizerResponse.json();
-        results.push({
-          campaignId: campaign.id,
-          campaignName: campaign.campaign_name,
-          status: "optimized",
-          changesApplied: optimizerResult.applied_changes?.length || 0,
-          summary: optimizerResult.summary,
-        });
-
-        // Update campaign with last optimization timestamp
-        await supabase
-          .from("cmo_campaigns")
-          .update({
-            last_optimization_at: new Date().toISOString(),
-            last_optimization_note: optimizerResult.summary?.substring(0, 500),
-          })
-          .eq("id", campaign.id);
-
-      } else {
-        const errorText = await optimizerResponse.text();
-        console.error(`Optimizer failed for ${campaign.id}:`, errorText);
-        results.push({
-          campaignId: campaign.id,
-          campaignName: campaign.campaign_name,
-          status: "error",
-          error: errorText,
-        });
-      }
-    } catch (campaignError) {
-      console.error(`Error optimizing campaign ${campaign.id}:`, campaignError);
-      results.push({
-        campaignId: campaign.id,
-        campaignName: campaign.campaign_name,
-        status: "error",
-        error: campaignError instanceof Error ? campaignError.message : "Unknown error",
-      });
-    }
-  }
-
-  return results;
-}

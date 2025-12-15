@@ -41,8 +41,6 @@ import { ConversationIntelligence } from "@/components/crm/ConversationIntellige
 import { EnhancedTimeline } from "@/components/crm/EnhancedTimeline";
 import { FollowUpScheduler } from "@/components/crm/FollowUpScheduler";
 import { LeadTagsManager } from "@/components/crm/LeadTagsManager";
-import { SequencePausedBanner } from "@/components/crm/SequencePausedBanner";
-import { useLeadSequenceStatus } from "@/hooks/useLeadSequenceStatus";
 import { format } from "date-fns";
 
 interface Lead {
@@ -119,7 +117,6 @@ export default function LeadDetail() {
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Partial<Lead>>({});
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
-  const sequenceStatus = useLeadSequenceStatus(id);
 
   useEffect(() => {
     if (id) {
@@ -292,14 +289,6 @@ export default function LeadDetail() {
               </div>
             </div>
           </div>
-
-          {sequenceStatus.isPaused && lead && (
-            <SequencePausedBanner
-              leadId={lead.id}
-              pausedAt={sequenceStatus.pausedAt}
-              onResume={sequenceStatus.refetch}
-            />
-          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">

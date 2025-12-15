@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Mail, Eye, MousePointer, UserX, TrendingUp, TrendingDown, Send, Inbox, MessageCircle } from "lucide-react";
+import { Mail, Eye, MousePointer, UserX, TrendingUp, TrendingDown, Send, Inbox } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { subDays, format, parseISO, isAfter } from "date-fns";
 
@@ -14,7 +14,6 @@ interface CampaignMetric {
   delivered_count: number | null;
   open_count: number | null;
   clicks: number | null;
-  reply_count: number | null;
   bounce_count: number | null;
   unsubscribe_count: number | null;
   created_at: string;
@@ -29,7 +28,6 @@ const CHART_COLORS = {
   delivered: "hsl(142 71% 45%)",
   opened: "hsl(271 91% 65%)",
   clicked: "hsl(38 92% 50%)",
-  replied: "hsl(160 84% 39%)",
   bounced: "hsl(0 84% 60%)",
   unsubscribed: "hsl(var(--muted-foreground))",
 };
@@ -51,17 +49,15 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
         delivered: acc.delivered + (m.delivered_count || 0),
         opened: acc.opened + (m.open_count || 0),
         clicked: acc.clicked + (m.clicks || 0),
-        replied: acc.replied + (m.reply_count || 0),
         bounced: acc.bounced + (m.bounce_count || 0),
         unsubscribed: acc.unsubscribed + (m.unsubscribe_count || 0),
       }),
-      { sent: 0, delivered: 0, opened: 0, clicked: 0, replied: 0, bounced: 0, unsubscribed: 0 }
+      { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0 }
     );
   }, [filteredMetrics]);
 
   const openRate = totals.delivered > 0 ? ((totals.opened / totals.delivered) * 100).toFixed(1) : "0";
   const clickRate = totals.opened > 0 ? ((totals.clicked / totals.opened) * 100).toFixed(1) : "0";
-  const replyRate = totals.sent > 0 ? ((totals.replied / totals.sent) * 100).toFixed(1) : "0";
   const bounceRate = totals.sent > 0 ? ((totals.bounced / totals.sent) * 100).toFixed(1) : "0";
   const deliveryRate = totals.sent > 0 ? ((totals.delivered / totals.sent) * 100).toFixed(1) : "0";
 
@@ -80,7 +76,6 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
         sent: dayMetrics.reduce((acc, m) => acc + (m.sent_count || 0), 0),
         opened: dayMetrics.reduce((acc, m) => acc + (m.open_count || 0), 0),
         clicked: dayMetrics.reduce((acc, m) => acc + (m.clicks || 0), 0),
-        replied: dayMetrics.reduce((acc, m) => acc + (m.reply_count || 0), 0),
       });
     }
     return data;
@@ -90,7 +85,6 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
   const funnelData = [
     { name: "Opened", value: totals.opened, color: CHART_COLORS.opened },
     { name: "Clicked", value: totals.clicked, color: CHART_COLORS.clicked },
-    { name: "Replied", value: totals.replied, color: CHART_COLORS.replied },
     { name: "Bounced", value: totals.bounced, color: CHART_COLORS.bounced },
     { name: "Not Opened", value: Math.max(0, totals.delivered - totals.opened), color: "hsl(var(--muted))" },
   ].filter((d) => d.value > 0);
@@ -116,7 +110,7 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="relative overflow-hidden">
           <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 rounded-full -mr-8 -mt-8" />
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -164,21 +158,6 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
         </Card>
 
         <Card className="relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/10 rounded-full -mr-8 -mt-8" />
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Reply Rate</CardTitle>
-            <MessageCircle className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{replyRate}%</div>
-            <Progress value={parseFloat(replyRate) * 10} className="h-1.5 mt-2 [&>div]:bg-emerald-500" />
-            <p className="text-xs text-muted-foreground mt-1">
-              {totals.replied.toLocaleString()} replies
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden">
           <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-full -mr-8 -mt-8" />
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Bounce Rate</CardTitle>
@@ -218,10 +197,6 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
                       <stop offset="5%" stopColor={CHART_COLORS.opened} stopOpacity={0.3} />
                       <stop offset="95%" stopColor={CHART_COLORS.opened} stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="repliedGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={CHART_COLORS.replied} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={CHART_COLORS.replied} stopOpacity={0} />
-                    </linearGradient>
                   </defs>
                   <XAxis
                     dataKey="date"
@@ -257,14 +232,6 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
                     fill="url(#openedGradient)"
                     strokeWidth={2}
                     name="Opened"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="replied"
-                    stroke={CHART_COLORS.replied}
-                    fill="url(#repliedGradient)"
-                    strokeWidth={2}
-                    name="Replied"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -327,13 +294,12 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
           <CardDescription>Complete breakdown of email performance</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-7">
+          <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
             {[
               { label: "Total Sent", value: totals.sent, color: "text-blue-500", icon: Send },
               { label: "Delivered", value: totals.delivered, color: "text-green-500", icon: Inbox },
               { label: "Opened", value: totals.opened, color: "text-purple-500", icon: Eye },
               { label: "Clicked", value: totals.clicked, color: "text-amber-500", icon: MousePointer },
-              { label: "Replied", value: totals.replied, color: "text-emerald-500", icon: MessageCircle },
               { label: "Bounced", value: totals.bounced, color: "text-red-500", icon: UserX },
               { label: "Unsubscribed", value: totals.unsubscribed, color: "text-muted-foreground", icon: TrendingDown },
             ].map((stat) => (

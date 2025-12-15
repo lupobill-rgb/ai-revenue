@@ -123,9 +123,6 @@ verify_jwt = true
 [functions.cmo-kernel]
 verify_jwt = true
 
-[functions.cmo-orchestrator]
-verify_jwt = true
-
 [functions.cmo-launch-campaign]
 verify_jwt = true
 
@@ -277,25 +274,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.outbound-booking-webhook]
-verify_jwt = false
-
-[functions.revenue-os-kernel]
-verify_jwt = false
-
-[functions.revenue-os-triggers]
-verify_jwt = false
-
-[functions.revenue-os-action-executor]
-verify_jwt = false
-
-[functions.weekly-software-updates]
-verify_jwt = false
-
-[functions.ai-cmo-campaign-metrics]
-verify_jwt = true
-
-[functions.send-test-update]
-verify_jwt = false
-
-[functions.send-bulk-update]
 verify_jwt = false

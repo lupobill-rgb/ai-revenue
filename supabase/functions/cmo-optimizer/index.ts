@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getAgentConfig, buildTenantPrompt } from "../_shared/cmo-prompts.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,12 +23,9 @@ interface OptimizerInput {
   campaign_id: string;
   goal: 'leads' | 'meetings' | 'revenue' | 'engagement';
   metrics: {
-    sends?: number;
-    deliveries?: number;
     opens?: number;
     clicks?: number;
     replies?: number;
-    bounces?: number;
     booked_meetings?: number;
     no_shows?: number;
     conversions?: number;
@@ -48,13 +44,6 @@ interface OptimizerInput {
     voice_scripts?: { id: string; scenario: string; script: string; performance?: any }[];
   };
   constraints?: string[];
-}
-
-interface OptimizerConfig {
-  reply_weight: number;
-  click_weight: number;
-  open_weight: number;
-  prompt_version: string;
 }
 
 serve(async (req) => {
@@ -93,21 +82,9 @@ serve(async (req) => {
     const input: OptimizerInput = await req.json();
     const { tenant_id, workspace_id, campaign_id, goal, metrics, assets, constraints = [] } = input;
 
-    // === GUARDRAIL: Validate tenant_id ===
-    if (!tenant_id) {
-      console.error('[Optimizer] GUARDRAIL VIOLATION: Missing tenant_id');
+    if (!tenant_id || !campaign_id || !goal || !metrics) {
       return new Response(JSON.stringify({ 
-        error: 'tenant_id is required',
-        error_code: 'MISSING_TENANT_ID'
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (!campaign_id || !goal || !metrics) {
-      return new Response(JSON.stringify({ 
-        error: 'Missing required fields: campaign_id, goal, metrics' 
+        error: 'Missing required fields: tenant_id, campaign_id, goal, metrics' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -116,58 +93,24 @@ serve(async (req) => {
 
     const workspaceId = workspace_id || tenant_id;
 
-    // === GUARDRAIL: Validate campaign belongs to tenant ===
+    console.log(`Optimizer: Analyzing campaign ${campaign_id} for tenant ${tenant_id}`);
+
+    // Fetch campaign details
     const { data: campaign, error: campaignError } = await supabase
       .from('cmo_campaigns')
       .select('*')
       .eq('id', campaign_id)
-      .eq('tenant_id', tenant_id)
       .single();
 
     if (campaignError || !campaign) {
-      console.error(`[Optimizer] GUARDRAIL: Campaign ${campaign_id} not found for tenant ${tenant_id}`);
-      return new Response(JSON.stringify({ 
-        error: 'Campaign not found or does not belong to this tenant',
-        error_code: 'INVALID_CAMPAIGN_TENANT'
-      }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      throw new Error('Campaign not found');
     }
-
-    // === GUARDRAIL: Check if tenant requires manual approval ===
-    let requireManualApproval = false;
-    try {
-      const { data: settings } = await supabase
-        .from('tenant_settings')
-        .select('require_manual_approval')
-        .eq('tenant_id', tenant_id)
-        .maybeSingle();
-      requireManualApproval = settings?.require_manual_approval === true;
-    } catch {
-      // Default to auto-apply if settings not configured
-    }
-
-    console.log(`Optimizer: Analyzing campaign ${campaign_id} for tenant ${tenant_id} (manual_approval=${requireManualApproval})`);
-
-    // Fetch optimizer config for this tenant (with defaults)
-    const optimizerConfig = await getOptimizerConfig(supabase, tenant_id);
-    console.log(`Optimizer: Using config - reply_weight=${optimizerConfig.reply_weight}, click_weight=${optimizerConfig.click_weight}, open_weight=${optimizerConfig.open_weight}, prompt_version=${optimizerConfig.prompt_version}`);
-
-    // Campaign already fetched and validated above via guardrail check
 
     // Fetch current content assets for the campaign
     const { data: contentAssets } = await supabase
       .from('cmo_content_assets')
       .select('*')
       .eq('campaign_id', campaign_id);
-
-    // Fetch brand profile for context
-    const { data: brandProfile } = await supabase
-      .from('cmo_brand_profiles')
-      .select('brand_name, industry, brand_voice')
-      .eq('tenant_id', tenant_id)
-      .maybeSingle();
 
     // Build comprehensive asset context
     const emailAssets = contentAssets?.filter(a => a.content_type === 'email') || assets?.emails || [];
@@ -176,75 +119,37 @@ serve(async (req) => {
     const postAssets = contentAssets?.filter(a => a.content_type === 'social_post') || assets?.posts || [];
 
     // Calculate performance indicators
-    const sends = metrics.sends || 0;
-    const deliveries = metrics.deliveries || sends; // Default deliveries to sends if not tracked
-    const openRate = deliveries > 0 ? (metrics.opens || 0) / deliveries * 100 : 0;
-    const clickRate = (metrics.opens || 0) > 0 ? (metrics.clicks || 0) / (metrics.opens || 1) * 100 : 0;
-    const replyRate = sends > 0 ? (metrics.replies || 0) / sends * 100 : 0;
-    const meetingRate = (metrics.replies || 0) > 0 ? (metrics.booked_meetings || 0) / (metrics.replies || 1) * 100 : 0;
-    const bounceRate = sends > 0 ? (metrics.bounces || 0) / sends * 100 : 0;
-    const voiceConnectRate = metrics.voice_calls ? (metrics.voice_calls.reached / metrics.voice_calls.total * 100) : 0;
-    const voiceBookingRate = metrics.voice_calls && metrics.voice_calls.reached > 0 ? (metrics.voice_calls.booked / metrics.voice_calls.reached * 100) : 0;
+    const openRate = metrics.opens && metrics.clicks ? (metrics.clicks / metrics.opens * 100).toFixed(1) : 'N/A';
+    const replyRate = metrics.opens && metrics.replies ? (metrics.replies / metrics.opens * 100).toFixed(1) : 'N/A';
+    const meetingRate = metrics.replies && metrics.booked_meetings ? (metrics.booked_meetings / metrics.replies * 100).toFixed(1) : 'N/A';
+    const voiceConnectRate = metrics.voice_calls ? (metrics.voice_calls.reached / metrics.voice_calls.total * 100).toFixed(1) : 'N/A';
+    const voiceBookingRate = metrics.voice_calls ? (metrics.voice_calls.booked / metrics.voice_calls.reached * 100).toFixed(1) : 'N/A';
 
-    // Build weighted score based on optimizer config
-    const weightedScore = 
-      (metrics.replies || 0) * optimizerConfig.reply_weight +
-      (metrics.clicks || 0) * optimizerConfig.click_weight +
-      (metrics.opens || 0) * optimizerConfig.open_weight;
+    // Build the AI prompt
+    const systemPrompt = `You are an expert marketing optimization AI. Your job is to analyze campaign performance metrics and current assets, then recommend specific, actionable changes to improve results.
 
-    // Build the AI prompt with goal-weighted guidance
-    const goalWeighting = goal === 'meetings' || goal === 'revenue' 
-      ? `PRIORITY WEIGHTING: For "${goal}" goal, replies and booked meetings are the PRIMARY success metrics. 
-         Opens and clicks are leading indicators but replies/meetings are what matter most.
-         Optimize messaging for conversation starters and clear CTAs that drive responses.
-         Weight multipliers: Reply=${optimizerConfig.reply_weight}x, Click=${optimizerConfig.click_weight}x, Open=${optimizerConfig.open_weight}x`
-      : goal === 'leads'
-      ? `PRIORITY WEIGHTING: For "leads" goal, focus on maximizing qualified responses (replies) and form submissions.
-         Click-through and reply rates are primary metrics.
-         Weight multipliers: Reply=${optimizerConfig.reply_weight}x, Click=${optimizerConfig.click_weight}x, Open=${optimizerConfig.open_weight}x`
-      : `PRIORITY WEIGHTING: For "engagement" goal, optimize for opens, clicks, and social interactions.
-         Volume metrics matter alongside quality signals.
-         Weight multipliers: Reply=${optimizerConfig.reply_weight}x, Click=${optimizerConfig.click_weight}x, Open=${optimizerConfig.open_weight}x`;
+You must output ONLY valid JSON matching the exact schema requested. Be specific about what to change and why.
 
-    // Get agent config from shared prompts
-    const agentConfig = getAgentConfig('campaign_optimizer');
-    
-    // Build system prompt with brand context
-    const baseSystemPrompt = buildTenantPrompt('campaign_optimizer', {
-      company_name: brandProfile?.brand_name,
-      industry: brandProfile?.industry,
-      brand_voice: brandProfile?.brand_voice,
-    });
-    
-    const systemPrompt = `${baseSystemPrompt}
-
-Optimizer Config (version: ${optimizerConfig.prompt_version}):
-- Reply weight: ${optimizerConfig.reply_weight}x
-- Click weight: ${optimizerConfig.click_weight}x  
-- Open weight: ${optimizerConfig.open_weight}x
-
-${goalWeighting}
-
-You must output ONLY valid JSON matching the exact schema requested.
-Be specific about what to change and why.`;
+Guidelines:
+- Focus on the stated goal (${goal})
+- Respect all constraints provided
+- Prioritize high-impact, low-effort changes
+- Be specific - provide actual new copy, not just "improve this"
+- Consider the full funnel from awareness to conversion`;
 
     const userPrompt = `Analyze this campaign and recommend optimizations:
 
 **Campaign Goal:** ${goal}
 **Campaign Name:** ${campaign.campaign_name}
 **Current Status:** ${campaign.status}
-**Weighted Score:** ${weightedScore.toFixed(1)} (based on configured weights)
 
 **Performance Metrics:**
-- Sends: ${sends}
-- Deliveries: ${deliveries} (${sends > 0 ? ((deliveries / sends) * 100).toFixed(1) : 0}% delivery rate)
-- Opens: ${metrics.opens || 0} (${openRate.toFixed(1)}% open rate) [weight: ${optimizerConfig.open_weight}x]
-- Clicks: ${metrics.clicks || 0} (${clickRate.toFixed(1)}% click rate) [weight: ${optimizerConfig.click_weight}x]
-- Replies: ${metrics.replies || 0} (${replyRate.toFixed(1)}% reply rate) [weight: ${optimizerConfig.reply_weight}x] ← KEY ENGAGEMENT SIGNAL
-- Booked Meetings: ${metrics.booked_meetings || 0} (${meetingRate.toFixed(1)}% meeting rate from replies) ← HIGHEST VALUE
-- Bounces: ${metrics.bounces || 0} (${bounceRate.toFixed(1)}% bounce rate)
+- Opens: ${metrics.opens || 0}
+- Clicks: ${metrics.clicks || 0} (${openRate}% click rate)
+- Replies: ${metrics.replies || 0} (${replyRate}% reply rate)
+- Booked Meetings: ${metrics.booked_meetings || 0} (${meetingRate}% meeting rate)
 - No-shows: ${metrics.no_shows || 0}
-${metrics.voice_calls ? `- Voice Calls: ${metrics.voice_calls.total} total, ${metrics.voice_calls.reached} reached (${voiceConnectRate.toFixed(1)}%), ${metrics.voice_calls.booked} booked (${voiceBookingRate.toFixed(1)}%)` : ''}
+${metrics.voice_calls ? `- Voice Calls: ${metrics.voice_calls.total} total, ${metrics.voice_calls.reached} reached (${voiceConnectRate}%), ${metrics.voice_calls.booked} booked (${voiceBookingRate}%)` : ''}
 
 **Current Email Assets (${emailAssets.length}):**
 ${emailAssets.map((e: any, i: number) => `${i + 1}. "${e.title}" - ${e.key_message?.substring(0, 100)}...`).join('\n') || 'None'}
@@ -287,7 +192,7 @@ Generate optimization recommendations in this JSON format:
 
 Recommend 2-5 specific changes based on the metrics. Focus on the weakest performing areas.`;
 
-    // Call Lovable AI with agent config
+    // Call Lovable AI
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -295,13 +200,12 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: agentConfig.model,
+        model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: agentConfig.temperature,
-        max_tokens: agentConfig.maxTokens,
+        temperature: 0.5,
       }),
     });
 
@@ -486,11 +390,7 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
         optimization_type: 'ai_optimization',
         changes: optimizations.changes || [],
         summary: optimizations.summary,
-        metrics_snapshot: {
-          ...metrics,
-          weighted_score: weightedScore,
-          config_version: optimizerConfig.prompt_version,
-        },
+        metrics_snapshot: metrics,
       });
 
     if (insertError) {
@@ -508,47 +408,29 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
       .eq('id', campaign_id);
 
     // Also insert as a recommendation for the UI
-    if (optimizations.priority_actions?.length > 0) {
-      await supabase
-        .from('cmo_recommendations')
-        .insert({
-          tenant_id,
-          workspace_id: workspaceId,
-          campaign_id,
-          recommendation_type: 'optimization',
-          title: 'AI Optimization Recommendations',
-          description: optimizations.summary,
-          priority: 'high',
-          expected_impact: optimizations.metrics_targets?.expected_reply_rate_improvement || 'Improved performance',
-          action_items: optimizations.priority_actions,
-          status: 'pending',
-        });
-    }
+    await supabase
+      .from('cmo_recommendations')
+      .insert({
+        tenant_id,
+        workspace_id: workspaceId,
+        campaign_id,
+        title: `AI Optimization: ${optimizations.priority_actions?.[0] || 'Performance improvements'}`,
+        description: optimizations.summary,
+        recommendation_type: 'optimization',
+        priority: 'high',
+        status: 'implemented',
+        action_items: optimizations.changes,
+        implemented_at: new Date().toISOString(),
+      });
 
-    // Log to agent_runs
-    await supabase.from('agent_runs').insert({
-      tenant_id,
-      workspace_id: workspaceId,
-      agent: 'cmo_optimizer',
-      status: 'completed',
-      input: { campaign_id, goal, metrics, config: optimizerConfig },
-      output: optimizations,
-      completed_at: new Date().toISOString(),
-    });
-
-    console.log(`Optimizer: Generated ${optimizations.changes?.length || 0} changes, applied ${appliedChanges.length}`);
+    console.log(`Optimizer completed for campaign ${campaign_id}: ${appliedChanges.length} changes applied`);
 
     return new Response(JSON.stringify({
-      success: true,
-      campaign_id,
-      goal,
-      config: optimizerConfig,
-      weighted_score: weightedScore,
       changes: optimizations.changes || [],
-      applied_changes: appliedChanges,
       summary: optimizations.summary,
       priority_actions: optimizations.priority_actions,
       metrics_targets: optimizations.metrics_targets,
+      applied_changes: appliedChanges,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -563,37 +445,3 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
     });
   }
 });
-
-/**
- * Get optimizer config for a tenant, with defaults
- */
-async function getOptimizerConfig(supabase: any, tenantId: string): Promise<OptimizerConfig> {
-  const defaults: OptimizerConfig = {
-    reply_weight: 3,
-    click_weight: 2,
-    open_weight: 1,
-    prompt_version: 'v1',
-  };
-
-  try {
-    const { data: config } = await supabase
-      .from('optimizer_configs')
-      .select('reply_weight, click_weight, open_weight, prompt_version')
-      .eq('tenant_id', tenantId)
-      .eq('channel', 'email')
-      .maybeSingle();
-
-    if (config) {
-      return {
-        reply_weight: config.reply_weight ?? defaults.reply_weight,
-        click_weight: config.click_weight ?? defaults.click_weight,
-        open_weight: config.open_weight ?? defaults.open_weight,
-        prompt_version: config.prompt_version ?? defaults.prompt_version,
-      };
-    }
-  } catch (e) {
-    console.warn('Failed to fetch optimizer config, using defaults:', e);
-  }
-
-  return defaults;
-}
