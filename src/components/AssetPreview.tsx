@@ -36,28 +36,9 @@ const AssetPreview = ({ type, previewUrl, content, name }: AssetPreviewProps) =>
   };
 
   const renderEmailPreview = () => {
-    // Use user's logo from previewUrl or content.logo_url, fallback to placeholder
-    const logoUrl = previewUrl || content?.logo_url || null;
-    
+    // Email campaigns should never show an image preview.
     return (
       <div className="space-y-4">
-        {logoUrl ? (
-          <div className="flex justify-center items-center py-6 bg-muted/30 rounded-lg mb-4">
-            <img 
-              src={logoUrl} 
-              alt="Company Logo"
-              className="max-h-24 w-auto object-contain"
-            />
-          </div>
-        ) : (
-          <div className="aspect-video w-full overflow-hidden rounded-lg mb-4">
-            <img 
-              src={getAssetPlaceholder("email")} 
-              alt="Email Header"
-              className="w-full h-full object-cover"
-            />
-          </div>
-        )}
         <div className="rounded-lg border border-border bg-background p-4">
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Subject</h3>
           <p className="text-foreground font-medium">
@@ -68,9 +49,9 @@ const AssetPreview = ({ type, previewUrl, content, name }: AssetPreviewProps) =>
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Email Body</h3>
           <div className="prose prose-sm max-w-none text-foreground whitespace-pre-wrap">
             {content?.body ? (
-              <div 
-                className="whitespace-pre-wrap" 
-                dangerouslySetInnerHTML={{ __html: content.body }} 
+              <div
+                className="whitespace-pre-wrap"
+                dangerouslySetInnerHTML={{ __html: content.body }}
               />
             ) : (
               <div>
