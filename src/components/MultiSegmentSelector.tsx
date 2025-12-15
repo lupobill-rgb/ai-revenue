@@ -47,9 +47,10 @@ export function MultiSegmentSelector({
 
   const fetchSegments = async () => {
     const { data, error } = await supabase
-      .from("segments")
+      .from("tenant_segments")
       .select("id, name, description")
-      .order("name");
+      .eq("is_active", true)
+      .order("sort_order");
 
     if (!error && data) {
       setSegments(data);
