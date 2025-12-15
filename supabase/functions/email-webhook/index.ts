@@ -41,10 +41,19 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Extract campaign_id from tags
-    const campaignId = event.data?.tags?.find(
-      (tag: any) => tag.name === "campaign_id"
-    )?.value;
+    // Extract campaign_id from tags (Resend sends tags as object, not array)
+    const tags = event.data?.tags;
+    let campaignId: string | undefined;
+    
+    if (tags) {
+      if (typeof tags === "object" && !Array.isArray(tags)) {
+        // Object format: { campaign_id: "xxx" }
+        campaignId = tags.campaign_id;
+      } else if (Array.isArray(tags)) {
+        // Array format: [{ name: "campaign_id", value: "xxx" }]
+        campaignId = tags.find((tag: any) => tag.name === "campaign_id")?.value;
+      }
+    }
 
     if (!campaignId) {
       console.log("[email-webhook] No campaign_id found in event");
