@@ -12,12 +12,13 @@ serve(async (req) => {
   }
 
   try {
-    const { leadId, subject, body, templateId } = await req.json();
+    const { leadId, subject, body, templateId, campaignId } = await req.json();
 
     if (!leadId || !subject || !body) {
       throw new Error("Lead ID, subject, and body are required");
     }
 
+    // User client for auth validation
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
@@ -26,6 +27,12 @@ serve(async (req) => {
           headers: { Authorization: req.headers.get("Authorization")! },
         },
       }
+    );
+
+    // Service role client for internal operations (activity logging)
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
     // Fetch the lead details
@@ -165,9 +172,9 @@ serve(async (req) => {
 
     const emailResult = await response.json();
 
-    // Log activity
+    // Log activity using service role (bypasses RLS for internal audit logging)
     const { data: { user } } = await supabaseClient.auth.getUser();
-    const { error: activityError } = await supabaseClient.from("lead_activities").insert({
+    const { error: activityError } = await serviceClient.from("lead_activities").insert({
       lead_id: leadId,
       workspace_id: lead.workspace_id,
       activity_type: "email_sent",
@@ -177,6 +184,7 @@ serve(async (req) => {
         emailId: emailResult.id,
         subject,
         templateId: templateId || "custom",
+        campaignId: campaignId || null,
         from: `${senderName} <${fromAddress}>`,
         to: lead.email,
       },
@@ -184,6 +192,37 @@ serve(async (req) => {
 
     if (activityError) {
       console.error("Failed to log lead_activities email_sent:", activityError);
+    } else {
+      console.log("Activity logged successfully for lead:", leadId);
+    }
+
+    // Update campaign metrics if campaignId provided
+    if (campaignId) {
+      // First check if metrics record exists
+      const { data: existingMetrics } = await serviceClient
+        .from("campaign_metrics")
+        .select("id, sent_count")
+        .eq("campaign_id", campaignId)
+        .single();
+
+      if (existingMetrics) {
+        // Increment existing sent_count
+        await serviceClient
+          .from("campaign_metrics")
+          .update({ sent_count: (existingMetrics.sent_count || 0) + 1 })
+          .eq("campaign_id", campaignId);
+        console.log("Incremented campaign_metrics.sent_count for campaign:", campaignId);
+      } else {
+        // Create new metrics record
+        await serviceClient
+          .from("campaign_metrics")
+          .insert({
+            campaign_id: campaignId,
+            workspace_id: lead.workspace_id,
+            sent_count: 1,
+          });
+        console.log("Created campaign_metrics record for campaign:", campaignId);
+      }
     }
 
     // Update lead status if new
