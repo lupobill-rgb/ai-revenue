@@ -21,6 +21,15 @@ const NavBar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userName, setUserName] = useState<string>("");
   const [userInitials, setUserInitials] = useState<string>("U");
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      // Check platform admin status
+      supabase.rpc('is_platform_admin', { _user_id: user.id })
+        .then(({ data }) => setIsPlatformAdmin(!!data));
+    }
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -142,6 +151,15 @@ const NavBar = () => {
                   <Plug className="mr-2 h-4 w-4" />
                   Integrations
                 </DropdownMenuItem>
+                {isPlatformAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => navigate("/platform-admin")}>
+                      <Shield className="mr-2 h-4 w-4 text-primary" />
+                      Platform Admin
+                    </DropdownMenuItem>
+                  </>
+                )}
                 {isAdmin && (
                   <>
                     <DropdownMenuSeparator />

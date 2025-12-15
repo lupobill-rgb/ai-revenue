@@ -5426,6 +5426,13 @@ export type Database = {
         Returns: boolean
       }
       gc_rate_limit_counters: { Args: never; Returns: undefined }
+      get_user_by_email: {
+        Args: { _email: string }
+        Returns: {
+          email: string
+          id: string
+        }[]
+      }
       get_weekly_cfo_portfolio_summary: {
         Args: never
         Returns: {

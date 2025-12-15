@@ -46,6 +46,7 @@ import OutboundLinkedInQueue from "./pages/OutboundLinkedInQueue";
 import SettingsIntegrations from "./pages/SettingsIntegrations";
 import LandingPages from "./pages/LandingPages";
 import LeadsPage from "./pages/cmo/LeadsPage";
+import PlatformAdmin from "./pages/PlatformAdmin";
 const queryClient = new QueryClient();
 
 const App = () => {
@@ -96,6 +97,7 @@ const App = () => {
               <Route path="/settings/integrations" element={<SettingsIntegrations />} />
               <Route path="/landing-pages" element={<LandingPages />} />
               <Route path="/cmo/leads" element={<LeadsPage />} />
+              <Route path="/platform-admin" element={<PlatformAdmin />} />
               <Route path="/profile" element={<Profile />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
