@@ -15,6 +15,7 @@ interface LeadResponse {
   notes: string | null;
   createdAt: string;
   contact: {
+    id: string;
     firstName: string | null;
     lastName: string | null;
     email: string;
@@ -23,6 +24,7 @@ interface LeadResponse {
     roleTitle: string | null;
     status: string | null;
     lifecycleStage: string | null;
+    segmentCode: string | null;
   };
   campaign: {
     name: string;
@@ -82,6 +84,7 @@ Deno.serve(async (req) => {
         notes,
         created_at,
         crm_contacts!inner (
+          id,
           first_name,
           last_name,
           email,
@@ -89,7 +92,8 @@ Deno.serve(async (req) => {
           company,
           job_title,
           status,
-          lifecycle_stage
+          lifecycle_stage,
+          segment_code
         )
       `)
       .order("created_at", { ascending: false })
@@ -168,6 +172,7 @@ Deno.serve(async (req) => {
       notes: lead.notes,
       createdAt: lead.created_at,
       contact: {
+        id: lead.crm_contacts?.id || null,
         firstName: lead.crm_contacts?.first_name || null,
         lastName: lead.crm_contacts?.last_name || null,
         email: lead.crm_contacts?.email || "",
@@ -176,6 +181,7 @@ Deno.serve(async (req) => {
         roleTitle: lead.crm_contacts?.job_title || null,
         status: lead.crm_contacts?.status || null,
         lifecycleStage: lead.crm_contacts?.lifecycle_stage || null,
+        segmentCode: lead.crm_contacts?.segment_code || null,
       },
       campaign: lead.campaign_id && campaignNamesMap[lead.campaign_id]
         ? { name: campaignNamesMap[lead.campaign_id] }

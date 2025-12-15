@@ -253,6 +253,18 @@ export async function updateLeadStatus(
   return data;
 }
 
+export async function updateContactSegment(
+  contactId: string,
+  segmentCode: string | null
+): Promise<void> {
+  const { error } = await supabase
+    .from("crm_contacts")
+    .update({ segment_code: segmentCode })
+    .eq("id", contactId);
+
+  if (error) throw new Error(error.message);
+}
+
 // ============ CONTENT ASSETS ============
 
 export async function fetchCampaignAssets(campaignId: string) {

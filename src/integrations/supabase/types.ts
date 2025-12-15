@@ -1189,6 +1189,7 @@ export type Database = {
           success_criteria: string | null
           target_icp: string | null
           target_offer: string | null
+          target_segment_codes: string[] | null
           tenant_id: string
           updated_at: string
           workspace_id: string
@@ -1217,6 +1218,7 @@ export type Database = {
           success_criteria?: string | null
           target_icp?: string | null
           target_offer?: string | null
+          target_segment_codes?: string[] | null
           tenant_id: string
           updated_at?: string
           workspace_id: string
@@ -1245,6 +1247,7 @@ export type Database = {
           success_criteria?: string | null
           target_icp?: string | null
           target_offer?: string | null
+          target_segment_codes?: string[] | null
           tenant_id?: string
           updated_at?: string
           workspace_id?: string
@@ -2248,6 +2251,7 @@ export type Database = {
           lifecycle_stage: string | null
           phone: string | null
           role_title: string | null
+          segment_code: string | null
           status: string | null
           tenant_id: string
           updated_at: string
@@ -2262,6 +2266,7 @@ export type Database = {
           lifecycle_stage?: string | null
           phone?: string | null
           role_title?: string | null
+          segment_code?: string | null
           status?: string | null
           tenant_id: string
           updated_at?: string
@@ -2276,6 +2281,7 @@ export type Database = {
           lifecycle_stage?: string | null
           phone?: string | null
           role_title?: string | null
+          segment_code?: string | null
           status?: string | null
           tenant_id?: string
           updated_at?: string
@@ -4942,6 +4948,45 @@ export type Database = {
           id?: string
           module_id?: string
           rollout_percentage?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tenant_segments: {
+        Row: {
+          code: string
+          color: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          sort_order: number | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          sort_order?: number | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          sort_order?: number | null
           tenant_id?: string
           updated_at?: string
         }

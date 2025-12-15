@@ -430,6 +430,7 @@ export interface LeadRow {
   source: string;
   createdAt: string;
   contact: {
+    id?: string;
     firstName: string | null;
     lastName: string | null;
     email: string | null;
@@ -438,6 +439,7 @@ export interface LeadRow {
     roleTitle: string | null;
     status: "prospect" | "customer" | "inactive" | null;
     lifecycleStage: string | null;
+    segmentCode: string | null;
   };
   campaign?: {
     name: string | null;

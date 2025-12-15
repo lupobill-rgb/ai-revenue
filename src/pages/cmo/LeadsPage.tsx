@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLeads, useLeadDetails } from "@/hooks/useLeads";
 import type { LeadRow, LeadDetailsResponse, LeadStatus } from "@/lib/cmo/types";
+import { updateContactSegment } from "@/lib/cmo/apiClient";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,40 +9,80 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, User, Building2, Mail, Phone, Target, Calendar, MessageSquare } from "lucide-react";
+import { Search, User, Building2, Mail, Phone, Target, Calendar, MessageSquare, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SegmentBadge } from "@/components/crm/SegmentBadge";
+import { SegmentSelector } from "@/components/crm/SegmentSelector";
+import { useTenantSegments } from "@/hooks/useTenantSegments";
+import { toast } from "sonner";
 
 function LeadsPage() {
-  const { leads, loading } = useLeads();
+  const { leads, loading, refresh } = useLeads();
+  const { segments, getSegmentByCode } = useTenantSegments();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [segmentFilter, setSegmentFilter] = useState<string | null>(null);
 
   const { details, loading: detailsLoading, changeStatus } =
     useLeadDetails(selectedLeadId);
 
   const filteredLeads = leads.filter((lead) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      lead.contact.firstName?.toLowerCase().includes(query) ||
-      lead.contact.lastName?.toLowerCase().includes(query) ||
-      lead.contact.email?.toLowerCase().includes(query) ||
-      lead.contact.companyName?.toLowerCase().includes(query)
-    );
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = 
+        lead.contact.firstName?.toLowerCase().includes(query) ||
+        lead.contact.lastName?.toLowerCase().includes(query) ||
+        lead.contact.email?.toLowerCase().includes(query) ||
+        lead.contact.companyName?.toLowerCase().includes(query);
+      if (!matchesSearch) return false;
+    }
+    // Segment filter
+    if (segmentFilter && lead.contact.segmentCode !== segmentFilter) {
+      return false;
+    }
+    return true;
   });
+
+  const handleSegmentChange = async (contactId: string, segmentCode: string | null) => {
+    try {
+      await updateContactSegment(contactId, segmentCode);
+      toast.success("Segment updated");
+      refresh();
+    } catch (error) {
+      toast.error("Failed to update segment");
+    }
+  };
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
         <h1 className="text-2xl font-semibold text-foreground">Leads</h1>
-        <div className="relative w-80">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search name, email, company…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+        <div className="flex items-center gap-3">
+          {segments.length > 0 && (
+            <Select value={segmentFilter || ""} onValueChange={(v) => setSegmentFilter(v === "" ? null : v)}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All segments" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All segments</SelectItem>
+                {segments.map((seg) => (
+                  <SelectItem key={seg.id} value={seg.code}>
+                    <SegmentBadge code={seg.code} name={seg.name} color={seg.color} size="sm" />
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <div className="relative w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search name, email, company…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
         </div>
       </header>
 
@@ -58,6 +99,7 @@ function LeadsPage() {
               leads={filteredLeads}
               selectedId={selectedLeadId}
               onSelect={setSelectedLeadId}
+              getSegmentByCode={getSegmentByCode}
             />
           )}
         </section>
@@ -68,6 +110,8 @@ function LeadsPage() {
               details={details}
               loading={detailsLoading}
               onStatusChange={changeStatus}
+              onSegmentChange={handleSegmentChange}
+              getSegmentByCode={getSegmentByCode}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -86,11 +130,13 @@ function LeadsPage() {
 function LeadsTable({
   leads,
   selectedId,
-  onSelect
+  onSelect,
+  getSegmentByCode
 }: {
   leads: LeadRow[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  getSegmentByCode: (code: string | null) => { code: string; name: string; color: string } | null;
 }) {
   return (
     <ScrollArea className="h-full">
@@ -99,61 +145,59 @@ function LeadsTable({
           <TableRow>
             <TableHead>Lead</TableHead>
             <TableHead>Company</TableHead>
+            <TableHead>Segment</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Score</TableHead>
-            <TableHead>Last Activity</TableHead>
             <TableHead>Source</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {leads.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+              <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                 No leads found
               </TableCell>
             </TableRow>
           ) : (
-            leads.map((lead) => (
-              <TableRow
-                key={lead.id}
-                className={cn(
-                  "cursor-pointer transition-colors",
-                  lead.id === selectedId && "bg-primary/5"
-                )}
-                onClick={() => onSelect(lead.id)}
-              >
-                <TableCell>
-                  <div className="font-medium">
-                    {lead.contact.firstName || lead.contact.lastName
-                      ? `${lead.contact.firstName ?? ""} ${lead.contact.lastName ?? ""}`.trim()
-                      : lead.contact.email || "Unknown"}
-                  </div>
-                  <div className="text-sm text-muted-foreground">{lead.contact.email}</div>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {lead.contact.companyName || "—"}
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={lead.status} />
-                </TableCell>
-                <TableCell>
-                  <span className="font-mono text-sm">{lead.score}</span>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {lead.lastActivity ? (
-                    <div>
-                      <span className="capitalize">{friendlyActivityLabel(lead.lastActivity.type)}</span>
-                      <div className="text-xs">
-                        {new Date(lead.lastActivity.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                  ) : (
-                    "No activity"
+            leads.map((lead) => {
+              const segment = getSegmentByCode(lead.contact.segmentCode);
+              return (
+                <TableRow
+                  key={lead.id}
+                  className={cn(
+                    "cursor-pointer transition-colors",
+                    lead.id === selectedId && "bg-primary/5"
                   )}
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">{lead.source}</TableCell>
-              </TableRow>
-            ))
+                  onClick={() => onSelect(lead.id)}
+                >
+                  <TableCell>
+                    <div className="font-medium">
+                      {lead.contact.firstName || lead.contact.lastName
+                        ? `${lead.contact.firstName ?? ""} ${lead.contact.lastName ?? ""}`.trim()
+                        : lead.contact.email || "Unknown"}
+                    </div>
+                    <div className="text-sm text-muted-foreground">{lead.contact.email}</div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {lead.contact.companyName || "—"}
+                  </TableCell>
+                  <TableCell>
+                    {segment ? (
+                      <SegmentBadge code={segment.code} name={segment.name} color={segment.color} size="sm" />
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={lead.status} />
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-mono text-sm">{lead.score}</span>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{lead.source}</TableCell>
+                </TableRow>
+              );
+            })
           )}
         </TableBody>
       </Table>
@@ -180,13 +224,18 @@ function StatusBadge({ status }: { status: LeadStatus }) {
 function LeadDetailPanel({
   details,
   loading,
-  onStatusChange
+  onStatusChange,
+  onSegmentChange,
+  getSegmentByCode
 }: {
   details: LeadDetailsResponse;
   loading: boolean;
   onStatusChange: (status: LeadStatus) => Promise<void>;
+  onSegmentChange: (contactId: string, segmentCode: string | null) => Promise<void>;
+  getSegmentByCode: (code: string | null) => { code: string; name: string; color: string } | null;
 }) {
   const { lead, contact, campaign, activities } = details;
+  const segment = getSegmentByCode((contact as any).segmentCode);
 
   return (
     <ScrollArea className="h-full">
@@ -263,6 +312,25 @@ function LeadDetailPanel({
                 <label className="text-xs font-medium text-muted-foreground">Campaign</label>
                 <div className="mt-1 text-sm">{campaign.name}</div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Segment */}
+        <Card>
+          <CardContent className="pt-4">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1 mb-2">
+              <Tag className="h-3.5 w-3.5" />
+              Segment
+            </label>
+            <SegmentSelector
+              value={(contact as any).segmentCode}
+              onValueChange={(value) => onSegmentChange(contact.id, value)}
+            />
+            {segment && (
+              <p className="text-xs text-muted-foreground mt-2">
+                {segment.name}
+              </p>
             )}
           </CardContent>
         </Card>

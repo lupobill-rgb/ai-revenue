@@ -75,7 +75,8 @@ Deno.serve(async (req) => {
           company,
           job_title,
           status,
-          lifecycle_stage
+          lifecycle_stage,
+          segment_code
         )
       `)
       .eq("id", leadIdParam)
@@ -138,6 +139,7 @@ Deno.serve(async (req) => {
         roleTitle: contact?.job_title || null,
         status: contact?.status || null,
         lifecycleStage: contact?.lifecycle_stage || null,
+        segmentCode: contact?.segment_code || null,
       },
       campaign,
       activities: (activities || []).map((act: any) => ({
