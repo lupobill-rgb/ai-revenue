@@ -18,6 +18,7 @@ import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AssetPreview from "@/components/AssetPreview";
 import AIAssistant from "@/components/AIAssistant";
+import { MultiSegmentSelector } from "@/components/MultiSegmentSelector";
 import { z } from "zod";
 
 const assetSchema = z.object({
@@ -47,7 +48,7 @@ const AssetDetail = () => {
 
   // Form fields
   const [name, setName] = useState("");
-  const [segmentId, setSegmentId] = useState("");
+  const [segmentIds, setSegmentIds] = useState<string[]>([]);
   const [channel, setChannel] = useState("");
   const [goal, setGoal] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
@@ -153,7 +154,7 @@ const AssetDetail = () => {
 
       setAsset(data);
       setName(data.name);
-      setSegmentId(data.segment_id || "none");
+      setSegmentIds(data.segment_ids || (data.segment_id ? [data.segment_id] : []));
       setChannel(data.channel || "");
       setGoal(data.goal || "");
       setPreviewUrl(data.preview_url || "");
@@ -211,7 +212,8 @@ const AssetDetail = () => {
           goal: result.data.goal,
           preview_url: result.data.preview_url || null,
           external_id: result.data.external_id,
-          segment_id: segmentId === "none" ? null : segmentId,
+          segment_ids: segmentIds.length > 0 ? segmentIds : [],
+          segment_id: segmentIds.length > 0 ? segmentIds[0] : null,
           status,
           content,
           external_project_url: externalProjectUrl || null,
@@ -951,23 +953,13 @@ const AssetDetail = () => {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="segment">Segment</Label>
-                        <Select 
-                          value={segmentId || "none"} 
-                          onValueChange={(value) => setSegmentId(value === "none" ? "" : value)}
-                        >
-                          <SelectTrigger className="bg-background border-input">
-                            <SelectValue placeholder="Select target segment" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">None</SelectItem>
-                            {segments.map((seg) => (
-                              <SelectItem key={seg.id} value={seg.id}>
-                                {seg.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Label htmlFor="segment">Target Segments</Label>
+                        <MultiSegmentSelector
+                          selectedIds={segmentIds}
+                          onSelectionChange={setSegmentIds}
+                          placeholder="Select target segments"
+                          showLeadCounts={true}
+                        />
                       </div>
 
                       <div className="space-y-2">

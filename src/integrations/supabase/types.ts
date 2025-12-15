@@ -331,6 +331,7 @@ export type Database = {
           name: string
           preview_url: string | null
           segment_id: string | null
+          segment_ids: string[] | null
           status: Database["public"]["Enums"]["asset_status"]
           type: Database["public"]["Enums"]["asset_type"]
           updated_at: string
@@ -354,6 +355,7 @@ export type Database = {
           name: string
           preview_url?: string | null
           segment_id?: string | null
+          segment_ids?: string[] | null
           status?: Database["public"]["Enums"]["asset_status"]
           type: Database["public"]["Enums"]["asset_type"]
           updated_at?: string
@@ -377,6 +379,7 @@ export type Database = {
           name?: string
           preview_url?: string | null
           segment_id?: string | null
+          segment_ids?: string[] | null
           status?: Database["public"]["Enums"]["asset_status"]
           type?: Database["public"]["Enums"]["asset_type"]
           updated_at?: string
