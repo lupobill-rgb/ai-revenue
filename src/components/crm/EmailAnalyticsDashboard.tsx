@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Mail, Eye, MousePointer, UserX, TrendingUp, TrendingDown, Send, Inbox } from "lucide-react";
+import { Mail, Eye, MousePointer, UserX, TrendingUp, TrendingDown, Send, Inbox, MessageSquare } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { subDays, format, parseISO, isAfter } from "date-fns";
 
@@ -16,6 +16,7 @@ interface CampaignMetric {
   clicks: number | null;
   bounce_count: number | null;
   unsubscribe_count: number | null;
+  reply_count: number | null;
   created_at: string;
 }
 
@@ -30,6 +31,7 @@ const CHART_COLORS = {
   clicked: "hsl(38 92% 50%)",
   bounced: "hsl(0 84% 60%)",
   unsubscribed: "hsl(var(--muted-foreground))",
+  replied: "hsl(160 84% 39%)",
 };
 
 export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProps) {
@@ -51,8 +53,9 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
         clicked: acc.clicked + (m.clicks || 0),
         bounced: acc.bounced + (m.bounce_count || 0),
         unsubscribed: acc.unsubscribed + (m.unsubscribe_count || 0),
+        replied: acc.replied + (m.reply_count || 0),
       }),
-      { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0 }
+      { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0, replied: 0 }
     );
   }, [filteredMetrics]);
 
@@ -60,6 +63,7 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
   const clickRate = totals.opened > 0 ? ((totals.clicked / totals.opened) * 100).toFixed(1) : "0";
   const bounceRate = totals.sent > 0 ? ((totals.bounced / totals.sent) * 100).toFixed(1) : "0";
   const deliveryRate = totals.sent > 0 ? ((totals.delivered / totals.sent) * 100).toFixed(1) : "0";
+  const replyRate = totals.delivered > 0 ? ((totals.replied / totals.delivered) * 100).toFixed(1) : "0";
 
   // Daily trend data
   const trendData = useMemo(() => {
@@ -110,7 +114,7 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card className="relative overflow-hidden">
           <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 rounded-full -mr-8 -mt-8" />
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -168,6 +172,21 @@ export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProp
             <Progress value={parseFloat(bounceRate)} className="h-1.5 mt-2 [&>div]:bg-red-500" />
             <p className="text-xs text-muted-foreground mt-1">
               {totals.bounced.toLocaleString()} bounces
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/10 rounded-full -mr-8 -mt-8" />
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Reply Rate</CardTitle>
+            <MessageSquare className="h-4 w-4 text-emerald-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{replyRate}%</div>
+            <Progress value={parseFloat(replyRate)} className="h-1.5 mt-2 [&>div]:bg-emerald-500" />
+            <p className="text-xs text-muted-foreground mt-1">
+              {totals.replied.toLocaleString()} replies
             </p>
           </CardContent>
         </Card>
