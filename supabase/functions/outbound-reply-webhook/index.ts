@@ -83,14 +83,42 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const payload: InboundReplyPayload = await req.json();
+    const rawPayload = await req.json();
+    
+    // Handle Resend standard webhook format (wrapped in type/data)
+    // vs direct Resend Inbound format
+    let payload: InboundReplyPayload;
+    
+    if (rawPayload.type && rawPayload.data) {
+      // Standard Resend webhook - check if it's an inbound email
+      if (rawPayload.type !== "email.received") {
+        // Not an inbound email, ignore (these should go to email-webhook)
+        console.log(`[outbound-reply-webhook] Ignoring event type: ${rawPayload.type}`);
+        return new Response(JSON.stringify({ status: "ignored", type: rawPayload.type }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Extract from Resend Inbound format
+      payload = {
+        from: rawPayload.data.from,
+        to: Array.isArray(rawPayload.data.to) ? rawPayload.data.to[0] : rawPayload.data.to,
+        subject: rawPayload.data.subject,
+        text: rawPayload.data.text,
+        html: rawPayload.data.html,
+        received_at: rawPayload.data.created_at,
+      };
+    } else {
+      // Direct format (legacy)
+      payload = rawPayload;
+    }
+    
     console.log(`[outbound-reply-webhook] Received reply from: ${payload.from}`);
 
     const senderEmail = payload.from?.toLowerCase();
     
     if (!senderEmail) {
-      return new Response(JSON.stringify({ error: "Missing sender email" }), {
-        status: 400,
+      console.log("[outbound-reply-webhook] No sender email in payload, ignoring");
+      return new Response(JSON.stringify({ status: "no_sender" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
