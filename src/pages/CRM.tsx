@@ -718,12 +718,15 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                           <Tags className="h-4 w-4" />
                           Assign Segment to All Imported Leads
                         </Label>
-                        <Select value={importSegmentCode} onValueChange={setImportSegmentCode}>
+                        <Select
+                          value={importSegmentCode || "__none__"}
+                          onValueChange={(v) => setImportSegmentCode(v === "__none__" ? "" : v)}
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Select segment (optional)" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">No segment</SelectItem>
+                            <SelectItem value="__none__">No segment</SelectItem>
                             {segments.map((seg) => (
                               <SelectItem key={seg.code} value={seg.code}>
                                 <div className="flex items-center gap-2">
@@ -1016,16 +1019,16 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                           Segment
                         </Label>
                         <Select
-                          value={newLead.segment_code}
+                          value={newLead.segment_code || "__none__"}
                           onValueChange={(value) =>
-                            setNewLead({ ...newLead, segment_code: value })
+                            setNewLead({ ...newLead, segment_code: value === "__none__" ? "" : value })
                           }
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Select segment" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">No segment</SelectItem>
+                            <SelectItem value="__none__">No segment</SelectItem>
                             {segments.map((seg) => (
                               <SelectItem key={seg.code} value={seg.code}>
                                 <div className="flex items-center gap-2">
@@ -1463,12 +1466,15 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
 
                     <div className="space-y-2">
                       <Label>Outbound Phone Number</Label>
-                      <Select value={selectedPhoneNumberId} onValueChange={setSelectedPhoneNumberId}>
+                      <Select
+                        value={selectedPhoneNumberId || "__none__"}
+                        onValueChange={(v) => setSelectedPhoneNumberId(v === "__none__" ? "" : v)}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select a phone number (optional)" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">No phone number</SelectItem>
+                          <SelectItem value="__none__">No phone number</SelectItem>
                           {vapiPhoneNumbers.map((phone) => (
                             <SelectItem key={phone.id} value={phone.id}>
                               {phone.name} ({phone.number})
