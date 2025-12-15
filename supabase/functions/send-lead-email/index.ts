@@ -94,31 +94,68 @@ serve(async (req) => {
     }
 
     // Send email via Resend with tracking enabled
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `${senderName} <${fromAddress}>`,
-        reply_to: replyToAddress,
-        to: [lead.email],
-        subject: subject,
-        html: body,
-        tags: [
-          { name: "lead_id", value: leadId },
-          { name: "template_id", value: templateId || "custom" },
-        ],
+    const sendEmail = async (fromAddr: string) => {
+      return await fetch("https://api.resend.com/emails", {
+        method: "POST",
         headers: {
-          "X-Entity-Ref-ID": leadId,
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
         },
-      }),
-    });
+        body: JSON.stringify({
+          from: `${senderName} <${fromAddr}>`,
+          reply_to: replyToAddress,
+          to: [lead.email],
+          subject: subject,
+          html: body,
+          tags: [
+            { name: "lead_id", value: leadId },
+            { name: "template_id", value: templateId || "custom" },
+          ],
+          headers: {
+            "X-Entity-Ref-ID": leadId,
+          },
+        }),
+      });
+    };
+
+    // Attempt 1: tenant-configured sender
+    let response = await sendEmail(fromAddress);
+
+    // If sender domain isn't authorized in Resend, fall back to Resend sandbox sender for testing
+    if (!response.ok) {
+      let errorText = "";
+      try {
+        const errorData = await response.json();
+        errorText = String(errorData?.message || response.status);
+      } catch {
+        errorText = String(response.status);
+      }
+
+      const notAuthorized =
+        response.status === 403 &&
+        errorText.toLowerCase().includes("not authorized to send emails from");
+
+      if (notAuthorized) {
+        console.warn(
+          `Resend sender not authorized for from=${fromAddress}. Falling back to onboarding@resend.dev. Original error: ${errorText}`
+        );
+        fromAddress = "onboarding@resend.dev";
+        response = await sendEmail(fromAddress);
+      } else {
+        throw new Error(`Failed to send email: ${errorText}`);
+      }
+    }
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Failed to send email: ${errorData.message || response.status}`);
+      // If fallback also failed, surface the error
+      let errorText = "";
+      try {
+        const errorData = await response.json();
+        errorText = String(errorData?.message || response.status);
+      } catch {
+        errorText = String(response.status);
+      }
+      throw new Error(`Failed to send email: ${errorText}`);
     }
 
     const emailResult = await response.json();
