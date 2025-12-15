@@ -100,6 +100,18 @@ serve(async (req) => {
       throw new Error("RESEND_API_KEY not configured");
     }
 
+    // Build tags for Resend - include all IDs needed for webhook tracking
+    const emailTags = [
+      { name: "lead_id", value: leadId },
+      { name: "workspace_id", value: lead.workspace_id },
+      { name: "template_id", value: templateId || "custom" },
+    ];
+    
+    // Add campaign_id if provided - required for campaign_metrics updates via webhooks
+    if (campaignId) {
+      emailTags.push({ name: "campaign_id", value: campaignId });
+    }
+
     // Send email via Resend with tracking enabled
     const sendEmail = async (fromAddr: string) => {
       return await fetch("https://api.resend.com/emails", {
@@ -114,10 +126,7 @@ serve(async (req) => {
           to: [lead.email],
           subject: subject,
           html: body,
-          tags: [
-            { name: "lead_id", value: leadId },
-            { name: "template_id", value: templateId || "custom" },
-          ],
+          tags: emailTags,
           headers: {
             "X-Entity-Ref-ID": leadId,
           },
@@ -196,32 +205,90 @@ serve(async (req) => {
       console.log("Activity logged successfully for lead:", leadId);
     }
 
-    // Update campaign metrics if campaignId provided
-    if (campaignId) {
-      // First check if metrics record exists
+    // Determine campaign_id - use provided one or find/create default CRM campaign
+    let effectiveCampaignId = campaignId;
+    
+    if (!effectiveCampaignId) {
+      // Look for existing default CRM campaign for this workspace
+      const { data: existingCampaign } = await serviceClient
+        .from("campaigns")
+        .select("id")
+        .eq("workspace_id", lead.workspace_id)
+        .eq("channel", "email")
+        .eq("status", "active")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .single();
+      
+      if (existingCampaign) {
+        effectiveCampaignId = existingCampaign.id;
+      } else {
+        // Create a default "CRM Manual Outreach" campaign
+        // First we need an asset
+        const { data: defaultAsset } = await serviceClient
+          .from("assets")
+          .select("id")
+          .eq("workspace_id", lead.workspace_id)
+          .eq("type", "email")
+          .limit(1)
+          .single();
+        
+        if (defaultAsset) {
+          const { data: newCampaign } = await serviceClient
+            .from("campaigns")
+            .insert({
+              workspace_id: lead.workspace_id,
+              asset_id: defaultAsset.id,
+              channel: "email",
+              status: "active",
+            })
+            .select("id")
+            .single();
+          
+          if (newCampaign) {
+            effectiveCampaignId = newCampaign.id;
+            // Create initial metrics record
+            await serviceClient.from("campaign_metrics").insert({
+              campaign_id: newCampaign.id,
+              workspace_id: lead.workspace_id,
+              sent_count: 0,
+              delivered_count: 0,
+            });
+          }
+        }
+      }
+    }
+
+    // Update campaign metrics
+    if (effectiveCampaignId) {
       const { data: existingMetrics } = await serviceClient
         .from("campaign_metrics")
-        .select("id, sent_count")
-        .eq("campaign_id", campaignId)
+        .select("id, sent_count, delivered_count")
+        .eq("campaign_id", effectiveCampaignId)
         .single();
 
       if (existingMetrics) {
-        // Increment existing sent_count
+        // Increment sent_count and delivered_count (optimistic - Resend has ~99% delivery)
         await serviceClient
           .from("campaign_metrics")
-          .update({ sent_count: (existingMetrics.sent_count || 0) + 1 })
-          .eq("campaign_id", campaignId);
-        console.log("Incremented campaign_metrics.sent_count for campaign:", campaignId);
+          .update({ 
+            sent_count: (existingMetrics.sent_count || 0) + 1,
+            delivered_count: (existingMetrics.delivered_count || 0) + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("campaign_id", effectiveCampaignId);
+        console.log("Updated campaign_metrics sent+delivered for campaign:", effectiveCampaignId);
       } else {
         // Create new metrics record
         await serviceClient
           .from("campaign_metrics")
           .insert({
-            campaign_id: campaignId,
+            campaign_id: effectiveCampaignId,
             workspace_id: lead.workspace_id,
             sent_count: 1,
+            delivered_count: 1,
           });
-        console.log("Created campaign_metrics record for campaign:", campaignId);
+        console.log("Created campaign_metrics record for campaign:", effectiveCampaignId);
       }
     }
 
