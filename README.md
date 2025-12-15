@@ -1,14 +1,4 @@
-# UbiGrowth Revenue OS
-
-## ⚠️ Revenue OS v1 - FROZEN BASELINE
-
-**CRITICAL**: Before modifying any Revenue OS components, review [docs/specs/FROZEN-v1-stable.md](docs/specs/FROZEN-v1-stable.md).
-
-Frozen components include:
-- `supabase/functions/revenue-os-kernel/index.ts`
-- `supabase/functions/revenue-os-action-executor/index.ts`
-- All tables in the Revenue Spine (13 canonical tables)
-- All specs in `docs/specs/`
+# Welcome to your Lovable project
 
 ## Project info
 

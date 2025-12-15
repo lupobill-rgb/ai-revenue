@@ -53,12 +53,6 @@ If `cash_runway_months < threshold`:
 - BIAS strongly toward rollback-safe, reversible actions
 - BLOCK any action with >7 day observation window
 
-### Paid vs Outbound Channel Preference
-When `cac_paid << cac_blended` AND payback/margin gates are NOT triggered:
-- PREFER scaling paid channels over outbound for incremental budget
-- Paid channels with proven ROAS should receive priority allocation
-- Only expand outbound when paid channels show diminishing returns or are saturated
-
 These gates INFLUENCE:
 1. Which actions are generated
 2. Which actions survive ranking

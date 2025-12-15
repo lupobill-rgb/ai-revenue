@@ -36,17 +36,25 @@ const AssetPreview = ({ type, previewUrl, content, name }: AssetPreviewProps) =>
   };
 
   const renderEmailPreview = () => {
-    // Use user's logo from previewUrl or content.logo_url - no generic placeholder for emails
+    // Use user's logo from previewUrl or content.logo_url, fallback to placeholder
     const logoUrl = previewUrl || content?.logo_url || null;
     
     return (
       <div className="space-y-4">
-        {logoUrl && (
+        {logoUrl ? (
           <div className="flex justify-center items-center py-6 bg-muted/30 rounded-lg mb-4">
             <img 
               src={logoUrl} 
               alt="Company Logo"
               className="max-h-24 w-auto object-contain"
+            />
+          </div>
+        ) : (
+          <div className="aspect-video w-full overflow-hidden rounded-lg mb-4">
+            <img 
+              src={getAssetPlaceholder("email")} 
+              alt="Email Header"
+              className="w-full h-full object-cover"
             />
           </div>
         )}

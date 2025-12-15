@@ -25,21 +25,6 @@ This is the **single source of truth** for all metric IDs used in UbiGrowth Reve
 
 ---
 
-## Paid Channel Metrics (CMO Lens - Ad Platforms)
-
-| metric_id | Definition | Formula | Source Tables | Direction | Owner |
-|-----------|------------|---------|---------------|-----------|-------|
-| `cac_paid` | Paid channel CAC | spend / leads WHERE is_paid = true | channel_spend_daily | ↓ | analytics_job |
-| `spend_paid_total` | Total paid channel spend | SUM(spend) WHERE is_paid = true | channel_spend_daily | stabilize | analytics_job |
-| `pipeline_from_paid` | Pipeline attributed to paid | SUM(opportunities * weight) WHERE channel.is_paid = true | channel_spend_daily, opportunity_channel_attribution | ↑ | analytics_job |
-| `revenue_from_paid` | Revenue attributed to paid | SUM(revenue_booked) WHERE is_paid = true | channel_spend_daily | ↑ | analytics_job |
-| `roas_paid` | Return on ad spend | revenue_from_paid / spend_paid_total | channel_spend_daily | ↑ | analytics_job |
-| `ctr_paid` | Paid click-through rate | clicks / impressions WHERE is_paid = true | channel_spend_daily | ↑ | analytics_job |
-| `cpc_paid` | Paid cost per click | spend / clicks WHERE is_paid = true | channel_spend_daily | ↓ | analytics_job |
-| `leads_from_paid` | Leads from paid channels | SUM(leads) WHERE is_paid = true | channel_spend_daily | ↑ | analytics_job |
-
----
-
 ## Conversion Metrics (CRO Lens)
 
 | metric_id | Definition | Formula | Source Tables | Direction | Owner |

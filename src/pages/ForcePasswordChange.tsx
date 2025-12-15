@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Shield, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
 
 const passwordSchema = z.object({
@@ -30,90 +30,7 @@ const ForcePasswordChange = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [isRecoveryFlow, setIsRecoveryFlow] = useState(false);
   const [errors, setErrors] = useState<{ newPassword?: string; confirmPassword?: string }>({});
-
-  // Handle password recovery from email link
-  useEffect(() => {
-    const handleRecoverySession = async () => {
-      try {
-        // Check hash params - Supabase redirects with tokens in the hash
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        const hashType = hashParams.get('type');
-        const errorDescription = hashParams.get('error_description');
-        
-        // Handle error from Supabase redirect
-        if (errorDescription) {
-          console.error("Auth error from redirect:", errorDescription);
-          toast({
-            variant: "destructive",
-            title: "Invalid or expired link",
-            description: decodeURIComponent(errorDescription.replace(/\+/g, ' ')),
-          });
-          navigate("/login");
-          return;
-        }
-        
-        // Handle recovery flow with tokens in hash
-        if (accessToken && refreshToken && hashType === 'recovery') {
-          setIsRecoveryFlow(true);
-          
-          // Set the session using the tokens from the URL
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-          
-          if (error || !data.session) {
-            console.error("Session setup failed:", error);
-            toast({
-              variant: "destructive",
-              title: "Invalid or expired link",
-              description: "Please request a new password reset link.",
-            });
-            navigate("/login");
-            return;
-          }
-          
-          // Clear the hash from URL for cleaner display
-          window.history.replaceState(null, '', window.location.pathname);
-          setIsInitializing(false);
-          return;
-        }
-        
-        // Check if user has an existing session (force change flow)
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          navigate("/login");
-          return;
-        }
-        setIsInitializing(false);
-      } catch (error) {
-        console.error("Error handling recovery session:", error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Unable to process password reset. Please try again.",
-        });
-        navigate("/login");
-      }
-    };
-
-    // Listen for auth state changes (handles the recovery token exchange)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setIsRecoveryFlow(true);
-        setIsInitializing(false);
-      }
-    });
-
-    handleRecoverySession();
-
-    return () => subscription.unsubscribe();
-  }, [navigate, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,18 +97,6 @@ const ForcePasswordChange = () => {
     }
   };
 
-  // Show loading while checking session
-  if (isInitializing) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md animate-fade-in border-border bg-card">
@@ -203,12 +108,10 @@ const ForcePasswordChange = () => {
           </div>
           <div>
             <CardTitle className="text-3xl font-bold tracking-tight text-foreground">
-              {isRecoveryFlow ? "Reset Password" : "Change Password"}
+              Change Password
             </CardTitle>
             <CardDescription className="text-base text-muted-foreground">
-              {isRecoveryFlow 
-                ? "Enter your new password below" 
-                : "For security, you must set a new password before continuing"}
+              For security, you must set a new password before continuing
             </CardDescription>
           </div>
         </CardHeader>

@@ -856,75 +856,6 @@ export type Database = {
           },
         ]
       }
-      channel_spend_daily: {
-        Row: {
-          attribution_model: string
-          attribution_window_days: number
-          channel_id: string
-          clicks: number
-          created_at: string
-          currency: string
-          date: string
-          id: string
-          impressions: number
-          leads: number
-          opportunities: number
-          revenue_booked: number
-          spend: number
-          tenant_id: string
-          updated_at: string
-        }
-        Insert: {
-          attribution_model?: string
-          attribution_window_days?: number
-          channel_id: string
-          clicks?: number
-          created_at?: string
-          currency?: string
-          date: string
-          id?: string
-          impressions?: number
-          leads?: number
-          opportunities?: number
-          revenue_booked?: number
-          spend?: number
-          tenant_id: string
-          updated_at?: string
-        }
-        Update: {
-          attribution_model?: string
-          attribution_window_days?: number
-          channel_id?: string
-          clicks?: number
-          created_at?: string
-          currency?: string
-          date?: string
-          id?: string
-          impressions?: number
-          leads?: number
-          opportunities?: number
-          revenue_booked?: number
-          spend?: number
-          tenant_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "channel_spend_daily_channel_fk"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "cmo_campaign_channels"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "channel_spend_daily_tenant_fk"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       cmo_brand_profiles: {
         Row: {
           brand_colors: Json | null
@@ -1093,20 +1024,11 @@ export type Database = {
           content_types: Json | null
           created_at: string
           expected_metrics: Json | null
-          external_account_id: string | null
-          external_ad_id: string | null
-          external_adset_id: string | null
-          external_campaign_id: string | null
-          external_source: string | null
           id: string
-          is_paid: boolean | null
           posting_frequency: string | null
           priority: string | null
           targeting_notes: string | null
           updated_at: string
-          utm_campaign: string | null
-          utm_medium: string | null
-          utm_source: string | null
         }
         Insert: {
           budget_percentage?: number | null
@@ -1116,20 +1038,11 @@ export type Database = {
           content_types?: Json | null
           created_at?: string
           expected_metrics?: Json | null
-          external_account_id?: string | null
-          external_ad_id?: string | null
-          external_adset_id?: string | null
-          external_campaign_id?: string | null
-          external_source?: string | null
           id?: string
-          is_paid?: boolean | null
           posting_frequency?: string | null
           priority?: string | null
           targeting_notes?: string | null
           updated_at?: string
-          utm_campaign?: string | null
-          utm_medium?: string | null
-          utm_source?: string | null
         }
         Update: {
           budget_percentage?: number | null
@@ -1139,20 +1052,11 @@ export type Database = {
           content_types?: Json | null
           created_at?: string
           expected_metrics?: Json | null
-          external_account_id?: string | null
-          external_ad_id?: string | null
-          external_adset_id?: string | null
-          external_campaign_id?: string | null
-          external_source?: string | null
           id?: string
-          is_paid?: boolean | null
           posting_frequency?: string | null
           priority?: string | null
           targeting_notes?: string | null
           updated_at?: string
-          utm_campaign?: string | null
-          utm_medium?: string | null
-          utm_source?: string | null
         }
         Relationships: [
           {
@@ -3014,50 +2918,6 @@ export type Database = {
         }
         Relationships: []
       }
-      kernel_cycle_slo: {
-        Row: {
-          created_at: string
-          cycle_date: string
-          cycles_attempted: number
-          cycles_failed: number
-          cycles_succeeded: number
-          economics_actions_count: number
-          id: string
-          tenant_id: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          cycle_date: string
-          cycles_attempted?: number
-          cycles_failed?: number
-          cycles_succeeded?: number
-          economics_actions_count?: number
-          id?: string
-          tenant_id: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          cycle_date?: string
-          cycles_attempted?: number
-          cycles_failed?: number
-          cycles_succeeded?: number
-          economics_actions_count?: number
-          id?: string
-          tenant_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "kernel_cycle_slo_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       landing_pages: {
         Row: {
           campaign_id: string
@@ -3533,63 +3393,10 @@ export type Database = {
           },
         ]
       }
-      opportunity_channel_attribution: {
-        Row: {
-          channel_id: string
-          created_at: string
-          id: string
-          opportunity_id: string
-          role: string
-          tenant_id: string
-          weight: number
-        }
-        Insert: {
-          channel_id: string
-          created_at?: string
-          id?: string
-          opportunity_id: string
-          role?: string
-          tenant_id: string
-          weight?: number
-        }
-        Update: {
-          channel_id?: string
-          created_at?: string
-          id?: string
-          opportunity_id?: string
-          role?: string
-          tenant_id?: string
-          weight?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "opp_channel_attr_channel_fk"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "cmo_campaign_channels"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "opp_channel_attr_opp_fk"
-            columns: ["opportunity_id"]
-            isOneToOne: false
-            referencedRelation: "opportunities"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "opp_channel_attr_tenant_fk"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       optimization_action_results: {
         Row: {
           baseline_value: number | null
           confidence: number | null
-          context_snapshot: Json | null
           created_at: string
           delta: number | null
           delta_direction: string | null
@@ -3606,7 +3413,6 @@ export type Database = {
         Insert: {
           baseline_value?: number | null
           confidence?: number | null
-          context_snapshot?: Json | null
           created_at?: string
           delta?: number | null
           delta_direction?: string | null
@@ -3623,7 +3429,6 @@ export type Database = {
         Update: {
           baseline_value?: number | null
           confidence?: number | null
-          context_snapshot?: Json | null
           created_at?: string
           delta?: number | null
           delta_direction?: string | null
@@ -3656,8 +3461,6 @@ export type Database = {
       }
       optimization_actions: {
         Row: {
-          acknowledged_at: string | null
-          acknowledged_by: string | null
           action_id: string
           config: Json | null
           created_at: string
@@ -3670,7 +3473,6 @@ export type Database = {
           optimization_cycle_id: string
           owner_subsystem: string | null
           priority_rank: number | null
-          requires_acknowledgment: boolean | null
           status: string | null
           target_direction: string | null
           target_metric: string | null
@@ -3679,8 +3481,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          acknowledged_at?: string | null
-          acknowledged_by?: string | null
           action_id: string
           config?: Json | null
           created_at?: string
@@ -3693,7 +3493,6 @@ export type Database = {
           optimization_cycle_id: string
           owner_subsystem?: string | null
           priority_rank?: number | null
-          requires_acknowledgment?: boolean | null
           status?: string | null
           target_direction?: string | null
           target_metric?: string | null
@@ -3702,8 +3501,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          acknowledged_at?: string | null
-          acknowledged_by?: string | null
           action_id?: string
           config?: Json | null
           created_at?: string
@@ -3716,7 +3513,6 @@ export type Database = {
           optimization_cycle_id?: string
           owner_subsystem?: string | null
           priority_rank?: number | null
-          requires_acknowledgment?: boolean | null
           status?: string | null
           target_direction?: string | null
           target_metric?: string | null
@@ -5010,42 +4806,33 @@ export type Database = {
       tenants: {
         Row: {
           billing_plan: string
-          cfo_expansion_enabled: boolean
           config: Json | null
           created_at: string
           default_currency: string
           id: string
           name: string
-          revenue_os_activated_at: string | null
-          revenue_os_enabled: boolean
           slug: string
           status: string
           updated_at: string
         }
         Insert: {
           billing_plan?: string
-          cfo_expansion_enabled?: boolean
           config?: Json | null
           created_at?: string
           default_currency?: string
           id?: string
           name: string
-          revenue_os_activated_at?: string | null
-          revenue_os_enabled?: boolean
           slug: string
           status?: string
           updated_at?: string
         }
         Update: {
           billing_plan?: string
-          cfo_expansion_enabled?: boolean
           config?: Json | null
           created_at?: string
           default_currency?: string
           id?: string
           name?: string
-          revenue_os_activated_at?: string | null
-          revenue_os_enabled?: boolean
           slug?: string
           status?: string
           updated_at?: string

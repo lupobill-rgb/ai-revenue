@@ -44,28 +44,11 @@ const METRICS = [
   { id: "gross_margin_pct", label: "Margin", unit: "%", icon: <Percent className="h-4 w-4" />, format: (v: number) => `${v.toFixed(1)}%` },
 ];
 
-const PAID_METRICS = [
-  { id: "cac_paid", label: "CAC Paid", format: (v: number) => `$${v.toFixed(0)}` },
-  { id: "spend_paid_total", label: "Spend", format: (v: number) => `$${(v / 1000).toFixed(1)}k` },
-  { id: "pipeline_from_paid", label: "Pipeline (Paid)", format: (v: number) => `$${(v / 1000).toFixed(1)}k` },
-  { id: "revenue_from_paid", label: "Revenue (Paid)", format: (v: number) => `$${(v / 1000).toFixed(1)}k` },
-  { id: "roas_paid", label: "ROAS", format: (v: number) => `${v.toFixed(2)}x` },
-];
-
-interface PaidMetricData {
-  id: string;
-  label: string;
-  value: number | null;
-  format: (v: number) => string;
-}
-
 export default function LiveRevenueSpinePanel({ tenantId }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [snapshots, setSnapshots] = useState<MetricSnapshot[]>([]);
   const [selectedMetric, setSelectedMetric] = useState("pipeline_total");
   const [kpis, setKpis] = useState<KPIData[]>([]);
-  const [paidMetrics, setPaidMetrics] = useState<PaidMetricData[]>([]);
-  const [paidVsOutboundLabel, setPaidVsOutboundLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -77,13 +60,11 @@ export default function LiveRevenueSpinePanel({ tenantId }: Props) {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
-      const allMetricIds = [...METRICS.map(m => m.id), ...PAID_METRICS.map(m => m.id)];
-      
       const { data, error } = await supabase
         .from("metric_snapshots_daily")
         .select("date, metric_id, value")
         .eq("tenant_id", tenantId)
-        .in("metric_id", allMetricIds)
+        .in("metric_id", METRICS.map(m => m.id))
         .gte("date", thirtyDaysAgo.toISOString().split("T")[0])
         .order("date", { ascending: true });
 
@@ -104,35 +85,6 @@ export default function LiveRevenueSpinePanel({ tenantId }: Props) {
         });
         
         setKpis(kpiData);
-        
-        // Calculate paid metrics from latest values
-        const paidData: PaidMetricData[] = PAID_METRICS.map(metric => {
-          const metricSnapshots = data.filter(d => d.metric_id === metric.id);
-          const latest = metricSnapshots[metricSnapshots.length - 1];
-          return {
-            ...metric,
-            value: latest?.value ?? null,
-          };
-        });
-        setPaidMetrics(paidData);
-        
-        // Determine paid vs outbound label
-        const cacPaid = paidData.find(m => m.id === "cac_paid")?.value;
-        const cacBlended = kpiData.find(m => m.id === "cac_blended")?.value;
-        
-        if (cacPaid !== null && cacBlended !== null && cacPaid && cacBlended) {
-          if (cacPaid < cacBlended * 0.5) {
-            setPaidVsOutboundLabel("Paid outperforming outbound");
-          } else if (cacPaid > cacBlended * 1.5) {
-            setPaidVsOutboundLabel("Outbound outperforming paid");
-          } else {
-            setPaidVsOutboundLabel(null);
-          }
-        } else if (cacPaid === null || !cacPaid) {
-          setPaidVsOutboundLabel("Insufficient paid data");
-        } else {
-          setPaidVsOutboundLabel(null);
-        }
       }
       
       setIsLoading(false);
@@ -209,42 +161,6 @@ export default function LiveRevenueSpinePanel({ tenantId }: Props) {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Paid vs Outbound Block */}
-        {paidMetrics.some(m => m.value !== null) && (
-          <div className="p-4 rounded-lg border border-border/50 bg-gradient-to-r from-primary/5 to-transparent">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Paid vs Outbound</span>
-              </div>
-              {paidVsOutboundLabel && (
-                <Badge 
-                  variant="outline" 
-                  className={`text-xs ${
-                    paidVsOutboundLabel === "Paid outperforming outbound" 
-                      ? "text-emerald-400 border-emerald-400/30" 
-                      : paidVsOutboundLabel === "Outbound outperforming paid"
-                      ? "text-amber-400 border-amber-400/30"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {paidVsOutboundLabel}
-                </Badge>
-              )}
-            </div>
-            <div className="grid grid-cols-5 gap-3">
-              {paidMetrics.map((metric) => (
-                <div key={metric.id} className="text-center">
-                  <div className="text-xs text-muted-foreground mb-1">{metric.label}</div>
-                  <div className="text-sm font-semibold">
-                    {metric.value !== null ? metric.format(metric.value) : "—"}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* KPI Strip */}
         <div className="grid grid-cols-5 gap-3">
           {kpis.map((kpi) => {

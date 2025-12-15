@@ -100,7 +100,7 @@ interface CFOGuardrails {
 const DEFAULT_CFO_GUARDRAILS: CFOGuardrails = {
   payback_target: 12,
   payback_tolerance: 3, // Allow up to target + 3 months
-  margin_floor: 50, // 50% gross margin floor (stored as percentage in DB)
+  margin_floor: 0.50, // 50% gross margin floor
   cash_runway_threshold: 6, // 6 months minimum runway
   max_cac: null, // Optional per-segment CAC cap
   cash_risk_tolerance: 'medium',
@@ -233,7 +233,7 @@ serve(async (req) => {
 
     // 12. Persist optimization actions
     if (actions.length > 0) {
-      await persistOptimizationActions(supabase, tenant_id, cycleId, actions, inputBundle.tenantActivatedAt);
+      await persistOptimizationActions(supabase, tenant_id, cycleId, actions);
     }
 
     return new Response(JSON.stringify({
@@ -435,24 +435,14 @@ async function gatherInputBundle(supabase: any, tenantId: string, windowDays: nu
       .limit(50),
   ]);
 
-  // Merge config JSONB with direct columns for CFO expansion
-  const tenantData = tenantResult.data;
-  const mergedConfig = {
-    ...(tenantData?.config || {}),
-    cfo_expansion_enabled: tenantData?.cfo_expansion_enabled === true,
-  };
-
   return {
     metrics: metricsResult.data || [],
     revenueEvents: revenueEventsResult.data || [],
     activities: activitiesResult.data || [],
     campaigns: campaignsResult.data || [],
     activeActions: activeActionsResult.data || [],
-    tenantConfig: mergedConfig,
+    tenantConfig: tenantResult.data?.config || {},
     priorResults: priorResultsResult.data || [],
-    tenantActivatedAt: tenantData?.revenue_os_activated_at 
-      ? new Date(tenantData.revenue_os_activated_at) 
-      : null,
   };
 }
 
@@ -917,62 +907,29 @@ async function persistOptimizationCycle(
   return data.id;
 }
 
-// Actions that require human acknowledgment in first 30 days
-const HIGH_RISK_ACTION_TYPES = ['experiment', 'config_change'];
-const HIGH_RISK_SUBSYSTEMS = ['pricing', 'campaigns'];
-
-function requiresAcknowledgment(action: Action, tenantActivatedAt: Date | null): boolean {
-  // Always require acknowledgment for pricing changes
-  if (action.owner_subsystem === 'pricing') return true;
-  
-  // Require acknowledgment if action increases spend
-  if (action.proposed_change?.parameters?.budget_increase_pct) return true;
-  
-  // Require acknowledgment for experiments with spend
-  if (action.type === 'experiment' && action.guardrails?.max_additional_spend) return true;
-  
-  // Within first 30 days: require acknowledgment for high-risk actions
-  if (tenantActivatedAt) {
-    const daysSinceActivation = (Date.now() - tenantActivatedAt.getTime()) / (1000 * 60 * 60 * 24);
-    if (daysSinceActivation <= 30) {
-      return HIGH_RISK_ACTION_TYPES.includes(action.type) && 
-             HIGH_RISK_SUBSYSTEMS.includes(action.owner_subsystem);
-    }
-  }
-  
-  return false;
-}
-
 async function persistOptimizationActions(
   supabase: any,
   tenantId: string,
   cycleId: string,
-  actions: Action[],
-  tenantActivatedAt: Date | null
+  actions: Action[]
 ): Promise<void> {
-  const rows = actions.map(action => {
-    const needsAck = requiresAcknowledgment(action, tenantActivatedAt);
-    return {
-      tenant_id: tenantId,
-      optimization_cycle_id: cycleId,
-      action_id: action.action_id,
-      priority_rank: action.priority_rank,
-      owner_subsystem: action.owner_subsystem,
-      lens_emphasis: action.lens_emphasis,
-      type: action.type,
-      target_metric: action.target_metric,
-      target_direction: action.target_direction,
-      hypothesis: action.hypothesis,
-      config: action.proposed_change,
-      guardrails: action.guardrails,
-      status: needsAck ? 'pending_acknowledgment' : 'pending',
-      requires_acknowledgment: needsAck,
-      expected_observation_window_days: action.expected_observation_window_days,
-      notes_for_humans: needsAck 
-        ? `${action.notes_for_humans} [REQUIRES HUMAN ACKNOWLEDGMENT]`
-        : action.notes_for_humans,
-    };
-  });
+  const rows = actions.map(action => ({
+    tenant_id: tenantId,
+    optimization_cycle_id: cycleId,
+    action_id: action.action_id,
+    priority_rank: action.priority_rank,
+    owner_subsystem: action.owner_subsystem,
+    lens_emphasis: action.lens_emphasis,
+    type: action.type,
+    target_metric: action.target_metric,
+    target_direction: action.target_direction,
+    hypothesis: action.hypothesis,
+    config: action.proposed_change,
+    guardrails: action.guardrails,
+    status: 'pending',
+    expected_observation_window_days: action.expected_observation_window_days,
+    notes_for_humans: action.notes_for_humans,
+  }));
 
   const { error } = await supabase
     .from('optimization_actions')

@@ -117,26 +117,25 @@ serve(async (req) => {
 <html>
 <head>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.8; color: #333; max-width: 550px; margin: 0 auto; padding: 20px; }
-    h1 { color: #1DA4FF; font-size: 22px; margin-bottom: 20px; }
-    p { font-size: 16px; margin-bottom: 16px; }
-    .updates { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 24px 0; }
-    .updates p { margin-bottom: 12px; }
-    .footer { font-size: 13px; color: #888; margin-top: 32px; border-top: 1px solid #eee; padding-top: 20px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+    h1 { color: #1DA4FF; font-size: 24px; margin-bottom: 16px; }
+    .content { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    .footer { font-size: 12px; color: #666; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
     a { color: #1DA4FF; }
   </style>
 </head>
 <body>
-  <h1>What's New This Week</h1>
-  <p>Hi,</p>
-  <p>Here's a quick look at what we've been working on for ${tenant.name}:</p>
-  <div class="updates">
-    ${releaseNote?.body_md ?? "<p>We made things faster and more reliable. No big changes — just making sure everything works well for you.</p>"}
+  <h1>Weekly UbiGrowth Update</h1>
+  <p>Hi there,</p>
+  <p>Here's what's new in your UbiGrowth Revenue OS this week for <strong>${tenant.name}</strong>:</p>
+  <div class="content">
+    ${releaseNote?.body_md ?? "<p>No major changes this week – just reliability and performance improvements to keep your campaigns running smoothly.</p>"}
   </div>
-  <p>Have questions? Just reply to this email.</p>
+  <p>Questions? Reply to this email or reach out to our team.</p>
   <div class="footer">
-    <p>You signed up for these updates. <a href="https://app.ubigrowth.com/settings">Change this</a> anytime.</p>
-    <p>© ${new Date().getFullYear()} UbiGrowth</p>
+    <p>You're receiving this because you opted in to product updates. 
+    <a href="https://app.ubigrowth.com/settings">Update your preferences</a> anytime.</p>
+    <p>© ${new Date().getFullYear()} UbiGrowth. All rights reserved.</p>
   </div>
 </body>
 </html>`;

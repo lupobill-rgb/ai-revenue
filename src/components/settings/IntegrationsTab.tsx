@@ -8,14 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
-import { Mail, Linkedin, Calendar, Globe, Webhook, Loader2, CheckCircle2, XCircle, Copy, ExternalLink, DollarSign, TrendingUp } from "lucide-react";
-
-interface PaidChannelConnection {
-  provider: "google_ads" | "meta_ads" | "linkedin_ads";
-  connected: boolean;
-  lastSync: string | null;
-  accountId: string | null;
-}
+import { Mail, Linkedin, Calendar, Globe, Webhook, Loader2, CheckCircle2, XCircle, Copy, ExternalLink } from "lucide-react";
 
 interface CustomerIntegration {
   id?: string;
@@ -462,87 +455,6 @@ export function IntegrationsTab() {
               Add a CNAME record pointing to campaigns.ubigrowth.ai
             </p>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Paid Channels */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-primary" />
-            Paid Channels
-          </CardTitle>
-          <CardDescription>
-            Connect your ad platforms so the OS can read performance data
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Google Ads */}
-          <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-secondary/20">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-red-500/10">
-                <TrendingUp className="h-5 w-5 text-red-500" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Google Ads</p>
-                <p className="text-xs text-muted-foreground">Import spend, leads, and ROAS data</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-muted-foreground">
-                Not Connected
-              </Badge>
-              <Button variant="outline" size="sm" disabled>
-                Connect
-              </Button>
-            </div>
-          </div>
-
-          {/* Meta Ads */}
-          <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-secondary/20">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <TrendingUp className="h-5 w-5 text-blue-500" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Meta Ads</p>
-                <p className="text-xs text-muted-foreground">Import spend, leads, and ROAS data</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-muted-foreground">
-                Not Connected
-              </Badge>
-              <Button variant="outline" size="sm" disabled>
-                Connect
-              </Button>
-            </div>
-          </div>
-
-          {/* LinkedIn Ads */}
-          <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-secondary/20">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-[#0A66C2]/10">
-                <TrendingUp className="h-5 w-5 text-[#0A66C2]" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">LinkedIn Ads</p>
-                <p className="text-xs text-muted-foreground">Import spend, leads, and ROAS data</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-muted-foreground">
-                Not Connected
-              </Badge>
-              <Button variant="outline" size="sm" disabled>
-                Connect
-              </Button>
-            </div>
-          </div>
-
-          <p className="text-xs text-muted-foreground text-center pt-2">
-            Once connected, the OS will automatically read your ad data and optimize decisions based on paid channel performance.
-          </p>
         </CardContent>
       </Card>
 

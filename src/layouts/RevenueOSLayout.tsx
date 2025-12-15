@@ -1,5 +1,5 @@
-import { Outlet, useLocation, useNavigate, Navigate } from "react-router-dom";
-import { Target, Activity, Zap, Loader2 } from "lucide-react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Target, Activity, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Sidebar,
@@ -22,7 +22,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import NotificationBell from "@/components/NotificationBell";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { useRevenueOSEnabled } from "@/hooks/useRevenueOSEnabled";
 
 const navItems = [
   { id: "targets", label: "Targets & Guardrails", path: "/revenue-os/targets", icon: Target },
@@ -37,7 +36,6 @@ export default function RevenueOSLayout() {
   const { toast } = useToast();
   const [userName, setUserName] = useState<string>("");
   const [userInitials, setUserInitials] = useState<string>("U");
-  const { revenue_os_enabled, loading: flagsLoading } = useRevenueOSEnabled();
 
   useEffect(() => {
     if (user) {
@@ -47,37 +45,6 @@ export default function RevenueOSLayout() {
       setUserInitials(initials);
     }
   }, [user]);
-
-  // If user is not authenticated, redirect to login immediately
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // Check feature flag - only after confirming user is logged in
-  if (flagsLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  // If authenticated but feature not enabled, show message (not redirect to prevent loop)
-  if (!revenue_os_enabled) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center max-w-md p-6">
-          <h1 className="text-2xl font-bold text-foreground mb-2">Revenue OS Not Enabled</h1>
-          <p className="text-muted-foreground mb-4">
-            Revenue OS is not enabled for your account. Please contact your administrator to enable this feature.
-          </p>
-          <Button onClick={() => navigate("/login")} variant="outline">
-            Sign Out
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   const handleLogout = async () => {
     await signOut();

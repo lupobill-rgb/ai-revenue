@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { 
   Zap, 
   Play, 
@@ -13,14 +12,10 @@ import {
   TrendingDown,
   Minus,
   Target,
-  Shield,
-  DollarSign,
-  UserCheck,
-  Loader2
+  Shield
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format, addDays, formatDistanceToNow } from "date-fns";
-import { toast } from "sonner";
 
 interface OptimizationAction {
   id: string;
@@ -30,8 +25,6 @@ interface OptimizationAction {
   type: string;
   target_metric: string;
   status: string;
-  requires_acknowledgment?: boolean;
-  acknowledged_at?: string;
   config: {
     proposed_change?: {
       description?: string;
@@ -42,8 +35,6 @@ interface OptimizationAction {
     };
     notes_for_humans?: string;
   };
-  notes_for_humans?: string;
-  hypothesis?: string;
   expected_observation_window_days: number;
   created_at: string;
   updated_at?: string;
@@ -133,37 +124,11 @@ export default function OSActionsPanel({ tenantId }: Props) {
     };
   }, [tenantId]);
 
-  const [acknowledging, setAcknowledging] = useState<string | null>(null);
-
-  const handleAcknowledge = async (actionId: string) => {
-    setAcknowledging(actionId);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      const { error } = await supabase.functions.invoke("revenue-os-action-executor", {
-        body: {
-          operation: "acknowledge_action",
-          action_id: actionId,
-          user_id: user?.id,
-        },
-      });
-
-      if (error) throw error;
-      toast.success("Action acknowledged - will execute in next cycle");
-    } catch (err) {
-      toast.error("Failed to acknowledge action");
-      console.error(err);
-    } finally {
-      setAcknowledging(null);
-    }
-  };
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed": return <CheckCircle2 className="h-4 w-4" />;
       case "executing": return <Play className="h-4 w-4" />;
       case "pending": return <Clock className="h-4 w-4" />;
-      case "pending_acknowledgment": return <UserCheck className="h-4 w-4" />;
       case "failed": return <XCircle className="h-4 w-4" />;
       case "aborted": return <XCircle className="h-4 w-4" />;
       default: return <AlertTriangle className="h-4 w-4" />;
@@ -175,7 +140,6 @@ export default function OSActionsPanel({ tenantId }: Props) {
       case "completed": return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
       case "executing": return "bg-primary/10 text-primary border-primary/20";
       case "pending": return "bg-amber-500/10 text-amber-400 border-amber-500/20";
-      case "pending_acknowledgment": return "bg-orange-500/10 text-orange-400 border-orange-500/20";
       case "failed": return "bg-destructive/10 text-destructive border-destructive/20";
       case "aborted": return "bg-muted text-muted-foreground border-muted";
       default: return "bg-muted text-muted-foreground";
@@ -287,32 +251,6 @@ export default function OSActionsPanel({ tenantId }: Props) {
                   </div>
 
                   {/* Status-specific content */}
-                  {action.status === "pending_acknowledgment" && (
-                    <div className="mt-2 p-3 rounded bg-orange-500/5 border border-orange-500/20">
-                      <p className="text-xs text-orange-400/90 mb-2">
-                        <UserCheck className="h-3 w-3 inline mr-1" />
-                        <strong>Human Acknowledgment Required</strong> — This action affects spend or pricing
-                      </p>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        {action.hypothesis || action.notes_for_humans}
-                      </p>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
-                        onClick={() => handleAcknowledge(action.id)}
-                        disabled={acknowledging === action.id}
-                      >
-                        {acknowledging === action.id ? (
-                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="h-3 w-3 mr-1" />
-                        )}
-                        Acknowledge & Allow Execution
-                      </Button>
-                    </div>
-                  )}
-
                   {action.status === "pending" && (
                     <p className="text-xs text-amber-400/80 italic">
                       Scheduled by OS — waiting for execution slot
@@ -350,19 +288,6 @@ export default function OSActionsPanel({ tenantId }: Props) {
                     <p className="text-xs text-muted-foreground italic mt-2">
                       "{action.config.notes_for_humans}"
                     </p>
-                  )}
-
-                  {/* Paid channel hint - show if action involves paid metrics */}
-                  {(action.target_metric?.includes("paid") || 
-                    action.owner_subsystem === "campaigns" ||
-                    action.action_id?.includes("budget") ||
-                    action.action_id?.includes("channel")) && (
-                    <div className="mt-2 p-2 rounded bg-primary/5 border border-primary/10">
-                      <p className="text-xs text-primary/80">
-                        <DollarSign className="h-3 w-3 inline mr-1" />
-                        Paid channel context available in Revenue Spine
-                      </p>
-                    </div>
                   )}
 
                   {/* Timestamp */}
