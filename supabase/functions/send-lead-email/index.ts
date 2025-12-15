@@ -132,12 +132,17 @@ serve(async (req) => {
       }
 
       const notAuthorized =
-        response.status === 403 &&
-        errorText.toLowerCase().includes("not authorized to send emails from");
+        (response.status === 403 || errorText.toLowerCase().includes("not authorized")) &&
+        (errorText.toLowerCase().includes("not authorized to send emails from") ||
+          errorText.toLowerCase().includes("not authorized"));
+
+      console.warn(
+        `Resend send attempt failed: status=${response.status} from=${fromAddress} msg=${errorText}`
+      );
 
       if (notAuthorized) {
         console.warn(
-          `Resend sender not authorized for from=${fromAddress}. Falling back to onboarding@resend.dev. Original error: ${errorText}`
+          `Sender domain not authorized for from=${fromAddress}. Falling back to onboarding@resend.dev.`
         );
         fromAddress = "onboarding@resend.dev";
         response = await sendEmail(fromAddress);
