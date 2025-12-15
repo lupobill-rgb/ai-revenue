@@ -53,9 +53,10 @@ serve(async (req) => {
     const tenantId = workspace?.owner_id;
 
     // Fetch email settings from ai_settings_email
-    let fromAddress = "steve@brainsurgeryteam.com";
-    let replyToAddress = "sblaising@brainsurgeryinc.com";
-    let senderName = "Stephen M. Blaising";
+    // Default to Resend sandbox for testing if no settings configured
+    let fromAddress = "onboarding@resend.dev";
+    let replyToAddress = "noreply@resend.dev";
+    let senderName = "UbiGrowth";
 
     if (tenantId) {
       const { data: emailSettings } = await supabaseClient
