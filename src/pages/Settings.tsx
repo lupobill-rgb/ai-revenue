@@ -16,6 +16,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import ModuleToggles from "@/components/ModuleToggles";
 import ChannelToggles from "@/components/ChannelToggles";
 import TeamManagement from "@/components/TeamManagement";
+import { IntegrationsTab } from "@/components/settings/IntegrationsTab";
 
 interface SocialIntegration {
   id: string;
@@ -490,27 +491,10 @@ export default function Settings() {
 
               {/* Integrations Tab */}
               <TabsContent value="integrations" className="space-y-6">
-                <Card className="bg-primary/5 border-primary/20">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Send className="h-5 w-5 text-primary" />
-                      Outbound Integrations
-                    </CardTitle>
-                    <CardDescription>
-                      Configure email, LinkedIn, calendar, and CRM settings for outbound campaigns
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground mb-4">
-                      Set up your email sender details, LinkedIn profile, booking URL, and CRM webhooks.
-                    </p>
-                    <Button onClick={() => navigate("/settings/integrations")}>
-                      <Send className="h-4 w-4 mr-2" />
-                      Configure Outbound Integrations
-                    </Button>
-                  </CardContent>
-                </Card>
+                {/* Email, LinkedIn, Calendar, CRM, Domain Settings */}
+                <IntegrationsTab />
 
+                {/* Stripe Billing */}
                 <Card className="bg-accent/5 border-accent/20">
                   <CardHeader>
                     <div className="flex items-center gap-3">
@@ -564,12 +548,13 @@ export default function Settings() {
                   </CardContent>
                 </Card>
 
+                {/* Social Platform Connection Status */}
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Connection Status</CardTitle>
+                    <CardTitle className="text-lg">Social Platform Connections</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-3 mb-4">
                       {[
                         { platform: "instagram", icon: Instagram, color: "text-pink-500" },
                         { platform: "linkedin", icon: Linkedin, color: "text-blue-600" },
