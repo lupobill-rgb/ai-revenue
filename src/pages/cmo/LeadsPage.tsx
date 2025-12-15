@@ -60,12 +60,15 @@ function LeadsPage() {
         <h1 className="text-2xl font-semibold text-foreground">Leads</h1>
         <div className="flex items-center gap-3">
           {segments.length > 0 && (
-            <Select value={segmentFilter || ""} onValueChange={(v) => setSegmentFilter(v === "" ? null : v)}>
+            <Select
+              value={segmentFilter ?? "__all__"}
+              onValueChange={(v) => setSegmentFilter(v === "__all__" ? null : v)}
+            >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="All segments" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All segments</SelectItem>
+                <SelectItem value="__all__">All segments</SelectItem>
                 {segments.map((seg) => (
                   <SelectItem key={seg.id} value={seg.code}>
                     <SegmentBadge code={seg.code} name={seg.name} color={seg.color} size="sm" />
