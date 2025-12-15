@@ -180,6 +180,8 @@ export function IntegrationsTab() {
     );
   }
 
+  const [emailProvider, setEmailProvider] = useState("");
+
   return (
     <div className="space-y-6">
       {/* Email Settings */}
@@ -190,7 +192,7 @@ export function IntegrationsTab() {
             Email Settings
           </CardTitle>
           <CardDescription>
-            Configure your email sending settings for outbound campaigns
+            Configure your email sending settings for outbound campaigns. Send emails from your own domain for better deliverability.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -236,8 +238,137 @@ export function IntegrationsTab() {
               onChange={(e) => setEmailReplyTo(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Replies to your outbound emails will be sent to this address
+              Replies to your outbound emails will be sent directly to this address
             </p>
+          </div>
+
+          <Separator className="my-4" />
+
+          {/* Email Provider Setup */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Email Provider Setup</Label>
+              <p className="text-sm text-muted-foreground">
+                To send emails from your own domain, you'll need to verify your domain with our email service (Resend). Select your email provider below for specific setup instructions.
+              </p>
+            </div>
+
+            <Select value={emailProvider} onValueChange={setEmailProvider}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select your email provider for setup instructions" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="gmail">Gmail / Google Workspace</SelectItem>
+                <SelectItem value="outlook">Outlook.com</SelectItem>
+                <SelectItem value="microsoft365">Microsoft 365 / Exchange</SelectItem>
+                <SelectItem value="other">Other Provider</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {emailProvider === "gmail" && (
+              <div className="space-y-3 bg-blue-500/10 p-4 rounded-lg border border-blue-500/20">
+                <div className="flex items-center gap-2">
+                  <img src="https://www.google.com/favicon.ico" alt="Google" className="h-4 w-4" />
+                  <Label className="text-sm font-medium">Gmail / Google Workspace Setup</Label>
+                </div>
+                <div className="text-sm text-muted-foreground space-y-2">
+                  <p><strong>Step 1: Add DNS Records to Google Domains or your DNS provider</strong></p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
+                    <li>Go to <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Resend Domains <ExternalLink className="h-3 w-3" /></a> and add your domain</li>
+                    <li>Copy the DNS records (SPF, DKIM, DMARC) provided by Resend</li>
+                    <li>Go to your <a href="https://domains.google.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Google Domains <ExternalLink className="h-3 w-3" /></a> or DNS provider</li>
+                    <li>Add the TXT records for SPF and DKIM authentication</li>
+                    <li>Add the CNAME record for tracking (optional but recommended)</li>
+                    <li>Wait 24-48 hours for DNS propagation</li>
+                  </ol>
+                  <p className="mt-2"><strong>Step 2: Configure Reply Handling</strong></p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
+                    <li>Set your Reply-To address above to your Gmail address</li>
+                    <li>Replies will arrive directly in your Gmail inbox</li>
+                    <li>Configure a <a href="https://support.google.com/mail/answer/6579?hl=en" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Gmail filter</a> to label/organize campaign replies</li>
+                  </ol>
+                </div>
+              </div>
+            )}
+
+            {emailProvider === "outlook" && (
+              <div className="space-y-3 bg-blue-500/10 p-4 rounded-lg border border-blue-500/20">
+                <div className="flex items-center gap-2">
+                  <img src="https://outlook.live.com/favicon.ico" alt="Outlook" className="h-4 w-4" />
+                  <Label className="text-sm font-medium">Outlook.com Setup</Label>
+                </div>
+                <div className="text-sm text-muted-foreground space-y-2">
+                  <p><strong>Step 1: Add DNS Records</strong></p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
+                    <li>Go to <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Resend Domains <ExternalLink className="h-3 w-3" /></a> and add your domain</li>
+                    <li>Copy the DNS records (SPF, DKIM) provided by Resend</li>
+                    <li>Go to your domain registrar's DNS settings</li>
+                    <li>Add the TXT records for SPF and DKIM authentication</li>
+                    <li>Wait 24-48 hours for DNS propagation</li>
+                  </ol>
+                  <p className="mt-2"><strong>Step 2: Configure Reply Handling</strong></p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
+                    <li>Set your Reply-To address above to your Outlook email</li>
+                    <li>Replies will arrive directly in your Outlook inbox</li>
+                    <li>Create <a href="https://support.microsoft.com/en-us/office/manage-email-messages-by-using-rules-c24f5dea-9465-4df4-ad17-a50704d66c59" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Outlook rules</a> to organize campaign replies</li>
+                  </ol>
+                </div>
+              </div>
+            )}
+
+            {emailProvider === "microsoft365" && (
+              <div className="space-y-3 bg-blue-500/10 p-4 rounded-lg border border-blue-500/20">
+                <div className="flex items-center gap-2">
+                  <img src="https://www.microsoft.com/favicon.ico" alt="Microsoft" className="h-4 w-4" />
+                  <Label className="text-sm font-medium">Microsoft 365 / Exchange Setup</Label>
+                </div>
+                <div className="text-sm text-muted-foreground space-y-2">
+                  <p><strong>Step 1: Add DNS Records in Microsoft 365 Admin Center</strong></p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
+                    <li>Go to <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Resend Domains <ExternalLink className="h-3 w-3" /></a> and add your domain</li>
+                    <li>Copy the DNS records (SPF, DKIM) provided</li>
+                    <li>Go to <a href="https://admin.microsoft.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Microsoft 365 Admin Center <ExternalLink className="h-3 w-3" /></a></li>
+                    <li>Navigate to Settings → Domains → select your domain → DNS records</li>
+                    <li>Add the TXT records for SPF authentication</li>
+                    <li>Add the CNAME records for DKIM</li>
+                    <li>Wait 24-48 hours for DNS propagation</li>
+                  </ol>
+                  <p className="mt-2"><strong>Important for Exchange:</strong></p>
+                  <ul className="list-disc list-inside space-y-1 ml-2 text-xs">
+                    <li>If you have existing SPF records, merge them with Resend's SPF record</li>
+                    <li>Example: <code className="bg-muted px-1 rounded">v=spf1 include:spf.protection.outlook.com include:amazonses.com ~all</code></li>
+                  </ul>
+                  <p className="mt-2"><strong>Step 2: Configure Reply Handling</strong></p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
+                    <li>Set your Reply-To address above to your M365 email</li>
+                    <li>Replies will arrive in your Exchange/Outlook inbox</li>
+                    <li>Set up <a href="https://support.microsoft.com/en-us/office/manage-email-messages-by-using-rules-c24f5dea-9465-4df4-ad17-a50704d66c59" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">mail flow rules</a> in Exchange Admin Center for team distribution</li>
+                  </ol>
+                </div>
+              </div>
+            )}
+
+            {emailProvider === "other" && (
+              <div className="space-y-3 bg-muted/50 p-4 rounded-lg border">
+                <Label className="text-sm font-medium">General Domain Setup</Label>
+                <div className="text-sm text-muted-foreground space-y-2">
+                  <p><strong>To send from your own domain:</strong></p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
+                    <li>Go to <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Resend Domains <ExternalLink className="h-3 w-3" /></a> and add your domain</li>
+                    <li>Add the provided DNS records to your domain registrar:
+                      <ul className="list-disc list-inside ml-4 mt-1">
+                        <li><strong>SPF Record</strong> (TXT): Authorizes Resend to send on your behalf</li>
+                        <li><strong>DKIM Record</strong> (TXT): Adds digital signature for authenticity</li>
+                        <li><strong>DMARC Record</strong> (TXT): Optional but recommended for deliverability</li>
+                      </ul>
+                    </li>
+                    <li>Wait 24-48 hours for DNS propagation</li>
+                    <li>Verify your domain in Resend dashboard</li>
+                    <li>Enter your verified domain email in the "From Address" field above</li>
+                  </ol>
+                </div>
+              </div>
+            )}
           </div>
 
           <Separator className="my-4" />
@@ -246,11 +377,11 @@ export function IntegrationsTab() {
           <div className="space-y-3 bg-muted/50 p-4 rounded-lg border">
             <div className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-primary" />
-              <Label className="text-sm font-medium">Email Reply Notifications</Label>
-              <Badge variant="outline" className="text-xs">Resend Inbound</Badge>
+              <Label className="text-sm font-medium">Email Reply Tracking (Advanced)</Label>
+              <Badge variant="outline" className="text-xs">Optional</Badge>
             </div>
             <p className="text-sm text-muted-foreground">
-              To receive notifications when prospects reply to your emails, configure Resend Inbound to send webhooks to:
+              For automatic reply tracking in your CRM, configure Resend Inbound webhooks:
             </p>
             <div className="flex items-center gap-2">
               <Input
@@ -278,9 +409,8 @@ export function IntegrationsTab() {
                 <li>Go to your <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Resend Dashboard <ExternalLink className="h-3 w-3" /></a></li>
                 <li>Navigate to <strong>Inbound</strong> → <strong>Webhooks</strong></li>
                 <li>Add the webhook URL above</li>
-                <li>Configure to receive emails for your inbound domain</li>
+                <li>Configure MX records to route replies through Resend</li>
               </ol>
-              <p className="mt-2">When replies come in, you'll receive a notification at your Reply-To address above, and the reply will be logged in your CRM.</p>
             </div>
           </div>
         </CardContent>
