@@ -43,19 +43,47 @@ serve(async (req) => {
       throw new Error("Lead has no email address");
     }
 
-    // Fetch business profile to get sender name
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    let senderName = "Marketing Team";
-    
-    if (user) {
-      const { data: profile } = await supabaseClient
-        .from("business_profiles")
-        .select("business_name")
-        .eq("user_id", user.id)
+    // Get tenant_id from workspace
+    const { data: workspace } = await supabaseClient
+      .from("workspaces")
+      .select("owner_id")
+      .eq("id", lead.workspace_id)
+      .single();
+
+    const tenantId = workspace?.owner_id;
+
+    // Fetch email settings from ai_settings_email
+    let fromAddress = "steve@brainsurgeryteam.com";
+    let replyToAddress = "sblaising@brainsurgeryinc.com";
+    let senderName = "Stephen M. Blaising";
+
+    if (tenantId) {
+      const { data: emailSettings } = await supabaseClient
+        .from("ai_settings_email")
+        .select("from_address, reply_to_address, sender_name")
+        .eq("tenant_id", tenantId)
         .maybeSingle();
-      
-      if (profile?.business_name) {
-        senderName = profile.business_name;
+
+      if (emailSettings) {
+        if (emailSettings.from_address) fromAddress = emailSettings.from_address;
+        if (emailSettings.reply_to_address) replyToAddress = emailSettings.reply_to_address;
+        if (emailSettings.sender_name) senderName = emailSettings.sender_name;
+      }
+    }
+
+    // Fallback: Fetch business profile for sender name if not in email settings
+    if (!senderName || senderName === "Stephen M. Blaising") {
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabaseClient
+          .from("business_profiles")
+          .select("business_name")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        
+        if (profile?.business_name) {
+          senderName = profile.business_name;
+        }
       }
     }
 
@@ -72,8 +100,8 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: `${senderName} <steve@brainsurgeryteam.com>`,
-        reply_to: "sblaising@brainsurgeryinc.com",
+        from: `${senderName} <${fromAddress}>`,
+        reply_to: replyToAddress,
         to: [lead.email],
         subject: subject,
         html: body,
@@ -95,6 +123,7 @@ serve(async (req) => {
     const emailResult = await response.json();
 
     // Log activity
+    const { data: { user } } = await supabaseClient.auth.getUser();
     await supabaseClient.from("lead_activities").insert({
       lead_id: leadId,
       activity_type: "email_sent",
@@ -123,7 +152,7 @@ serve(async (req) => {
         .eq("id", leadId);
     }
 
-    console.log(`Email sent to ${lead.email} from ${senderName}`);
+    console.log(`Email sent to ${lead.email} from ${senderName} <${fromAddress}>`);
 
     return new Response(
       JSON.stringify({
