@@ -42,8 +42,8 @@ export function SegmentSelector({ value, onValueChange, placeholder = "Select se
 
   return (
     <Select 
-      value={value || ""} 
-      onValueChange={(v) => onValueChange(v === "" ? null : v)}
+      value={value || "__none__"} 
+      onValueChange={(v) => onValueChange(v === "__none__" ? null : v)}
     >
       <SelectTrigger className="w-full">
         <SelectValue placeholder={placeholder}>
@@ -58,7 +58,7 @@ export function SegmentSelector({ value, onValueChange, placeholder = "Select se
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="">
+        <SelectItem value="__none__">
           <span className="text-muted-foreground">No segment</span>
         </SelectItem>
         {segments.map((segment) => (
