@@ -350,6 +350,10 @@ const AssetCatalog = () => {
                                 className="w-full h-full object-cover"
                               />
                             )
+                          ) : asset.type === "email" ? (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+                              <Mail className="w-16 h-16 text-primary/40" />
+                            </div>
                           ) : (
                             <img 
                               src={getAssetPlaceholder(asset.type)} 
