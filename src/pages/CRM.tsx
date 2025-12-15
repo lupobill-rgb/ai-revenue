@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Search, Filter, Mail, Phone, Building, User, Calendar as CalendarIcon, PhoneCall, Loader2, LayoutGrid, List, BarChart3, Download, Building2, ChevronDown, ExternalLink } from "lucide-react";
+import { Plus, Upload, Search, Filter, Mail, Phone, Building, User, Calendar as CalendarIcon, PhoneCall, Loader2, LayoutGrid, List, BarChart3, Download, Building2, ChevronDown, ExternalLink, Tags } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
@@ -26,6 +26,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast as sonnerToast } from "sonner";
 import WorkspaceSelector from "@/components/WorkspaceSelector";
+import { useTenantSegments } from "@/hooks/useTenantSegments";
+import { SegmentBadge } from "@/components/crm/SegmentBadge";
 
 interface Lead {
   id: string;
@@ -42,6 +44,7 @@ interface Lead {
   assigned_to?: string;
   created_at: string;
   tags?: string[];
+  segment_code?: string;
 }
 
 interface VapiAssistant {
@@ -58,6 +61,7 @@ interface VapiPhoneNumber {
 const CRM = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { segments } = useTenantSegments();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [workspaceValidated, setWorkspaceValidated] = useState(false);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -105,7 +109,11 @@ const CRM = () => {
     vertical: "",
     source: "manual",
     notes: "",
+    segment_code: "",
   });
+  
+  // Import segment selection
+  const [importSegmentCode, setImportSegmentCode] = useState("");
 
   useEffect(() => {
     const validateWorkspace = async () => {
@@ -388,6 +396,7 @@ const CRM = () => {
         vertical: "",
         source: "manual",
         notes: "",
+        segment_code: "",
       });
       fetchLeads();
     } catch (error) {
@@ -499,6 +508,7 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
         ...lead,
         created_by: user.user?.id,
         workspace_id: validWorkspaceId,
+        segment_code: importSegmentCode || null,
       }));
 
       const { error: insertError } = await supabase.from("leads").insert(leadsWithMetadata);
@@ -521,6 +531,7 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
       }
 
       setShowImportDialog(false);
+      setImportSegmentCode("");
       fetchLeads();
     } catch (error) {
       console.error("Error importing leads:", error);
@@ -701,6 +712,33 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
+                    {segments.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          <Tags className="h-4 w-4" />
+                          Assign Segment to All Imported Leads
+                        </Label>
+                        <Select value={importSegmentCode} onValueChange={setImportSegmentCode}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select segment (optional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">No segment</SelectItem>
+                            {segments.map((seg) => (
+                              <SelectItem key={seg.code} value={seg.code}>
+                                <div className="flex items-center gap-2">
+                                  <div 
+                                    className="w-2 h-2 rounded-full" 
+                                    style={{ backgroundColor: seg.color }}
+                                  />
+                                  {seg.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <Button variant="outline" size="sm" onClick={downloadCSVTemplate} className="w-full">
                       <Download className="mr-2 h-4 w-4" />
                       Download Sample CSV
@@ -971,6 +1009,38 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                         </SelectContent>
                       </Select>
                     </div>
+                    {segments.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          <Tags className="h-4 w-4 text-primary" />
+                          Segment
+                        </Label>
+                        <Select
+                          value={newLead.segment_code}
+                          onValueChange={(value) =>
+                            setNewLead({ ...newLead, segment_code: value })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select segment" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">No segment</SelectItem>
+                            {segments.map((seg) => (
+                              <SelectItem key={seg.code} value={seg.code}>
+                                <div className="flex items-center gap-2">
+                                  <div 
+                                    className="w-2 h-2 rounded-full" 
+                                    style={{ backgroundColor: seg.color }}
+                                  />
+                                  {seg.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label htmlFor="notes">Notes</Label>
                       <Textarea
@@ -1163,6 +1233,9 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                           Status
                         </th>
                         <th className="pb-3 text-left text-sm font-medium text-muted-foreground">
+                          Segment
+                        </th>
+                        <th className="pb-3 text-left text-sm font-medium text-muted-foreground">
                           Source
                         </th>
                         <th className="pb-3 text-center text-sm font-medium text-muted-foreground">
@@ -1226,6 +1299,20 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                             >
                               {lead.status}
                             </Badge>
+                          </td>
+                          <td className="py-4">
+                            {lead.segment_code ? (
+                              (() => {
+                                const seg = segments.find(s => s.code === lead.segment_code);
+                                return seg ? (
+                                  <SegmentBadge code={seg.code} name={seg.name} color={seg.color} size="sm" />
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">{lead.segment_code}</span>
+                                );
+                              })()
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
                           </td>
                           <td className="py-4 text-sm text-muted-foreground capitalize">
                             {lead.source.replace("_", " ")}
