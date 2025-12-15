@@ -167,17 +167,24 @@ serve(async (req) => {
 
     // Log activity
     const { data: { user } } = await supabaseClient.auth.getUser();
-    await supabaseClient.from("lead_activities").insert({
+    const { error: activityError } = await supabaseClient.from("lead_activities").insert({
       lead_id: leadId,
+      workspace_id: lead.workspace_id,
       activity_type: "email_sent",
       description: `Outreach email sent: ${subject}`,
       created_by: user?.id,
-      metadata: { 
-        emailId: emailResult.id, 
-        subject, 
-        templateId: templateId || "custom" 
+      metadata: {
+        emailId: emailResult.id,
+        subject,
+        templateId: templateId || "custom",
+        from: `${senderName} <${fromAddress}>`,
+        to: lead.email,
       },
     });
+
+    if (activityError) {
+      console.error("Failed to log lead_activities email_sent:", activityError);
+    }
 
     // Update lead status if new
     if (lead.status === "new") {
