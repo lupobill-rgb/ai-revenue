@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { GripVertical, Phone, Mail, Building, Star } from "lucide-react";
+import { useTenantSegments } from "@/hooks/useTenantSegments";
+import { SegmentBadge } from "./SegmentBadge";
 
 interface Lead {
   id: string;
@@ -19,6 +21,7 @@ interface Lead {
   source: string;
   vertical?: string;
   created_at: string;
+  segment_code?: string;
 }
 
 interface LeadPipelineProps {
@@ -39,6 +42,7 @@ const PIPELINE_STAGES = [
 export default function LeadPipeline({ leads, workspaceId, onLeadClick, onLeadUpdate }: LeadPipelineProps) {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const { getSegmentByCode } = useTenantSegments();
 
   const getLeadsByStage = (stage: string) => {
     const stageMap: Record<string, string[]> = {
@@ -163,16 +167,22 @@ export default function LeadPipeline({ leads, workspaceId, onLeadClick, onLeadUp
                     <div className="flex items-start gap-2">
                       <GripVertical className="h-4 w-4 text-muted-foreground mt-1 cursor-grab" />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-start gap-2">
                           <Avatar className="h-6 w-6">
                             <AvatarFallback className="text-xs">
                               {lead.first_name[0]}
                               {lead.last_name[0]}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="font-medium text-sm truncate">
-                            {lead.first_name} {lead.last_name}
-                          </span>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium text-sm truncate block">
+                              {lead.first_name} {lead.last_name}
+                            </span>
+                            {lead.segment_code && (() => {
+                              const seg = getSegmentByCode(lead.segment_code);
+                              return seg ? <SegmentBadge code={seg.code} name={seg.name} color={seg.color} size="sm" /> : null;
+                            })()}
+                          </div>
                         </div>
 
                         {lead.company && (

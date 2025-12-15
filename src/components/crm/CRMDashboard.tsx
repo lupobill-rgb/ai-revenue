@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Target, TrendingUp, Zap, ArrowRight, Star, Phone, Mail, Brain, Sparkles, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { Users, Target, TrendingUp, Zap, ArrowRight, Star, Phone, Mail, Brain, Sparkles, AlertCircle, CheckCircle2, Loader2, Tags } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,8 @@ import { Progress } from "@/components/ui/progress";
 import { EmailOutreachDialog } from "./EmailOutreachDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useTenantSegments } from "@/hooks/useTenantSegments";
+import { SegmentBadge } from "./SegmentBadge";
 
 interface AIInsight {
   title: string;
@@ -51,6 +53,7 @@ interface Lead {
   score: number;
   source: string;
   created_at: string;
+  segment_code?: string;
 }
 
 interface CRMDashboardProps {
@@ -81,10 +84,12 @@ const FUNNEL_COLORS = {
 
 export default function CRMDashboard({ leads, showSampleData, onToggleSampleData, workspaceId }: CRMDashboardProps) {
   const [dateRange, setDateRange] = useState<string>("all");
+  const [segmentFilter, setSegmentFilter] = useState<string>("all");
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [analyzingLeads, setAnalyzingLeads] = useState(false);
+  const { segments, getSegmentByCode } = useTenantSegments();
   const baseLeads = showSampleData && leads.length === 0 ? SAMPLE_LEADS : leads;
 
   // Auto-analyze leads when data changes (only if workspaceId is available)
@@ -122,9 +127,12 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
           return false;
         }
       }
+      if (segmentFilter !== "all" && lead.segment_code !== segmentFilter) {
+        return false;
+      }
       return true;
     });
-  }, [baseLeads, dateRange]);
+  }, [baseLeads, dateRange, segmentFilter]);
 
   // Core metrics
   const totalLeads = displayLeads.length;
@@ -192,6 +200,28 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
               <SelectItem value="90">Last 90 days</SelectItem>
             </SelectContent>
           </Select>
+          {segments.length > 0 && (
+            <Select value={segmentFilter} onValueChange={setSegmentFilter}>
+              <SelectTrigger className="w-[150px] bg-card">
+                <Tags className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Segment" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Segments</SelectItem>
+                {segments.map((seg) => (
+                  <SelectItem key={seg.code} value={seg.code}>
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-2 h-2 rounded-full" 
+                        style={{ backgroundColor: seg.color }}
+                      />
+                      {seg.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Switch
@@ -347,9 +377,15 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
                   className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">
-                      {lead.first_name} {lead.last_name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-sm truncate">
+                        {lead.first_name} {lead.last_name}
+                      </p>
+                      {lead.segment_code && (() => {
+                        const seg = getSegmentByCode(lead.segment_code);
+                        return seg ? <SegmentBadge code={seg.code} name={seg.name} color={seg.color} size="sm" /> : null;
+                      })()}
+                    </div>
                     <p className="text-xs text-muted-foreground truncate">
                       {lead.company || lead.email}
                     </p>

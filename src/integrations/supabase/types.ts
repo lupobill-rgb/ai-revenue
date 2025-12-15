@@ -3201,6 +3201,7 @@ export type Database = {
           notes: string | null
           phone: string | null
           score: number | null
+          segment_code: string | null
           source: string
           status: string
           tags: string[] | null
@@ -3231,6 +3232,7 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           score?: number | null
+          segment_code?: string | null
           source: string
           status?: string
           tags?: string[] | null
@@ -3261,6 +3263,7 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           score?: number | null
+          segment_code?: string | null
           source?: string
           status?: string
           tags?: string[] | null
