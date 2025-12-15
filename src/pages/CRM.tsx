@@ -58,9 +58,8 @@ interface VapiPhoneNumber {
 const CRM = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [workspaceId, setWorkspaceId] = useState<string | null>(
-    localStorage.getItem("currentWorkspaceId")
-  );
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [workspaceValidated, setWorkspaceValidated] = useState(false);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [activeTab, setActiveTab] = useState<"dashboard" | "list" | "pipeline" | "deals" | "tasks" | "sequences" | "calendar" | "reports" | "email_analytics">("dashboard");
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
@@ -109,17 +108,54 @@ const CRM = () => {
   });
 
   useEffect(() => {
-    if (workspaceId) {
+    const validateWorkspace = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setWorkspaceValidated(true);
+        setLoading(false);
+        return;
+      }
+
+      const savedWorkspaceId = localStorage.getItem("currentWorkspaceId");
+      
+      // Check if user owns any workspace
+      const { data: ownedWorkspaces } = await supabase
+        .from("workspaces")
+        .select("id")
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: true });
+
+      const validWorkspaceIds = ownedWorkspaces?.map(w => w.id) || [];
+
+      // Check if saved workspace is valid for this user
+      if (savedWorkspaceId && validWorkspaceIds.includes(savedWorkspaceId)) {
+        setWorkspaceId(savedWorkspaceId);
+      } else if (validWorkspaceIds.length > 0) {
+        // Use first owned workspace
+        const correctWorkspaceId = validWorkspaceIds[0];
+        localStorage.setItem("currentWorkspaceId", correctWorkspaceId);
+        setWorkspaceId(correctWorkspaceId);
+        console.log("Updated workspace to:", correctWorkspaceId);
+      }
+      
+      setWorkspaceValidated(true);
+    };
+
+    validateWorkspace();
+  }, []);
+
+  useEffect(() => {
+    if (workspaceValidated && workspaceId) {
       fetchLeads();
       fetchCalendarEvents();
       fetchCampaignMetrics();
-    } else {
+    } else if (workspaceValidated) {
       setLeads([]);
       setCalendarEvents([]);
       setCampaignMetrics([]);
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, workspaceValidated]);
 
   useEffect(() => {
     filterLeads();
