@@ -27,11 +27,13 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("Sending feedback email from:", userEmail);
 
+    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    
     const emailResponse = await resend.emails.send({
-      from: "UbiGrowth Feedback <app@ubigrowth.com>",
+      from: "AI CMO Feedback <app@ubigrowth.com>",
       to: ["support@ubigrowth.com"],
       cc: [userEmail],
-      subject: `Feedback from ${userName}`,
+      subject: `Feedback from ${userName} - ${timestamp}`,
       html: `
         <h2>New Feedback Received</h2>
         <p><strong>From:</strong> ${userName} (${userEmail})</p>
