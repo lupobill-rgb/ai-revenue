@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Menu, X, LogOut, User, Settings, Plus, Shield, Plug } from "lucide-react";
 import Logo from "@/components/Logo";
 import NotificationBell from "@/components/NotificationBell";
+import FeedbackButton from "@/components/FeedbackButton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useAllModulesEnabled } from "@/hooks/useModuleEnabled";
@@ -119,6 +120,7 @@ const NavBar = () => {
               New Campaign
             </Button>
             <NotificationBell />
+            <FeedbackButton />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
