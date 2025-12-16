@@ -27,7 +27,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("Sending feedback email from:", userEmail);
 
-    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
     
     const emailResponse = await resend.emails.send({
       from: "AI CMO Feedback <app@ubigrowth.com>",
