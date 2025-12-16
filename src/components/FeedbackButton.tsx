@@ -77,7 +77,6 @@ const FeedbackButton = () => {
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full"
           title="Send Feedback"
         >
           <LifeBuoy className="h-5 w-5 text-muted-foreground" />
