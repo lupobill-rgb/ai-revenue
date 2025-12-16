@@ -86,7 +86,7 @@ const FeedbackButton = () => {
         <DialogHeader>
           <DialogTitle>Send Feedback</DialogTitle>
           <DialogDescription>
-            Have a suggestion or experiencing an issue? Let us know and we'll get back to you.
+            Have a suggestion or experiencing an issue?
           </DialogDescription>
         </DialogHeader>
         <div className="py-4">
