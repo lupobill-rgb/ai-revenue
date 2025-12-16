@@ -47,6 +47,7 @@ import SettingsIntegrations from "./pages/SettingsIntegrations";
 import LandingPages from "./pages/LandingPages";
 import LeadsPage from "./pages/cmo/LeadsPage";
 import PlatformAdmin from "./pages/PlatformAdmin";
+import SystemBanner from "./components/SystemBanner";
 const queryClient = new QueryClient();
 
 const App = () => {
@@ -59,6 +60,7 @@ const App = () => {
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <SystemBanner />
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/login" element={<Login />} />
