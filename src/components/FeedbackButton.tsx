@@ -91,7 +91,7 @@ const FeedbackButton = () => {
         </DialogHeader>
         <div className="py-4">
           <Textarea
-            placeholder="Enter your message here..."
+            placeholder="Share your feedback here. If reporting issues, please include steps to reproduce."
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={5}
