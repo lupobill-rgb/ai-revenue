@@ -5433,6 +5433,7 @@ export type Database = {
           id: string
         }[]
       }
+      get_user_tenant_ids: { Args: { _user_id: string }; Returns: string[] }
       get_weekly_cfo_portfolio_summary: {
         Args: never
         Returns: {
