@@ -106,7 +106,7 @@ const FeedbackButton = () => {
           >
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
+          <Button onClick={handleSubmit} disabled={isSubmitting || !message.trim()}>
             {isSubmitting ? "Sending..." : "Submit"}
           </Button>
         </DialogFooter>
