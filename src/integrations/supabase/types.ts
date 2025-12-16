@@ -5478,6 +5478,10 @@ export type Database = {
         Returns: undefined
       }
       is_platform_admin: { Args: { _user_id?: string }; Returns: boolean }
+      is_workspace_owner: {
+        Args: { _user_id: string; _workspace_id: string }
+        Returns: boolean
+      }
       is_workspace_owner_or_member: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
