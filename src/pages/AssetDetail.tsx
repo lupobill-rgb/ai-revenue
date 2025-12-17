@@ -244,6 +244,67 @@ const AssetDetail = () => {
     }
   };
 
+  const handleSaveAndPublish = async () => {
+    setErrors({});
+
+    const result = assetSchema.safeParse({
+      name,
+      channel,
+      goal,
+      preview_url: previewUrl,
+      external_id: externalId,
+    });
+
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) fieldErrors[err.path[0] as string] = err.message;
+      });
+      setErrors(fieldErrors);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("assets")
+        .update({
+          name: result.data.name,
+          channel: result.data.channel,
+          goal: result.data.goal,
+          preview_url: result.data.preview_url || null,
+          external_id: result.data.external_id,
+          segment_ids: segmentIds.length > 0 ? segmentIds : [],
+          segment_id: segmentIds.length > 0 ? segmentIds[0] : null,
+          status,
+          content,
+          external_project_url: externalProjectUrl || null,
+          custom_domain: customDomain || null,
+          deployment_status: 'live',
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      setDeploymentStatus('live');
+      toast({
+        title: "Published to Live",
+        description: "Content saved and published successfully",
+      });
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 3000);
+      fetchAsset();
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to publish changes",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const handleApprove = async () => {
     try {
       const { error } = await supabase
@@ -1177,19 +1238,15 @@ const AssetDetail = () => {
                       </div>
                       {renderContentFields()}
                       
-                      {/* Save button for content changes */}
-                      <div className="pt-4 border-t border-border">
+                      {/* Save buttons for content changes */}
+                      <div className="pt-4 border-t border-border space-y-3">
                         <Button
                           onClick={handleSave}
                           disabled={saving}
-                          className={`w-full ${justSaved ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                          variant="outline"
+                          className="w-full"
                         >
-                          {justSaved ? (
-                            <>
-                              <CheckCircle className="mr-2 h-4 w-4" />
-                              Saved Successfully
-                            </>
-                          ) : saving ? (
+                          {saving ? (
                             <>
                               <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
                               Saving...
@@ -1197,7 +1254,29 @@ const AssetDetail = () => {
                           ) : (
                             <>
                               <Save className="mr-2 h-4 w-4" />
-                              Save Content Changes
+                              Save Draft
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          onClick={handleSaveAndPublish}
+                          disabled={saving}
+                          className={`w-full ${justSaved ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                        >
+                          {justSaved ? (
+                            <>
+                              <CheckCircle className="mr-2 h-4 w-4" />
+                              Published Successfully
+                            </>
+                          ) : saving ? (
+                            <>
+                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                              Publishing...
+                            </>
+                          ) : (
+                            <>
+                              <Send className="mr-2 h-4 w-4" />
+                              Save & Publish Live
                             </>
                           )}
                         </Button>
