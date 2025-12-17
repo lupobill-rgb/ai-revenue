@@ -310,7 +310,7 @@ export default function OutboundDashboard() {
     <ProtectedRoute>
       <div className="min-h-screen bg-background flex flex-col">
         <NavBar />
-        <main className="flex-1 container mx-auto px-4 py-8">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-3xl font-bold">Outbound OS</h1>

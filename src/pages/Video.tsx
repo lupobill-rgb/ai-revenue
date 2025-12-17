@@ -119,8 +119,7 @@ const Video = () => {
     <ProtectedRoute>
       <div className="min-h-screen flex flex-col bg-background">
         <NavBar />
-        <main className="flex-1 container mx-auto px-4 py-8">
-          <div className="max-w-6xl mx-auto">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
             {/* Header */}
             <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
@@ -301,7 +300,6 @@ const Video = () => {
                   ))}
                 </div>
               </div>
-            </div>
           </div>
         </main>
         <Footer />

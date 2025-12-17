@@ -317,7 +317,7 @@ export default function OutboundCampaignBuilder() {
     <ProtectedRoute>
       <div className="min-h-screen bg-background flex flex-col">
         <NavBar />
-        <main className="flex-1 container mx-auto px-4 py-8 max-w-4xl">
+        <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center gap-4 mb-8">
             <Button variant="ghost" size="icon" onClick={() => navigate("/outbound")}>

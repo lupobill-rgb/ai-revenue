@@ -30,7 +30,7 @@ export default function LandingPages() {
     <CMOProvider>
       <div className="min-h-screen flex flex-col bg-background">
         <NavBar />
-        <main className="flex-1 container mx-auto px-4 py-6">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="mb-6">
             <h1 className="text-2xl font-bold">Landing Pages</h1>
             <p className="text-muted-foreground">

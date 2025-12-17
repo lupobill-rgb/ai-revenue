@@ -163,7 +163,7 @@ export default function CRODealDetail() {
     return (
       <div className="min-h-screen bg-background">
         <NavBar />
-        <main className="container mx-auto px-4 py-8">
+        <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="text-center py-20 text-muted-foreground">Loading deal...</div>
         </main>
       </div>
@@ -174,7 +174,7 @@ export default function CRODealDetail() {
     return (
       <div className="min-h-screen bg-background">
         <NavBar />
-        <main className="container mx-auto px-4 py-8">
+        <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="text-center py-20">
             <p className="text-muted-foreground mb-4">Deal not found</p>
             <Link to="/cro/pipeline">
@@ -196,7 +196,7 @@ export default function CRODealDetail() {
         { label: "Pipeline", href: "/cro/pipeline" },
         { label: deal?.name || "Deal" }
       ]} />
-      <main className="container mx-auto px-4 py-8">
+      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-start justify-between">

@@ -974,7 +974,7 @@ export default function SettingsIntegrations() {
     <ProtectedRoute>
       <div className="min-h-screen flex flex-col bg-background">
         <NavBar />
-        <main className="flex-1 container mx-auto py-8 px-4">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="mb-8">
             <Button
               variant="ghost"

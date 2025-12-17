@@ -224,7 +224,7 @@ export default function OutboundCampaignDetail() {
       <ProtectedRoute>
         <div className="min-h-screen bg-background flex flex-col">
           <NavBar />
-          <main className="flex-1 container mx-auto px-4 py-8">
+          <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
             <Skeleton className="h-8 w-64 mb-4" />
             <Skeleton className="h-32 w-full mb-4" />
             <Skeleton className="h-64 w-full" />
@@ -239,7 +239,7 @@ export default function OutboundCampaignDetail() {
       <ProtectedRoute>
         <div className="min-h-screen bg-background flex flex-col">
           <NavBar />
-          <main className="flex-1 container mx-auto px-4 py-8 text-center">
+          <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8 text-center">
             <p>Campaign not found</p>
             <Button className="mt-4" onClick={() => navigate("/outbound")}>
               Back to Dashboard
@@ -258,7 +258,7 @@ export default function OutboundCampaignDetail() {
           { label: "Outbound", href: "/outbound" },
           { label: campaign?.name || "Campaign" }
         ]} />
-        <main className="flex-1 container mx-auto px-4 py-8">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">

@@ -210,7 +210,7 @@ export default function Settings() {
     <ProtectedRoute>
       <div className="min-h-screen bg-background flex flex-col">
         <NavBar />
-        <main className="flex-1 container mx-auto py-8 px-4">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto">
             <div className="mb-8">
               <Button
