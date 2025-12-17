@@ -10,157 +10,175 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { Mail, Linkedin, Calendar, Globe, Webhook, Loader2, CheckCircle2, XCircle, Copy, ExternalLink } from "lucide-react";
 
-interface CustomerIntegration {
-  id?: string;
-  workspace_id: string;
-  tenant_id: string;
-  email_from_address: string | null;
-  email_from_name: string | null;
-  email_reply_to: string | null;
-  email_domain_verified: boolean;
-  linkedin_profile_url: string | null;
-  linkedin_daily_connect_limit: number;
-  linkedin_daily_message_limit: number;
-  calendar_booking_url: string | null;
-  calendar_provider: string | null;
-  crm_inbound_webhook_url: string | null;
-  crm_outbound_webhook_url: string | null;
-  crm_webhook_secret: string | null;
-  custom_domain: string | null;
-  custom_domain_verified: boolean;
-}
-
 export function IntegrationsTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [integration, setIntegration] = useState<CustomerIntegration | null>(null);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
 
-  // Form state
+  // Form state - Email
   const [emailFromAddress, setEmailFromAddress] = useState("");
   const [emailFromName, setEmailFromName] = useState("");
   const [emailReplyTo, setEmailReplyTo] = useState("");
   const [emailProvider, setEmailProvider] = useState("");
+
+  // Form state - LinkedIn
   const [linkedinProfileUrl, setLinkedinProfileUrl] = useState("");
   const [linkedinConnectLimit, setLinkedinConnectLimit] = useState(20);
   const [linkedinMessageLimit, setLinkedinMessageLimit] = useState(50);
+
+  // Form state - Calendar
   const [calendarBookingUrl, setCalendarBookingUrl] = useState("");
   const [calendarProvider, setCalendarProvider] = useState("");
+
+  // Form state - CRM Webhooks
   const [crmInboundWebhook, setCrmInboundWebhook] = useState("");
   const [crmOutboundWebhook, setCrmOutboundWebhook] = useState("");
+
+  // Form state - Domain
   const [customDomain, setCustomDomain] = useState("");
+  const [domainVerified, setDomainVerified] = useState(false);
 
   useEffect(() => {
-    fetchUserAndWorkspace();
+    fetchUserAndSettings();
   }, []);
 
-  const fetchUserAndWorkspace = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-    setUserId(user.id);
-
-    // Get user's workspace
-    const { data: workspaces } = await supabase
-      .from("workspaces")
-      .select("id")
-      .eq("owner_id", user.id)
-      .limit(1);
-
-    if (workspaces && workspaces.length > 0) {
-      setWorkspaceId(workspaces[0].id);
-      fetchIntegration(workspaces[0].id);
-    } else {
-      // Check workspace_members
-      const { data: memberships } = await supabase
-        .from("workspace_members")
-        .select("workspace_id")
-        .eq("user_id", user.id)
-        .limit(1);
-
-      if (memberships && memberships.length > 0) {
-        setWorkspaceId(memberships[0].workspace_id);
-        fetchIntegration(memberships[0].workspace_id);
-      } else {
-        setLoading(false);
-      }
-    }
-  };
-
-  const fetchIntegration = async (wsId: string) => {
+  const fetchUserAndSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .from("customer_integrations")
-        .select("*")
-        .eq("workspace_id", wsId)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (data) {
-        setIntegration(data);
-        setEmailFromAddress(data.email_from_address || "");
-        setEmailFromName(data.email_from_name || "");
-        setEmailReplyTo(data.email_reply_to || "");
-        setLinkedinProfileUrl(data.linkedin_profile_url || "");
-        setLinkedinConnectLimit(data.linkedin_daily_connect_limit || 20);
-        setLinkedinMessageLimit(data.linkedin_daily_message_limit || 50);
-        setCalendarBookingUrl(data.calendar_booking_url || "");
-        setCalendarProvider(data.calendar_provider || "");
-        setCrmInboundWebhook(data.crm_inbound_webhook_url || "");
-        setCrmOutboundWebhook(data.crm_outbound_webhook_url || "");
-        setCustomDomain(data.custom_domain || "");
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
       }
+      
+      // Use user.id as tenant_id (matches how ai_settings_* tables are keyed)
+      setTenantId(user.id);
+      await fetchAllSettings(user.id);
     } catch (error) {
-      console.error("Error fetching integration:", error);
+      console.error("Error fetching user:", error);
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchAllSettings = async (tid: string) => {
+    try {
+      // Fetch all settings in parallel
+      const [emailRes, linkedinRes, calendarRes, crmRes, domainRes] = await Promise.all([
+        supabase.from("ai_settings_email").select("*").eq("tenant_id", tid).maybeSingle(),
+        supabase.from("ai_settings_linkedin").select("*").eq("tenant_id", tid).maybeSingle(),
+        supabase.from("ai_settings_calendar").select("*").eq("tenant_id", tid).maybeSingle(),
+        supabase.from("ai_settings_crm_webhooks").select("*").eq("tenant_id", tid).maybeSingle(),
+        supabase.from("ai_settings_domain").select("*").eq("tenant_id", tid).maybeSingle(),
+      ]);
+
+      // Email settings
+      if (emailRes.data) {
+        setEmailFromAddress(emailRes.data.from_address || "");
+        setEmailFromName(emailRes.data.sender_name || "");
+        setEmailReplyTo(emailRes.data.reply_to_address || "");
+      }
+
+      // LinkedIn settings
+      if (linkedinRes.data) {
+        setLinkedinProfileUrl(linkedinRes.data.linkedin_profile_url || "");
+        setLinkedinConnectLimit(linkedinRes.data.daily_connection_limit || 20);
+        setLinkedinMessageLimit(linkedinRes.data.daily_message_limit || 50);
+      }
+
+      // Calendar settings
+      if (calendarRes.data) {
+        setCalendarBookingUrl(calendarRes.data.booking_url || "");
+        setCalendarProvider(calendarRes.data.calendar_provider || "");
+      }
+
+      // CRM webhook settings
+      if (crmRes.data) {
+        setCrmInboundWebhook(crmRes.data.inbound_webhook_url || "");
+        setCrmOutboundWebhook(crmRes.data.outbound_webhook_url || "");
+      }
+
+      // Domain settings
+      if (domainRes.data) {
+        setCustomDomain(domainRes.data.domain || "");
+        setDomainVerified(domainRes.data.cname_verified || false);
+      }
+    } catch (error) {
+      console.error("Error fetching settings:", error);
+    }
+  };
+
   const handleSave = async () => {
-    if (!workspaceId || !userId) return;
+    if (!tenantId) return;
 
     setSaving(true);
     try {
-      const payload = {
-        workspace_id: workspaceId,
-        tenant_id: userId,
-        email_from_address: emailFromAddress || null,
-        email_from_name: emailFromName || null,
-        email_reply_to: emailReplyTo || null,
-        linkedin_profile_url: linkedinProfileUrl || null,
-        linkedin_daily_connect_limit: linkedinConnectLimit,
-        linkedin_daily_message_limit: linkedinMessageLimit,
-        calendar_booking_url: calendarBookingUrl || null,
-        calendar_provider: calendarProvider || null,
-        crm_inbound_webhook_url: crmInboundWebhook || null,
-        crm_outbound_webhook_url: crmOutboundWebhook || null,
-        custom_domain: customDomain || null,
-      };
+      // Upsert all settings in parallel
+      const operations = [];
 
-      if (integration?.id) {
-        const { error } = await supabase
-          .from("customer_integrations")
-          .update(payload)
-          .eq("id", integration.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("customer_integrations")
-          .insert(payload);
-        if (error) throw error;
+      // Email settings
+      operations.push(
+        supabase.from("ai_settings_email").upsert({
+          tenant_id: tenantId,
+          from_address: emailFromAddress || "",
+          sender_name: emailFromName || "",
+          reply_to_address: emailReplyTo || "",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "tenant_id" })
+      );
+
+      // LinkedIn settings
+      operations.push(
+        supabase.from("ai_settings_linkedin").upsert({
+          tenant_id: tenantId,
+          linkedin_profile_url: linkedinProfileUrl || "",
+          daily_connection_limit: linkedinConnectLimit,
+          daily_message_limit: linkedinMessageLimit,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "tenant_id" })
+      );
+
+      // Calendar settings
+      operations.push(
+        supabase.from("ai_settings_calendar").upsert({
+          tenant_id: tenantId,
+          booking_url: calendarBookingUrl || "",
+          calendar_provider: calendarProvider || "",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "tenant_id" })
+      );
+
+      // CRM webhook settings
+      operations.push(
+        supabase.from("ai_settings_crm_webhooks").upsert({
+          tenant_id: tenantId,
+          inbound_webhook_url: crmInboundWebhook || null,
+          outbound_webhook_url: crmOutboundWebhook || null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "tenant_id" })
+      );
+
+      // Domain settings
+      operations.push(
+        supabase.from("ai_settings_domain").upsert({
+          tenant_id: tenantId,
+          domain: customDomain || "",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "tenant_id" })
+      );
+
+      const results = await Promise.all(operations);
+      
+      // Check for errors
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        console.error("Errors saving settings:", errors);
+        throw new Error(errors[0].error?.message || "Failed to save settings");
       }
 
       toast({
         title: "Settings saved",
         description: "Your integration settings have been updated.",
       });
-      
-      if (workspaceId) fetchIntegration(workspaceId);
     } catch (error: any) {
       console.error("Error saving integration:", error);
       toast({
@@ -200,218 +218,87 @@ export function IntegrationsTab() {
               <Label htmlFor="email-from-name">Sender Name</Label>
               <Input
                 id="email-from-name"
-                placeholder="John from Acme"
+                placeholder="Your Company Name"
                 value={emailFromName}
                 onChange={(e) => setEmailFromName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email-from-address">From Address</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="email-from-address"
-                  type="email"
-                  placeholder="john@company.com"
-                  value={emailFromAddress}
-                  onChange={(e) => setEmailFromAddress(e.target.value)}
-                />
-                {integration?.email_domain_verified ? (
-                  <Badge variant="outline" className="text-green-600 border-green-600">
-                    <CheckCircle2 className="h-3 w-3 mr-1" /> Verified
-                  </Badge>
-                ) : emailFromAddress ? (
-                  <Badge variant="outline" className="text-yellow-600 border-yellow-600">
-                    <XCircle className="h-3 w-3 mr-1" /> Unverified
-                  </Badge>
-                ) : null}
-              </div>
+              <Label htmlFor="email-from">From Email Address</Label>
+              <Input
+                id="email-from"
+                type="email"
+                placeholder="noreply@yourdomain.com"
+                value={emailFromAddress}
+                onChange={(e) => setEmailFromAddress(e.target.value)}
+              />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email-reply-to">Reply-To Address</Label>
+            <Label htmlFor="email-reply-to">Reply-To Email Address</Label>
             <Input
               id="email-reply-to"
               type="email"
-              placeholder="replies@company.com"
+              placeholder="sales@yourdomain.com"
               value={emailReplyTo}
               onChange={(e) => setEmailReplyTo(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Replies to your outbound emails will be sent directly to this address
+              Replies to your campaigns will be sent to this address
             </p>
           </div>
 
           <Separator className="my-4" />
 
-          {/* Email Provider Setup */}
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Email Provider Setup</Label>
-              <p className="text-sm text-muted-foreground">
-                To send emails from your own domain, you'll need to verify your domain with our email service (Resend). Select your email provider below for specific setup instructions.
-              </p>
-            </div>
-
+          <div className="space-y-2">
+            <Label>Email Provider Setup</Label>
             <Select value={emailProvider} onValueChange={setEmailProvider}>
               <SelectTrigger>
-                <SelectValue placeholder="Select your email provider for setup instructions" />
+                <SelectValue placeholder="Select your email provider" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="gmail">Gmail / Google Workspace</SelectItem>
-                <SelectItem value="outlook">Outlook.com</SelectItem>
-                <SelectItem value="microsoft365">Microsoft 365 / Exchange</SelectItem>
-                <SelectItem value="other">Other Provider</SelectItem>
+                <SelectItem value="outlook">Outlook / Microsoft 365</SelectItem>
+                <SelectItem value="custom">Custom Domain (Resend)</SelectItem>
               </SelectContent>
             </Select>
-
-            {emailProvider === "gmail" && (
-              <div className="space-y-3 bg-blue-500/10 p-4 rounded-lg border border-blue-500/20">
-                <div className="flex items-center gap-2">
-                  <img src="https://www.google.com/favicon.ico" alt="Google" className="h-4 w-4" />
-                  <Label className="text-sm font-medium">Gmail / Google Workspace Setup</Label>
-                </div>
-                <div className="text-sm text-muted-foreground space-y-2">
-                  <p><strong>Step 1: Add DNS Records to Google Domains or your DNS provider</strong></p>
-                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
-                    <li>Go to <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Resend Domains <ExternalLink className="h-3 w-3" /></a> and add your domain</li>
-                    <li>Copy the DNS records (SPF, DKIM, DMARC) provided by Resend</li>
-                    <li>Go to your <a href="https://domains.google.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Google Domains <ExternalLink className="h-3 w-3" /></a> or DNS provider</li>
-                    <li>Add the TXT records for SPF and DKIM authentication</li>
-                    <li>Add the CNAME record for tracking (optional but recommended)</li>
-                    <li>Wait 24-48 hours for DNS propagation</li>
-                  </ol>
-                  <p className="mt-2"><strong>Step 2: Configure Reply Handling</strong></p>
-                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
-                    <li>Set your Reply-To address above to your Gmail address</li>
-                    <li>Replies will arrive directly in your Gmail inbox</li>
-                    <li>Configure a <a href="https://support.google.com/mail/answer/6579?hl=en" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Gmail filter</a> to label/organize campaign replies</li>
-                  </ol>
-                </div>
-              </div>
-            )}
-
-            {emailProvider === "outlook" && (
-              <div className="space-y-3 bg-blue-500/10 p-4 rounded-lg border border-blue-500/20">
-                <div className="flex items-center gap-2">
-                  <img src="https://outlook.live.com/favicon.ico" alt="Outlook" className="h-4 w-4" />
-                  <Label className="text-sm font-medium">Outlook.com Setup</Label>
-                </div>
-                <div className="text-sm text-muted-foreground space-y-2">
-                  <p><strong>Step 1: Add DNS Records</strong></p>
-                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
-                    <li>Go to <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Resend Domains <ExternalLink className="h-3 w-3" /></a> and add your domain</li>
-                    <li>Copy the DNS records (SPF, DKIM) provided by Resend</li>
-                    <li>Go to your domain registrar's DNS settings</li>
-                    <li>Add the TXT records for SPF and DKIM authentication</li>
-                    <li>Wait 24-48 hours for DNS propagation</li>
-                  </ol>
-                  <p className="mt-2"><strong>Step 2: Configure Reply Handling</strong></p>
-                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
-                    <li>Set your Reply-To address above to your Outlook email</li>
-                    <li>Replies will arrive directly in your Outlook inbox</li>
-                    <li>Create <a href="https://support.microsoft.com/en-us/office/manage-email-messages-by-using-rules-c24f5dea-9465-4df4-ad17-a50704d66c59" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Outlook rules</a> to organize campaign replies</li>
-                  </ol>
-                </div>
-              </div>
-            )}
-
-            {emailProvider === "microsoft365" && (
-              <div className="space-y-3 bg-blue-500/10 p-4 rounded-lg border border-blue-500/20">
-                <div className="flex items-center gap-2">
-                  <img src="https://www.microsoft.com/favicon.ico" alt="Microsoft" className="h-4 w-4" />
-                  <Label className="text-sm font-medium">Microsoft 365 / Exchange Setup</Label>
-                </div>
-                <div className="text-sm text-muted-foreground space-y-2">
-                  <p><strong>Step 1: Add DNS Records in Microsoft 365 Admin Center</strong></p>
-                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
-                    <li>Go to <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Resend Domains <ExternalLink className="h-3 w-3" /></a> and add your domain</li>
-                    <li>Copy the DNS records (SPF, DKIM) provided</li>
-                    <li>Go to <a href="https://admin.microsoft.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Microsoft 365 Admin Center <ExternalLink className="h-3 w-3" /></a></li>
-                    <li>Navigate to Settings → Domains → select your domain → DNS records</li>
-                    <li>Add the TXT records for SPF authentication</li>
-                    <li>Add the CNAME records for DKIM</li>
-                    <li>Wait 24-48 hours for DNS propagation</li>
-                  </ol>
-                  <p className="mt-2"><strong>Important for Exchange:</strong></p>
-                  <ul className="list-disc list-inside space-y-1 ml-2 text-xs">
-                    <li>If you have existing SPF records, merge them with Resend's SPF record</li>
-                    <li>Example: <code className="bg-muted px-1 rounded">v=spf1 include:spf.protection.outlook.com include:amazonses.com ~all</code></li>
-                  </ul>
-                  <p className="mt-2"><strong>Step 2: Configure Reply Handling</strong></p>
-                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
-                    <li>Set your Reply-To address above to your M365 email</li>
-                    <li>Replies will arrive in your Exchange/Outlook inbox</li>
-                    <li>Set up <a href="https://support.microsoft.com/en-us/office/manage-email-messages-by-using-rules-c24f5dea-9465-4df4-ad17-a50704d66c59" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">mail flow rules</a> in Exchange Admin Center for team distribution</li>
-                  </ol>
-                </div>
-              </div>
-            )}
-
-            {emailProvider === "other" && (
-              <div className="space-y-3 bg-muted/50 p-4 rounded-lg border">
-                <Label className="text-sm font-medium">General Domain Setup</Label>
-                <div className="text-sm text-muted-foreground space-y-2">
-                  <p><strong>To send from your own domain:</strong></p>
-                  <ol className="list-decimal list-inside space-y-1 ml-2 text-xs">
-                    <li>Go to <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Resend Domains <ExternalLink className="h-3 w-3" /></a> and add your domain</li>
-                    <li>Add the provided DNS records to your domain registrar:
-                      <ul className="list-disc list-inside ml-4 mt-1">
-                        <li><strong>SPF Record</strong> (TXT): Authorizes Resend to send on your behalf</li>
-                        <li><strong>DKIM Record</strong> (TXT): Adds digital signature for authenticity</li>
-                        <li><strong>DMARC Record</strong> (TXT): Optional but recommended for deliverability</li>
-                      </ul>
-                    </li>
-                    <li>Wait 24-48 hours for DNS propagation</li>
-                    <li>Verify your domain in Resend dashboard</li>
-                    <li>Enter your verified domain email in the "From Address" field above</li>
-                  </ol>
-                </div>
-              </div>
-            )}
           </div>
 
-          <Separator className="my-4" />
-
-          {/* Resend Inbound Webhook Setup */}
-          <div className="space-y-3 bg-muted/50 p-4 rounded-lg border">
-            <div className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-primary" />
-              <Label className="text-sm font-medium">Email Reply Tracking (Advanced)</Label>
-              <Badge variant="outline" className="text-xs">Optional</Badge>
+          {emailProvider && (
+            <div className="p-4 bg-muted/50 rounded-lg space-y-2">
+              <h4 className="font-medium text-sm">Setup Instructions</h4>
+              {emailProvider === "gmail" && (
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p>To send from Gmail/Google Workspace:</p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2">
+                    <li>Contact support to verify your domain</li>
+                    <li>We'll set up SPF and DKIM records for your domain</li>
+                    <li>Enter your @yourdomain.com address above</li>
+                  </ol>
+                </div>
+              )}
+              {emailProvider === "outlook" && (
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p>To send from Outlook/Microsoft 365:</p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2">
+                    <li>Contact support to verify your domain</li>
+                    <li>We'll configure DNS records for email authentication</li>
+                    <li>Enter your @yourdomain.com address above</li>
+                  </ol>
+                </div>
+              )}
+              {emailProvider === "custom" && (
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p>To send from a custom domain via Resend:</p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2">
+                    <li>Go to <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">resend.com/domains</a></li>
+                    <li>Add and verify your domain with DNS records</li>
+                    <li>Once verified, enter your from address above</li>
+                  </ol>
+                </div>
+              )}
             </div>
-            <p className="text-sm text-muted-foreground">
-              For automatic reply tracking in your CRM, configure Resend Inbound webhooks:
-            </p>
-            <div className="flex items-center gap-2">
-              <Input
-                readOnly
-                value="https://nyzgsizvtqhafoxixyrd.supabase.co/functions/v1/outbound-reply-webhook"
-                className="font-mono text-xs bg-background"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  navigator.clipboard.writeText("https://nyzgsizvtqhafoxixyrd.supabase.co/functions/v1/outbound-reply-webhook");
-                  toast({
-                    title: "Copied!",
-                    description: "Webhook URL copied to clipboard",
-                  });
-                }}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p><strong>Setup Steps:</strong></p>
-              <ol className="list-decimal list-inside space-y-1 ml-2">
-                <li>Go to your <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Resend Dashboard <ExternalLink className="h-3 w-3" /></a></li>
-                <li>Navigate to <strong>Inbound</strong> → <strong>Webhooks</strong></li>
-                <li>Add the webhook URL above</li>
-                <li>Configure MX records to route replies through Resend</li>
-              </ol>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -419,26 +306,26 @@ export function IntegrationsTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Linkedin className="h-5 w-5 text-[#0A66C2]" />
+            <Linkedin className="h-5 w-5 text-primary" />
             LinkedIn Settings
           </CardTitle>
           <CardDescription>
-            Configure your LinkedIn profile and daily limits for outreach
+            Configure your LinkedIn outreach settings and daily limits to comply with LinkedIn's terms of service.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="linkedin-profile">Your LinkedIn Profile URL</Label>
+            <Label htmlFor="linkedin-url">LinkedIn Profile URL</Label>
             <Input
-              id="linkedin-profile"
-              placeholder="https://www.linkedin.com/in/yourprofile"
+              id="linkedin-url"
+              placeholder="https://linkedin.com/in/yourprofile"
               value={linkedinProfileUrl}
               onChange={(e) => setLinkedinProfileUrl(e.target.value)}
             />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="linkedin-connect-limit">Daily Connection Limit</Label>
+              <Label htmlFor="linkedin-connect-limit">Daily Connection Request Limit</Label>
               <Input
                 id="linkedin-connect-limit"
                 type="number"
@@ -448,7 +335,7 @@ export function IntegrationsTab() {
                 onChange={(e) => setLinkedinConnectLimit(parseInt(e.target.value) || 20)}
               />
               <p className="text-xs text-muted-foreground">
-                LinkedIn recommends max 20-25 per day
+                Recommended: 20-30 per day to avoid restrictions
               </p>
             </div>
             <div className="space-y-2">
@@ -462,7 +349,7 @@ export function IntegrationsTab() {
                 onChange={(e) => setLinkedinMessageLimit(parseInt(e.target.value) || 50)}
               />
               <p className="text-xs text-muted-foreground">
-                LinkedIn recommends max 50-75 per day
+                Recommended: 50-75 per day to avoid restrictions
               </p>
             </div>
           </div>
@@ -474,38 +361,39 @@ export function IntegrationsTab() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-primary" />
-            Calendar & Booking
+            Calendar & Booking Settings
           </CardTitle>
           <CardDescription>
-            Configure your meeting booking link for outbound campaigns
+            Connect your calendar for meeting scheduling in campaigns.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="calendar-provider">Calendar Provider</Label>
-              <Select value={calendarProvider} onValueChange={setCalendarProvider}>
-                <SelectTrigger id="calendar-provider">
-                  <SelectValue placeholder="Select provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="calendly">Calendly</SelectItem>
-                  <SelectItem value="hubspot">HubSpot Meetings</SelectItem>
-                  <SelectItem value="cal.com">Cal.com</SelectItem>
-                  <SelectItem value="google">Google Calendar</SelectItem>
-                  <SelectItem value="custom">Custom Link</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="calendar-booking-url">Booking URL</Label>
-              <Input
-                id="calendar-booking-url"
-                placeholder="https://calendly.com/yourname/30min"
-                value={calendarBookingUrl}
-                onChange={(e) => setCalendarBookingUrl(e.target.value)}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label>Calendar Provider</Label>
+            <Select value={calendarProvider} onValueChange={setCalendarProvider}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select calendar provider" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="calendly">Calendly</SelectItem>
+                <SelectItem value="hubspot">HubSpot Meetings</SelectItem>
+                <SelectItem value="google">Google Calendar</SelectItem>
+                <SelectItem value="outlook">Outlook Calendar</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="booking-url">Booking URL</Label>
+            <Input
+              id="booking-url"
+              placeholder="https://calendly.com/yourname/30min"
+              value={calendarBookingUrl}
+              onChange={(e) => setCalendarBookingUrl(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              This URL will be included in campaign emails and voice scripts for booking meetings
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -518,32 +406,32 @@ export function IntegrationsTab() {
             CRM Webhooks
           </CardTitle>
           <CardDescription>
-            Connect your CRM to receive lead events and sync data
+            Connect your external CRM to receive real-time updates when prospects engage with your campaigns.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="crm-inbound-webhook">Inbound Webhook URL</Label>
+            <Label htmlFor="crm-outbound">Outbound Webhook URL</Label>
             <Input
-              id="crm-inbound-webhook"
-              placeholder="https://your-crm.com/webhooks/inbound"
-              value={crmInboundWebhook}
-              onChange={(e) => setCrmInboundWebhook(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Receives events when leads are captured or updated
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="crm-outbound-webhook">Outbound Webhook URL</Label>
-            <Input
-              id="crm-outbound-webhook"
-              placeholder="https://your-crm.com/webhooks/outbound"
+              id="crm-outbound"
+              placeholder="https://yourcrm.com/webhook/inbound"
               value={crmOutboundWebhook}
               onChange={(e) => setCrmOutboundWebhook(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Receives events when emails are sent, opened, or replied
+              We'll POST events to this URL when emails are sent, opened, clicked, or replied to
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="crm-inbound">Inbound Webhook URL (Your Endpoint)</Label>
+            <Input
+              id="crm-inbound"
+              placeholder="https://yourcrm.com/webhook/outbound"
+              value={crmInboundWebhook}
+              onChange={(e) => setCrmInboundWebhook(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Configure your CRM to POST to our endpoint when you want to trigger actions
             </p>
           </div>
         </CardContent>
@@ -557,38 +445,98 @@ export function IntegrationsTab() {
             Custom Domain
           </CardTitle>
           <CardDescription>
-            Use your own domain for landing pages and email tracking
+            Use your own domain for landing pages and tracking links.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="custom-domain">Domain</Label>
-            <div className="flex items-center gap-2">
+            <Label htmlFor="custom-domain">Custom Domain</Label>
+            <div className="flex gap-2">
               <Input
                 id="custom-domain"
-                placeholder="campaigns.yourcompany.com"
+                placeholder="pages.yourdomain.com"
                 value={customDomain}
                 onChange={(e) => setCustomDomain(e.target.value)}
               />
-              {integration?.custom_domain_verified ? (
-                <Badge variant="outline" className="text-green-600 border-green-600">
-                  <CheckCircle2 className="h-3 w-3 mr-1" /> Verified
+              {domainVerified ? (
+                <Badge variant="outline" className="whitespace-nowrap bg-green-500/10 text-green-500 border-green-500/20">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Verified
                 </Badge>
               ) : customDomain ? (
-                <Badge variant="outline" className="text-yellow-600 border-yellow-600">
-                  <XCircle className="h-3 w-3 mr-1" /> Pending
+                <Badge variant="outline" className="whitespace-nowrap bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+                  <XCircle className="h-3 w-3 mr-1" />
+                  Pending
                 </Badge>
               ) : null}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Add a CNAME record pointing to campaigns.ubigrowth.ai
-            </p>
           </div>
+          
+          {customDomain && !domainVerified && (
+            <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+              <h4 className="font-medium text-sm">DNS Configuration Required</h4>
+              <p className="text-sm text-muted-foreground">
+                Add the following CNAME record to your DNS settings:
+              </p>
+              <div className="bg-background p-3 rounded border font-mono text-sm">
+                <div className="flex items-center justify-between">
+                  <span>
+                    <span className="text-muted-foreground">Type:</span> CNAME
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6"
+                    onClick={() => {
+                      navigator.clipboard.writeText("CNAME");
+                      toast({ title: "Copied to clipboard" });
+                    }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between mt-1">
+                  <span>
+                    <span className="text-muted-foreground">Name:</span> {customDomain.split('.')[0]}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6"
+                    onClick={() => {
+                      navigator.clipboard.writeText(customDomain.split('.')[0]);
+                      toast({ title: "Copied to clipboard" });
+                    }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between mt-1">
+                  <span>
+                    <span className="text-muted-foreground">Value:</span> cname.vercel-dns.com
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6"
+                    onClick={() => {
+                      navigator.clipboard.writeText("cname.vercel-dns.com");
+                      toast({ title: "Copied to clipboard" });
+                    }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                DNS changes can take up to 48 hours to propagate. We'll automatically verify your domain once the records are detected.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <Separator />
-
+      {/* Save Button */}
       <div className="flex justify-end">
         <Button onClick={handleSave} disabled={saving}>
           {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
