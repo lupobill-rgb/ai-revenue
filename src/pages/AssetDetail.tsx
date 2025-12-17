@@ -1173,6 +1173,18 @@ const AssetDetail = () => {
                         )}
                       </div>
                       {renderContentFields()}
+                      
+                      {/* Save button for content changes */}
+                      <div className="pt-4 border-t border-border">
+                        <Button
+                          onClick={handleSave}
+                          disabled={saving}
+                          className="w-full"
+                        >
+                          <Save className="mr-2 h-4 w-4" />
+                          {saving ? "Saving..." : "Save Content Changes"}
+                        </Button>
+                      </div>
                     </TabsContent>
 
                     <TabsContent value="actions" className="space-y-4">
