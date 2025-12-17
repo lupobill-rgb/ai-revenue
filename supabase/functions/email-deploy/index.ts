@@ -82,21 +82,9 @@ serve(async (req) => {
     // Fetch user and tenant settings
     const { data: { user } } = await supabaseClient.auth.getUser();
     
-    // Get the workspace owner (email settings are currently keyed by user_id via FK)
-    let settingsUserId: string | null = null;
-    if (asset.workspace_id) {
-      const { data: workspace, error: workspaceError } = await supabaseClient
-        .from("workspaces")
-        .select("owner_id")
-        .eq("id", asset.workspace_id)
-        .single();
+    // Settings are now keyed by workspace_id (tenant-scoped)
+    const workspaceId: string | null = asset.workspace_id || null;
 
-      if (workspaceError) {
-        throw new Error("Failed to load workspace settings");
-      }
-
-      settingsUserId = workspace?.owner_id || null;
-    }
 
 
 
@@ -105,11 +93,11 @@ serve(async (req) => {
     let replyToAddress = "noreply@resend.dev";
     let senderName = "Marketing Team";
 
-    if (settingsUserId) {
+    if (workspaceId) {
       const { data: emailSettings } = await supabaseClient
         .from("ai_settings_email")
         .select("from_address, reply_to_address, sender_name")
-        .eq("tenant_id", settingsUserId)
+        .eq("tenant_id", workspaceId)
         .maybeSingle();
 
       if (emailSettings) {
