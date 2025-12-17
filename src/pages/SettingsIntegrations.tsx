@@ -15,7 +15,7 @@ import {
   Mail, Linkedin, Calendar, Globe, Webhook, Loader2, 
   CheckCircle2, XCircle, Copy, ChevronDown, Settings, ArrowLeft,
   History, User, Clock, Phone, Mic, RefreshCw, Plus, Trash2,
-  CreditCard, Share2, Instagram, Facebook
+  CreditCard, Share2, Instagram, Facebook, LogOut
 } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
@@ -201,6 +201,12 @@ export default function SettingsIntegrations() {
   const [smtpPassword, setSmtpPassword] = useState("");
   const [smtpOpen, setSmtpOpen] = useState(false);
 
+  // Gmail OAuth state
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+  const [gmailConnecting, setGmailConnecting] = useState(false);
+  const [gmailDisconnecting, setGmailDisconnecting] = useState(false);
+
   // LinkedIn state
   const [linkedinSettings, setLinkedinSettings] = useState<LinkedInSettings | null>(null);
   const [linkedinProfileUrl, setLinkedinProfileUrl] = useState("");
@@ -249,7 +255,36 @@ export default function SettingsIntegrations() {
 
   useEffect(() => {
     loadAllSettings();
-  }, []);
+    
+    // Handle Gmail OAuth callback query params
+    const gmailConnectedParam = searchParams.get("gmail_connected");
+    const gmailError = searchParams.get("gmail_error");
+    
+    if (gmailConnectedParam === "true") {
+      toast({
+        title: "Gmail Connected",
+        description: "Your Gmail account has been connected successfully.",
+      });
+      // Clear the query params - use navigate to avoid full page reload
+      navigate("/settings/integrations", { replace: true });
+      fetchGmailStatus();
+    } else if (gmailError) {
+      const errorMessages: Record<string, string> = {
+        invalid_state: "Invalid OAuth state. Please try again.",
+        no_code: "No authorization code received. Please try again.",
+        token_exchange_failed: "Failed to exchange authorization code. Please try again.",
+        no_refresh_token: "No refresh token received. Please revoke access at myaccount.google.com and try again.",
+        no_email: "Could not retrieve email from Google.",
+        storage_failed: "Failed to store credentials. Please try again.",
+      };
+      toast({
+        title: "Gmail Connection Failed",
+        description: errorMessages[gmailError] || "An unknown error occurred.",
+        variant: "destructive",
+      });
+      navigate("/settings/integrations", { replace: true });
+    }
+  }, [searchParams]);
 
   const loadAllSettings = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -284,6 +319,9 @@ export default function SettingsIntegrations() {
     }
 
     setTenantId(workspaceId);
+
+    // Fetch Gmail connection status
+    await fetchGmailStatus();
 
     // Load all settings and audit logs in parallel using workspace_id
     const [emailRes, linkedinRes, calendarRes, crmRes, domainRes, voiceRes, stripeRes, socialRes, auditRes] = await Promise.all([
@@ -378,6 +416,74 @@ export default function SettingsIntegrations() {
     }
 
     setLoading(false);
+  };
+
+  const fetchGmailStatus = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("user_gmail_tokens")
+        .select("email")
+        .maybeSingle();
+      
+      if (data && !error) {
+        setGmailConnected(true);
+        setGmailEmail(data.email);
+      } else {
+        setGmailConnected(false);
+        setGmailEmail(null);
+      }
+    } catch (error) {
+      console.error("Error fetching Gmail status:", error);
+    }
+  };
+
+  const handleConnectGmail = async () => {
+    setGmailConnecting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("gmail-oauth-start", {
+        body: { redirectUrl: window.location.href.split("?")[0] },
+      });
+
+      if (error) throw error;
+      if (data?.authUrl) {
+        window.location.href = data.authUrl;
+      } else {
+        throw new Error("No auth URL returned");
+      }
+    } catch (error: any) {
+      console.error("Error starting Gmail OAuth:", error);
+      toast({
+        title: "Connection Failed",
+        description: error.message || "Failed to start Gmail connection",
+        variant: "destructive",
+      });
+      setGmailConnecting(false);
+    }
+  };
+
+  const handleDisconnectGmail = async () => {
+    setGmailDisconnecting(true);
+    try {
+      const { error } = await supabase.functions.invoke("gmail-disconnect");
+      
+      if (error) throw error;
+      
+      setGmailConnected(false);
+      setGmailEmail(null);
+      toast({
+        title: "Gmail Disconnected",
+        description: "Your Gmail account has been disconnected.",
+      });
+    } catch (error: any) {
+      console.error("Error disconnecting Gmail:", error);
+      toast({
+        title: "Disconnect Failed",
+        description: error.message || "Failed to disconnect Gmail",
+        variant: "destructive",
+      });
+    } finally {
+      setGmailDisconnecting(false);
+    }
   };
 
   const detectChanges = (oldValues: Record<string, any>, newValues: Record<string, any>): Record<string, { old: any; new: any }> => {
@@ -1079,6 +1185,64 @@ export default function SettingsIntegrations() {
                         <p className="text-xs text-muted-foreground">
                           Replies to your outbound emails will be sent to this address.
                         </p>
+                      </div>
+
+                      <Separator />
+
+                      {/* Gmail OAuth Connection */}
+                      <div className="space-y-3">
+                        <Label>Connect Gmail Account</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Connect your Gmail account to send emails directly from your inbox with better deliverability.
+                        </p>
+                        
+                        {gmailConnected ? (
+                          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                                <Mail className="h-5 w-5 text-green-500" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-sm">Gmail Connected</p>
+                                <p className="text-sm text-muted-foreground">{gmailEmail}</p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleDisconnectGmail}
+                              disabled={gmailDisconnecting}
+                            >
+                              {gmailDisconnecting ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <>
+                                  <LogOut className="h-4 w-4 mr-2" />
+                                  Disconnect
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            onClick={handleConnectGmail}
+                            disabled={gmailConnecting}
+                            className="w-full sm:w-auto"
+                          >
+                            {gmailConnecting ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Connecting...
+                              </>
+                            ) : (
+                              <>
+                                <Mail className="h-4 w-4 mr-2" />
+                                Connect Gmail Account
+                              </>
+                            )}
+                          </Button>
+                        )}
                       </div>
 
                       <Separator />
