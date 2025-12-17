@@ -1,24 +1,34 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "./useAuth";
 import { fetchLeads, fetchLeadDetails, updateLeadStatus } from "@/lib/cmo/apiClient";
+import { getTenantContextSafe } from "@/lib/tenant";
 import type { LeadRow, LeadDetailsResponse, LeadStatus } from "@/lib/cmo/types";
 
 export function useLeads() {
   const { user } = useAuth();
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [tenantId, setTenantId] = useState<string | null>(null);
+
+  // Resolve tenant context on mount
+  useEffect(() => {
+    if (!user?.id) return;
+    getTenantContextSafe().then((ctx) => {
+      setTenantId(ctx.tenantId);
+    });
+  }, [user?.id]);
 
   const refresh = useCallback(() => {
-    if (!user?.id) return;
+    if (!tenantId) return;
     setLoading(true);
-    fetchLeads(user.id)
+    fetchLeads(tenantId)
       .then(setLeads)
       .catch((err) => {
         console.error("[useLeads] Failed to fetch leads:", err);
         setLeads([]);
       })
       .finally(() => setLoading(false));
-  }, [user?.id]);
+  }, [tenantId]);
 
   useEffect(() => {
     refresh();
@@ -31,29 +41,38 @@ export function useLeadDetails(leadId: string | null) {
   const { user } = useAuth();
   const [details, setDetails] = useState<LeadDetailsResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [tenantId, setTenantId] = useState<string | null>(null);
+
+  // Resolve tenant context on mount
+  useEffect(() => {
+    if (!user?.id) return;
+    getTenantContextSafe().then((ctx) => {
+      setTenantId(ctx.tenantId);
+    });
+  }, [user?.id]);
 
   useEffect(() => {
-    if (!user?.id || !leadId) {
+    if (!tenantId || !leadId) {
       setDetails(null);
       return;
     }
     setLoading(true);
-    fetchLeadDetails(user.id, leadId)
+    fetchLeadDetails(tenantId, leadId)
       .then(setDetails)
       .catch((err) => {
         console.error("[useLeadDetails] Failed to fetch lead details:", err);
         setDetails(null);
       })
       .finally(() => setLoading(false));
-  }, [user?.id, leadId]);
+  }, [tenantId, leadId]);
 
   const changeStatus = useCallback(async (status: LeadStatus) => {
-    if (!user?.id || !leadId) return;
-    await updateLeadStatus(user.id, leadId, status);
+    if (!tenantId || !leadId) return;
+    await updateLeadStatus(tenantId, leadId, status);
     // Refresh details after status change
-    const updated = await fetchLeadDetails(user.id, leadId);
+    const updated = await fetchLeadDetails(tenantId, leadId);
     setDetails(updated);
-  }, [user?.id, leadId]);
+  }, [tenantId, leadId]);
 
   return { details, loading, changeStatus };
 }
