@@ -50,9 +50,32 @@ export function IntegrationsTab() {
         return;
       }
       
-      // Use user.id as tenant_id (matches how ai_settings_* tables are keyed)
-      setTenantId(user.id);
-      await fetchAllSettings(user.id);
+      // Get the user's workspace_id (settings are now keyed by workspace_id)
+      const { data: workspace, error: workspaceError } = await supabase
+        .from("workspaces")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+      
+      if (workspaceError || !workspace?.id) {
+        // Try to get workspace from workspace_members if not owner
+        const { data: memberWorkspace } = await supabase
+          .from("workspace_members")
+          .select("workspace_id")
+          .eq("user_id", user.id)
+          .limit(1)
+          .maybeSingle();
+        
+        if (memberWorkspace?.workspace_id) {
+          setTenantId(memberWorkspace.workspace_id);
+          await fetchAllSettings(memberWorkspace.workspace_id);
+        } else {
+          console.error("No workspace found for user");
+        }
+      } else {
+        setTenantId(workspace.id);
+        await fetchAllSettings(workspace.id);
+      }
     } catch (error) {
       console.error("Error fetching user:", error);
     } finally {
