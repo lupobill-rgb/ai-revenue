@@ -41,6 +41,7 @@ export function IntegrationsTab() {
   const [emailFromAddress, setEmailFromAddress] = useState("");
   const [emailFromName, setEmailFromName] = useState("");
   const [emailReplyTo, setEmailReplyTo] = useState("");
+  const [emailProvider, setEmailProvider] = useState("");
   const [linkedinProfileUrl, setLinkedinProfileUrl] = useState("");
   const [linkedinConnectLimit, setLinkedinConnectLimit] = useState(20);
   const [linkedinMessageLimit, setLinkedinMessageLimit] = useState(50);
@@ -179,8 +180,6 @@ export function IntegrationsTab() {
       </div>
     );
   }
-
-  const [emailProvider, setEmailProvider] = useState("");
 
   return (
     <div className="space-y-6">
