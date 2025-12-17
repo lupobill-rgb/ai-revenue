@@ -969,7 +969,7 @@ const AssetDetail = () => {
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
                   <AssetPreview
                     key={JSON.stringify(content)}
                     type={asset.type}
@@ -977,6 +977,18 @@ const AssetDetail = () => {
                     content={content}
                     name={asset.name}
                   />
+
+                  {/* Quick-save actions (keeps Save visible while reviewing the preview) */}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button onClick={handleSave} disabled={saving} variant="outline" className="w-full">
+                      <Save className="mr-2 h-4 w-4" />
+                      {saving ? "Saving..." : "Save"}
+                    </Button>
+                    <Button onClick={handleSaveAndPublish} disabled={saving} className="w-full">
+                      <Send className="mr-2 h-4 w-4" />
+                      {saving ? "Publishing..." : "Save & Publish"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </div>
