@@ -14,6 +14,10 @@ interface FeedbackRequest {
   userName: string;
   currentPage: string;
   message: string;
+  screenshot?: {
+    filename: string;
+    content: string; // base64 encoded
+  } | null;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -23,12 +27,26 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { userEmail, userName, currentPage, message }: FeedbackRequest = await req.json();
+    const { userEmail, userName, currentPage, message, screenshot }: FeedbackRequest = await req.json();
 
-    console.log("Sending feedback email from:", userEmail);
+    console.log("Sending feedback email from:", userEmail, "with screenshot:", !!screenshot);
 
     const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
     
+    // Build attachments array if screenshot provided
+    const attachments = screenshot
+      ? [
+          {
+            filename: screenshot.filename || "screenshot.png",
+            content: screenshot.content,
+          },
+        ]
+      : undefined;
+
+    const screenshotNote = screenshot
+      ? `<p style="color: #666;"><em>📎 Screenshot attached</em></p>`
+      : "";
+
     const emailResponse = await resend.emails.send({
       from: "AI CMO Feedback <app@ubigrowth.com>",
       to: ["support@ubigrowth.com"],
@@ -41,9 +59,11 @@ const handler = async (req: Request): Promise<Response> => {
         <hr />
         <h3>Message:</h3>
         <p>${message.replace(/\n/g, "<br />")}</p>
+        ${screenshotNote}
         <hr />
         <p style="color: #666; font-size: 12px;">This feedback was submitted via the UbiGrowth platform.</p>
       `,
+      attachments,
     });
 
     console.log("Email sent successfully:", emailResponse);
