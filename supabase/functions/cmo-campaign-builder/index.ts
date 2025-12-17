@@ -61,9 +61,44 @@ serve(async (req) => {
       });
     }
 
-    const workspaceId = workspace_id || tenant_id;
+    // Resolve workspace_id: use provided, or lookup from user's workspaces
+    let workspaceId = workspace_id;
+    if (!workspaceId) {
+      // First try to find workspace where user is owner
+      const { data: ownedWorkspace } = await supabase
+        .from('workspaces')
+        .select('id')
+        .eq('owner_id', user.id)
+        .limit(1)
+        .single();
+      
+      if (ownedWorkspace) {
+        workspaceId = ownedWorkspace.id;
+      } else {
+        // Fall back to workspace membership
+        const { data: membership } = await supabase
+          .from('workspace_members')
+          .select('workspace_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
+        
+        if (membership) {
+          workspaceId = membership.workspace_id;
+        }
+      }
+    }
 
-    console.log(`Campaign Builder: Building campaign for tenant ${tenant_id}`);
+    if (!workspaceId) {
+      return new Response(JSON.stringify({ 
+        error: 'No workspace found for user. Please create or join a workspace first.' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log(`Campaign Builder: Building campaign for tenant ${tenant_id}, workspace ${workspaceId}`);
     console.log(`Channels: ${channels.join(', ')}, Goal: ${desired_result}`);
 
     // Fetch brand profile for context
