@@ -50,14 +50,20 @@ serve(async (req) => {
       throw new Error("Lead has no email address");
     }
 
-    // Get tenant_id from workspace
-    const { data: workspace } = await supabaseClient
+    // Get the workspace owner (email settings are currently keyed by user_id via FK)
+    const { data: workspace, error: workspaceError } = await supabaseClient
       .from("workspaces")
       .select("owner_id")
       .eq("id", lead.workspace_id)
       .single();
 
-    const tenantId = workspace?.owner_id;
+    if (workspaceError || !workspace?.owner_id) {
+      throw new Error("Workspace not found for lead");
+    }
+
+    const settingsUserId = workspace.owner_id as string;
+
+
 
     // Fetch email settings from ai_settings_email
     // Default to Resend sandbox for testing if no settings configured
@@ -65,11 +71,11 @@ serve(async (req) => {
     let replyToAddress = "noreply@resend.dev";
     let senderName = "UbiGrowth";
 
-    if (tenantId) {
+    if (settingsUserId) {
       const { data: emailSettings } = await supabaseClient
         .from("ai_settings_email")
         .select("from_address, reply_to_address, sender_name")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", settingsUserId)
         .maybeSingle();
 
       if (emailSettings) {
