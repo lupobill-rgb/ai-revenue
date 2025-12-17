@@ -46,6 +46,7 @@ const AssetDetail = () => {
   const [generatingVideo, setGeneratingVideo] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
 
   // Form fields
   const [name, setName] = useState("");
@@ -229,6 +230,8 @@ const AssetDetail = () => {
         title: "Changes saved",
         description: "Asset updated successfully",
       });
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 3000);
       fetchAsset();
     } catch (error) {
       toast({
@@ -1179,10 +1182,24 @@ const AssetDetail = () => {
                         <Button
                           onClick={handleSave}
                           disabled={saving}
-                          className="w-full"
+                          className={`w-full ${justSaved ? 'bg-green-600 hover:bg-green-700' : ''}`}
                         >
-                          <Save className="mr-2 h-4 w-4" />
-                          {saving ? "Saving..." : "Save Content Changes"}
+                          {justSaved ? (
+                            <>
+                              <CheckCircle className="mr-2 h-4 w-4" />
+                              Saved Successfully
+                            </>
+                          ) : saving ? (
+                            <>
+                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="mr-2 h-4 w-4" />
+                              Save Content Changes
+                            </>
+                          )}
                         </Button>
                       </div>
                     </TabsContent>
