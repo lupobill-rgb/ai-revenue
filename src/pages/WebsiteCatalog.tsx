@@ -115,7 +115,7 @@ const WebsiteCatalog = () => {
     <ProtectedRoute>
       <div className="flex min-h-screen flex-col bg-background">
         <NavBar />
-        <main className="flex-1 mx-auto w-full max-w-[1800px] px-4 py-8 sm:px-6 lg:px-8">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-4xl font-bold text-foreground flex items-center gap-2">
