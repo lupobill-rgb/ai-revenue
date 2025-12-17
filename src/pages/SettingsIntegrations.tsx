@@ -211,18 +211,43 @@ export default function SettingsIntegrations() {
       setLoading(false);
       return;
     }
-    setTenantId(user.id);
     setUserId(user.id);
 
-    // Load all settings and audit logs in parallel
+    // Get workspace ID (user may be owner or member)
+    const { data: ownedWorkspace } = await supabase
+      .from("workspaces")
+      .select("id")
+      .eq("owner_id", user.id)
+      .maybeSingle();
+
+    let workspaceId = ownedWorkspace?.id;
+
+    if (!workspaceId) {
+      const { data: membership } = await supabase
+        .from("workspace_members")
+        .select("workspace_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      workspaceId = membership?.workspace_id;
+    }
+
+    if (!workspaceId) {
+      console.error("No workspace found for user");
+      setLoading(false);
+      return;
+    }
+
+    setTenantId(workspaceId);
+
+    // Load all settings and audit logs in parallel using workspace_id
     const [emailRes, linkedinRes, calendarRes, crmRes, domainRes, voiceRes, auditRes] = await Promise.all([
-      supabase.from("ai_settings_email").select("*").eq("tenant_id", user.id).maybeSingle(),
-      supabase.from("ai_settings_linkedin").select("*").eq("tenant_id", user.id).maybeSingle(),
-      supabase.from("ai_settings_calendar").select("*").eq("tenant_id", user.id).maybeSingle(),
-      supabase.from("ai_settings_crm_webhooks").select("*").eq("tenant_id", user.id).maybeSingle(),
-      supabase.from("ai_settings_domain").select("*").eq("tenant_id", user.id).maybeSingle(),
-      supabase.from("ai_settings_voice").select("*").eq("tenant_id", user.id).maybeSingle(),
-      supabase.from("integration_audit_log").select("*").eq("tenant_id", user.id).order("created_at", { ascending: false }).limit(20),
+      supabase.from("ai_settings_email").select("*").eq("tenant_id", workspaceId).maybeSingle(),
+      supabase.from("ai_settings_linkedin").select("*").eq("tenant_id", workspaceId).maybeSingle(),
+      supabase.from("ai_settings_calendar").select("*").eq("tenant_id", workspaceId).maybeSingle(),
+      supabase.from("ai_settings_crm_webhooks").select("*").eq("tenant_id", workspaceId).maybeSingle(),
+      supabase.from("ai_settings_domain").select("*").eq("tenant_id", workspaceId).maybeSingle(),
+      supabase.from("ai_settings_voice").select("*").eq("tenant_id", workspaceId).maybeSingle(),
+      supabase.from("integration_audit_log").select("*").eq("tenant_id", workspaceId).order("created_at", { ascending: false }).limit(20),
     ]);
 
     // Populate email
