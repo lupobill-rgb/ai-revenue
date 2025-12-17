@@ -5491,6 +5491,10 @@ export type Database = {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
       }
+      is_workspace_owner_or_member_sd: {
+        Args: { _user_id: string; _workspace_id: string }
+        Returns: boolean
+      }
       must_change_password: { Args: { _user_id: string }; Returns: boolean }
       rebuild_campaign_daily_stats: {
         Args: { _date_from: string; _date_to: string; _tenant_id: string }
