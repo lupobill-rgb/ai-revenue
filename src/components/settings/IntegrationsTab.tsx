@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,12 +9,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
-import { Mail, Linkedin, Calendar, Globe, Webhook, Loader2, CheckCircle2, XCircle, Copy, ExternalLink } from "lucide-react";
+import { Mail, Linkedin, Calendar, Globe, Webhook, Loader2, CheckCircle2, XCircle, Copy, ExternalLink, LogOut } from "lucide-react";
 
 export function IntegrationsTab() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(null);
+
+  // Gmail OAuth state
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+  const [gmailConnecting, setGmailConnecting] = useState(false);
+  const [gmailDisconnecting, setGmailDisconnecting] = useState(false);
 
   // Form state - Email
   const [emailFromAddress, setEmailFromAddress] = useState("");
@@ -40,7 +48,35 @@ export function IntegrationsTab() {
 
   useEffect(() => {
     fetchUserAndSettings();
-  }, []);
+    
+    // Handle OAuth callback query params
+    const gmailConnected = searchParams.get("gmail_connected");
+    const gmailError = searchParams.get("gmail_error");
+    
+    if (gmailConnected === "true") {
+      toast({
+        title: "Gmail Connected",
+        description: "Your Gmail account has been connected successfully.",
+      });
+      // Clear the query params
+      setSearchParams({});
+    } else if (gmailError) {
+      const errorMessages: Record<string, string> = {
+        invalid_state: "Invalid OAuth state. Please try again.",
+        no_code: "No authorization code received. Please try again.",
+        token_exchange_failed: "Failed to exchange authorization code. Please try again.",
+        no_refresh_token: "No refresh token received. Please revoke access at myaccount.google.com and try again.",
+        no_email: "Could not retrieve email from Google.",
+        storage_failed: "Failed to store credentials. Please try again.",
+      };
+      toast({
+        title: "Gmail Connection Failed",
+        description: errorMessages[gmailError] || "An unknown error occurred.",
+        variant: "destructive",
+      });
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
 
   const fetchUserAndSettings = async () => {
     try {
@@ -76,6 +112,9 @@ export function IntegrationsTab() {
         setTenantId(workspace.id);
         await fetchAllSettings(workspace.id);
       }
+      
+      // Fetch Gmail connection status
+      await fetchGmailStatus();
     } catch (error) {
       console.error("Error fetching user:", error);
     } finally {
@@ -127,6 +166,74 @@ export function IntegrationsTab() {
       }
     } catch (error) {
       console.error("Error fetching settings:", error);
+    }
+  };
+
+  const fetchGmailStatus = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("user_gmail_tokens")
+        .select("email")
+        .maybeSingle();
+      
+      if (data && !error) {
+        setGmailConnected(true);
+        setGmailEmail(data.email);
+      } else {
+        setGmailConnected(false);
+        setGmailEmail(null);
+      }
+    } catch (error) {
+      console.error("Error fetching Gmail status:", error);
+    }
+  };
+
+  const handleConnectGmail = async () => {
+    setGmailConnecting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("gmail-oauth-start", {
+        body: { redirectUrl: window.location.href.split("?")[0] },
+      });
+
+      if (error) throw error;
+      if (data?.authUrl) {
+        window.location.href = data.authUrl;
+      } else {
+        throw new Error("No auth URL returned");
+      }
+    } catch (error: any) {
+      console.error("Error starting Gmail OAuth:", error);
+      toast({
+        title: "Connection Failed",
+        description: error.message || "Failed to start Gmail connection",
+        variant: "destructive",
+      });
+      setGmailConnecting(false);
+    }
+  };
+
+  const handleDisconnectGmail = async () => {
+    setGmailDisconnecting(true);
+    try {
+      const { error } = await supabase.functions.invoke("gmail-disconnect");
+      
+      if (error) throw error;
+      
+      setGmailConnected(false);
+      setGmailEmail(null);
+      toast({
+        title: "Gmail Disconnected",
+        description: "Your Gmail account has been disconnected.",
+      });
+    } catch (error: any) {
+      console.error("Error disconnecting Gmail:", error);
+      toast({
+        title: "Disconnect Failed",
+        description: error.message || "Failed to disconnect Gmail",
+        variant: "destructive",
+      });
+    } finally {
+      setGmailDisconnecting(false);
     }
   };
 
@@ -273,16 +380,75 @@ export function IntegrationsTab() {
 
           <Separator className="my-4" />
 
+          <Separator className="my-4" />
+
+          {/* Gmail OAuth Connection */}
+          <div className="space-y-3">
+            <Label>Connect Gmail Account</Label>
+            <p className="text-sm text-muted-foreground">
+              Connect your Gmail account to send emails directly from your inbox with better deliverability.
+            </p>
+            
+            {gmailConnected ? (
+              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                    <Mail className="h-5 w-5 text-green-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">Gmail Connected</p>
+                    <p className="text-sm text-muted-foreground">{gmailEmail}</p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDisconnectGmail}
+                  disabled={gmailDisconnecting}
+                >
+                  {gmailDisconnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Disconnect
+                    </>
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={handleConnectGmail}
+                disabled={gmailConnecting}
+                className="w-full sm:w-auto"
+              >
+                {gmailConnecting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4 mr-2" />
+                    Connect Gmail Account
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+
+          <Separator className="my-4" />
+
           <div className="space-y-2">
-            <Label>Email Provider Setup</Label>
+            <Label>Alternative: Custom Domain Setup</Label>
             <Select value={emailProvider} onValueChange={setEmailProvider}>
               <SelectTrigger>
-                <SelectValue placeholder="Select your email provider" />
+                <SelectValue placeholder="Select setup method" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="gmail">Gmail / Google Workspace</SelectItem>
-                <SelectItem value="outlook">Outlook / Microsoft 365</SelectItem>
                 <SelectItem value="custom">Custom Domain (Resend)</SelectItem>
+                <SelectItem value="outlook">Outlook / Microsoft 365</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -290,16 +456,6 @@ export function IntegrationsTab() {
           {emailProvider && (
             <div className="p-4 bg-muted/50 rounded-lg space-y-2">
               <h4 className="font-medium text-sm">Setup Instructions</h4>
-              {emailProvider === "gmail" && (
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p>To send from Gmail/Google Workspace:</p>
-                  <ol className="list-decimal list-inside space-y-1 ml-2">
-                    <li>Contact support to verify your domain</li>
-                    <li>We'll set up SPF and DKIM records for your domain</li>
-                    <li>Enter your @yourdomain.com address above</li>
-                  </ol>
-                </div>
-              )}
               {emailProvider === "outlook" && (
                 <div className="text-sm text-muted-foreground space-y-1">
                   <p>To send from Outlook/Microsoft 365:</p>
