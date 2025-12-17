@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Building2, Target, FileText, Palette, CheckCircle2 } from "lucide-react";
+import { getWorkspaceId } from "@/hooks/useWorkspace";
 
 interface BrandColors {
   primary?: string;
@@ -42,6 +43,7 @@ export default function BusinessProfileTab() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [profileExists, setProfileExists] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [profile, setProfile] = useState<BusinessProfile>({
     business_name: "",
     business_description: "",
@@ -64,13 +66,14 @@ export default function BusinessProfileTab() {
   }, []);
 
   const fetchProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const wsId = await getWorkspaceId();
+    if (!wsId) return;
+    setWorkspaceId(wsId);
 
     const { data, error } = await supabase
       .from("business_profiles")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("workspace_id", wsId)
       .maybeSingle();
 
     if (!error && data) {
@@ -87,7 +90,7 @@ export default function BusinessProfileTab() {
   const saveProfile = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    if (!user || !workspaceId) {
       setLoading(false);
       return;
     }
@@ -96,6 +99,7 @@ export default function BusinessProfileTab() {
       .from("business_profiles")
       .upsert({
         user_id: user.id,
+        workspace_id: workspaceId,
         business_name: profile.business_name,
         business_description: profile.business_description,
         unique_selling_points: profile.unique_selling_points,
@@ -107,7 +111,7 @@ export default function BusinessProfileTab() {
         content_length: profile.content_length,
         imagery_style: profile.imagery_style,
       }, {
-        onConflict: "user_id",
+        onConflict: "workspace_id",
       });
 
     setLoading(false);

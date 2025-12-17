@@ -566,6 +566,7 @@ export type Database = {
           unique_selling_points: string[] | null
           updated_at: string
           user_id: string
+          workspace_id: string | null
         }
         Insert: {
           brand_colors?: Json | null
@@ -589,6 +590,7 @@ export type Database = {
           unique_selling_points?: string[] | null
           updated_at?: string
           user_id: string
+          workspace_id?: string | null
         }
         Update: {
           brand_colors?: Json | null
@@ -612,8 +614,17 @@ export type Database = {
           unique_selling_points?: string[] | null
           updated_at?: string
           user_id?: string
+          workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "business_profiles_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       campaign_channel_stats_daily: {
         Row: {
@@ -4605,6 +4616,7 @@ export type Database = {
           token_expires_at: string | null
           updated_at: string
           user_id: string
+          workspace_id: string | null
         }
         Insert: {
           access_token: string
@@ -4618,6 +4630,7 @@ export type Database = {
           token_expires_at?: string | null
           updated_at?: string
           user_id: string
+          workspace_id?: string | null
         }
         Update: {
           access_token?: string
@@ -4631,8 +4644,17 @@ export type Database = {
           token_expires_at?: string | null
           updated_at?: string
           user_id?: string
+          workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "social_integrations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       spine_campaign_channels: {
         Row: {

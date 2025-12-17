@@ -112,13 +112,33 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
     const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: profile } = await supabase
-          .from('business_profiles')
-          .select('business_name')
-          .eq('user_id', user.id)
+        // Get workspace ID
+        const { data: ownedWorkspace } = await supabase
+          .from("workspaces")
+          .select("id")
+          .eq("owner_id", user.id)
           .maybeSingle();
-        if (profile?.business_name) {
-          setEmailTemplates(getEmailTemplates(profile.business_name));
+
+        let workspaceId = ownedWorkspace?.id;
+
+        if (!workspaceId) {
+          const { data: membership } = await supabase
+            .from("workspace_members")
+            .select("workspace_id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          workspaceId = membership?.workspace_id;
+        }
+
+        if (workspaceId) {
+          const { data: profile } = await supabase
+            .from('business_profiles')
+            .select('business_name')
+            .eq('workspace_id', workspaceId)
+            .maybeSingle();
+          if (profile?.business_name) {
+            setEmailTemplates(getEmailTemplates(profile.business_name));
+          }
         }
       }
     };

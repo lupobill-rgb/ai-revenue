@@ -81,10 +81,30 @@ const Approvals = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Get workspace ID
+      const { data: ownedWorkspace } = await supabase
+        .from("workspaces")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+
+      let workspaceId = ownedWorkspace?.id;
+
+      if (!workspaceId) {
+        const { data: membership } = await supabase
+          .from("workspace_members")
+          .select("workspace_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        workspaceId = membership?.workspace_id;
+      }
+
+      if (!workspaceId) return;
+
       const { data } = await supabase
         .from("business_profiles")
         .select("business_name, industry, logo_url")
-        .eq("user_id", user.id)
+        .eq("workspace_id", workspaceId)
         .single();
 
       if (data) {

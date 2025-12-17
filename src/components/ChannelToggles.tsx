@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Mail, Share2, Phone, Video, Layout } from "lucide-react";
+import { getWorkspaceId } from "@/hooks/useWorkspace";
 
 interface ChannelPreferences {
   email_enabled: boolean;
@@ -56,6 +57,7 @@ export function ChannelToggles() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [preferences, setPreferences] = useState<ChannelPreferences>({
     email_enabled: true,
     social_enabled: true,
@@ -69,16 +71,17 @@ export function ChannelToggles() {
   }, []);
 
   const fetchPreferences = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const wsId = await getWorkspaceId();
+    if (!wsId) {
       setLoading(false);
       return;
     }
+    setWorkspaceId(wsId);
 
     const { data, error } = await supabase
       .from("channel_preferences")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("workspace_id", wsId)
       .maybeSingle();
 
     if (!error && data) {
@@ -94,6 +97,8 @@ export function ChannelToggles() {
   };
 
   const handleToggle = async (key: keyof ChannelPreferences, enabled: boolean) => {
+    if (!workspaceId) return;
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -104,10 +109,11 @@ export function ChannelToggles() {
     const { error } = await supabase
       .from("channel_preferences")
       .upsert({
+        workspace_id: workspaceId,
         user_id: user.id,
         ...newPreferences,
       }, {
-        onConflict: "user_id",
+        onConflict: "workspace_id",
       });
 
     setSaving(false);

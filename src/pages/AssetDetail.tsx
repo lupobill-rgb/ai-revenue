@@ -456,12 +456,32 @@ const AssetDetail = () => {
       let businessProfile = null;
       
       if (user) {
-        const { data: profile } = await supabase
-          .from('business_profiles')
-          .select('*')
-          .eq('user_id', user.id)
+        // Get workspace ID
+        const { data: ownedWorkspace } = await supabase
+          .from("workspaces")
+          .select("id")
+          .eq("owner_id", user.id)
           .maybeSingle();
-        businessProfile = profile;
+
+        let workspaceId = ownedWorkspace?.id;
+
+        if (!workspaceId) {
+          const { data: membership } = await supabase
+            .from("workspace_members")
+            .select("workspace_id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          workspaceId = membership?.workspace_id;
+        }
+
+        if (workspaceId) {
+          const { data: profile } = await supabase
+            .from('business_profiles')
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .maybeSingle();
+          businessProfile = profile;
+        }
       }
       
       const { data, error } = await supabase.functions.invoke('content-generate', {

@@ -60,25 +60,49 @@ export default function Settings() {
   const [businessProfile, setBusinessProfile] = useState<any>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [profileRefreshKey, setProfileRefreshKey] = useState(0);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchIntegrations();
-    fetchStripeSettings();
-    fetchBusinessProfile();
+    initializeWorkspace();
   }, []);
 
-  const fetchBusinessProfile = async () => {
-    setLoadingProfile(true);
+  const initializeWorkspace = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setLoadingProfile(false);
-      return;
+    if (!user) return;
+
+    // Get workspace ID
+    const { data: ownedWorkspace } = await supabase
+      .from("workspaces")
+      .select("id")
+      .eq("owner_id", user.id)
+      .maybeSingle();
+
+    let wsId = ownedWorkspace?.id;
+
+    if (!wsId) {
+      const { data: membership } = await supabase
+        .from("workspace_members")
+        .select("workspace_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      wsId = membership?.workspace_id;
     }
+
+    if (wsId) {
+      setWorkspaceId(wsId);
+      fetchIntegrations(wsId);
+      fetchStripeSettings(wsId);
+      fetchBusinessProfile(wsId);
+    }
+  };
+
+  const fetchBusinessProfile = async (wsId: string) => {
+    setLoadingProfile(true);
 
     const { data, error } = await supabase
       .from("business_profiles")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("workspace_id", wsId)
       .maybeSingle();
 
     if (!error && data) {
@@ -87,14 +111,11 @@ export default function Settings() {
     setLoadingProfile(false);
   };
 
-  const fetchIntegrations = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
+  const fetchIntegrations = async (wsId: string) => {
     const { data, error } = await supabase
       .from("social_integrations")
       .select("*")
-      .eq("user_id", user.id);
+      .eq("workspace_id", wsId);
 
     if (error) {
       toast({
@@ -107,14 +128,11 @@ export default function Settings() {
     }
   };
 
-  const fetchStripeSettings = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
+  const fetchStripeSettings = async (wsId: string) => {
     const { data, error } = await supabase
       .from("social_integrations")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("workspace_id", wsId)
       .eq("platform", "stripe")
       .maybeSingle();
 
@@ -133,6 +151,8 @@ export default function Settings() {
       return;
     }
 
+    if (!workspaceId) return;
+
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -144,12 +164,13 @@ export default function Settings() {
       .from("social_integrations")
       .upsert({
         user_id: user.id,
+        workspace_id: workspaceId,
         platform: "stripe",
         access_token: stripeSecretKey,
         account_name: stripePublishableKey || null,
         is_active: true,
       }, {
-        onConflict: "user_id,platform",
+        onConflict: "workspace_id,platform",
       });
 
     setLoading(false);
@@ -168,22 +189,19 @@ export default function Settings() {
       setStripeConnected(true);
       setStripeSecretKey("");
       setStripePublishableKey("");
-      fetchStripeSettings();
+      if (workspaceId) fetchStripeSettings(workspaceId);
     }
   };
 
   const deleteStripeCredentials = async () => {
+    if (!workspaceId) return;
+
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
 
     const { error } = await supabase
       .from("social_integrations")
       .delete()
-      .eq("user_id", user.id)
+      .eq("workspace_id", workspaceId)
       .eq("platform", "stripe");
 
     setLoading(false);
@@ -200,7 +218,7 @@ export default function Settings() {
         description: "Stripe credentials removed",
       });
       setStripeConnected(false);
-      fetchStripeSettings();
+      if (workspaceId) fetchStripeSettings(workspaceId);
     }
   };
 
@@ -214,6 +232,8 @@ export default function Settings() {
       return;
     }
 
+    if (!workspaceId) return;
+
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -225,12 +245,13 @@ export default function Settings() {
       .from("social_integrations")
       .upsert({
         user_id: user.id,
+        workspace_id: workspaceId,
         platform,
         access_token: accessToken,
         account_name: accountName || null,
         is_active: true,
       }, {
-        onConflict: "user_id,platform",
+        onConflict: "workspace_id,platform",
       });
 
     setLoading(false);
@@ -246,7 +267,7 @@ export default function Settings() {
         title: "Success",
         description: `${platform} integration saved successfully`,
       });
-      fetchIntegrations();
+      if (workspaceId) fetchIntegrations(workspaceId);
       
       if (platform === "instagram") {
         setInstagramToken("");
@@ -265,17 +286,14 @@ export default function Settings() {
   };
 
   const deleteIntegration = async (platform: string) => {
+    if (!workspaceId) return;
+
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
 
     const { error } = await supabase
       .from("social_integrations")
       .delete()
-      .eq("user_id", user.id)
+      .eq("workspace_id", workspaceId)
       .eq("platform", platform);
 
     setLoading(false);
@@ -291,7 +309,7 @@ export default function Settings() {
         title: "Success",
         description: `${platform} integration removed`,
       });
-      fetchIntegrations();
+      if (workspaceId) fetchIntegrations(workspaceId);
     }
   };
 
@@ -318,7 +336,7 @@ export default function Settings() {
           title: "Connection Successful",
           description: `${platform} credentials are valid${data.accountInfo ? ` - ${data.accountInfo}` : ''}`,
         });
-        fetchIntegrations();
+        if (workspaceId) fetchIntegrations(workspaceId);
       } else {
         toast({
           title: "Connection Failed",
@@ -404,7 +422,7 @@ export default function Settings() {
   const applyExtractedGuidelines = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!user || !workspaceId) {
         toast({
           title: "Error",
           description: "You must be logged in to apply guidelines",
@@ -430,6 +448,7 @@ export default function Settings() {
         .from("business_profiles")
         .upsert({
           user_id: user.id,
+          workspace_id: workspaceId,
           business_name: extractedGuidelines.brandName,
           brand_colors: brandColors,
           brand_fonts: brandFonts,
@@ -438,12 +457,12 @@ export default function Settings() {
           industry: extractedGuidelines.industry,
           updated_at: new Date().toISOString(),
         }, {
-          onConflict: "user_id",
+          onConflict: "workspace_id",
         });
 
       if (error) throw error;
 
-      await fetchBusinessProfile();
+      await fetchBusinessProfile(workspaceId);
       setProfileRefreshKey(prev => prev + 1);
 
       toast({

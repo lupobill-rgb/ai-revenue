@@ -95,10 +95,30 @@ const Dashboard = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // Get workspace ID
+    const { data: ownedWorkspace } = await supabase
+      .from("workspaces")
+      .select("id")
+      .eq("owner_id", user.id)
+      .maybeSingle();
+
+    let wsId = ownedWorkspace?.id;
+
+    if (!wsId) {
+      const { data: membership } = await supabase
+        .from("workspace_members")
+        .select("workspace_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      wsId = membership?.workspace_id;
+    }
+
+    if (!wsId) return;
+
     const { data } = await supabase
       .from("social_integrations")
       .select("id")
-      .eq("user_id", user.id)
+      .eq("workspace_id", wsId)
       .eq("is_active", true)
       .limit(1);
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getWorkspaceId } from "@/hooks/useWorkspace";
 
 export interface ChannelPreferences {
   email_enabled: boolean;
@@ -26,8 +27,8 @@ export function useChannelPreferences() {
   }, []);
 
   const fetchPreferences = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const workspaceId = await getWorkspaceId();
+    if (!workspaceId) {
       setIsLoading(false);
       return;
     }
@@ -35,7 +36,7 @@ export function useChannelPreferences() {
     const { data, error } = await supabase
       .from("channel_preferences")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("workspace_id", workspaceId)
       .maybeSingle();
 
     if (!error && data) {

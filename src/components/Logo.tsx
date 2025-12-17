@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Building2 } from "lucide-react";
+import { getWorkspaceId } from "@/hooks/useWorkspace";
 
 interface LogoProps {
   className?: string;
@@ -17,13 +18,13 @@ const Logo = ({ className = "h-8", showTagline = false }: LogoProps) => {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const workspaceId = await getWorkspaceId();
+      if (!workspaceId) return;
 
       const { data } = await supabase
         .from("business_profiles")
         .select("business_name, logo_url")
-        .eq("user_id", user.id)
+        .eq("workspace_id", workspaceId)
         .maybeSingle();
 
       if (data) {
