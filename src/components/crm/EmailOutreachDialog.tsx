@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Send, FileText } from "lucide-react";
+import { Loader2, Send, FileText, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -106,44 +106,66 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(getEmailTemplates());
+  const [fromEmail, setFromEmail] = useState<string>("");
+  const [senderName, setSenderName] = useState<string>("");
 
-  // Fetch business profile on mount to customize templates
-  useState(() => {
-    const fetchProfile = async () => {
+  // Fetch business profile and email settings when dialog opens
+  useEffect(() => {
+    if (!open) return;
+    
+    const fetchSettings = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // Get workspace ID
-        const { data: ownedWorkspace } = await supabase
-          .from("workspaces")
-          .select("id")
-          .eq("owner_id", user.id)
+      if (!user) return;
+
+      // Get workspace ID
+      const { data: ownedWorkspace } = await supabase
+        .from("workspaces")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+
+      let workspaceId = ownedWorkspace?.id;
+
+      if (!workspaceId) {
+        const { data: membership } = await supabase
+          .from("workspace_members")
+          .select("workspace_id")
+          .eq("user_id", user.id)
           .maybeSingle();
+        workspaceId = membership?.workspace_id;
+      }
 
-        let workspaceId = ownedWorkspace?.id;
-
-        if (!workspaceId) {
-          const { data: membership } = await supabase
-            .from("workspace_members")
-            .select("workspace_id")
-            .eq("user_id", user.id)
-            .maybeSingle();
-          workspaceId = membership?.workspace_id;
+      if (workspaceId) {
+        // Fetch business profile for templates
+        const { data: profile } = await supabase
+          .from('business_profiles')
+          .select('business_name')
+          .eq('workspace_id', workspaceId)
+          .maybeSingle();
+        
+        if (profile?.business_name) {
+          setEmailTemplates(getEmailTemplates(profile.business_name));
         }
 
-        if (workspaceId) {
-          const { data: profile } = await supabase
-            .from('business_profiles')
-            .select('business_name')
-            .eq('workspace_id', workspaceId)
-            .maybeSingle();
-          if (profile?.business_name) {
-            setEmailTemplates(getEmailTemplates(profile.business_name));
-          }
+        // Fetch email settings for from address
+        const { data: emailSettings } = await supabase
+          .from('ai_settings_email')
+          .select('from_address, sender_name')
+          .eq('tenant_id', workspaceId)
+          .maybeSingle();
+
+        if (emailSettings) {
+          setFromEmail(emailSettings.from_address || "onboarding@resend.dev");
+          setSenderName(emailSettings.sender_name || "");
+        } else {
+          setFromEmail("onboarding@resend.dev");
+          setSenderName("");
         }
       }
     };
-    fetchProfile();
-  });
+    
+    fetchSettings();
+  }, [open]);
 
   const replaceVariables = (text: string): string => {
     if (!lead) return text;
@@ -222,6 +244,17 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
         </DialogHeader>
 
         <div className="space-y-4 flex-1 overflow-y-auto py-4">
+          {/* From Address */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              From
+            </Label>
+            <div className="px-3 py-2 bg-muted rounded-md text-sm text-muted-foreground">
+              {senderName ? `${senderName} <${fromEmail}>` : fromEmail || "Loading..."}
+            </div>
+          </div>
+
           {/* Template Selection */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
