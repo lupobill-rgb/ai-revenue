@@ -247,6 +247,7 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
     setSelectedTemplate("");
     setSubject("");
     setBody("");
+    setSendVia("resend"); // Reset to default when closing
   };
 
   const getFromDisplayText = () => {

@@ -150,18 +150,17 @@ serve(async (req) => {
     const workspaceId = lead.workspace_id as string;
 
     // Get current user (needed for Gmail and activity logging)
-    const { data: { user } } = await supabaseClient.auth.getUser();
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    
+    console.log("sendVia:", sendVia, "user:", user?.id || "null", "userError:", userError?.message || "none");
 
     let emailResult: { id: string };
     let fromAddress = "onboarding@resend.dev";
     let senderName = "UbiGrowth";
+    let actualSendVia = sendVia || "resend";
 
-    // Handle Gmail sending
-    if (sendVia === "gmail") {
-      if (!user) {
-        throw new Error("User must be authenticated to send via Gmail");
-      }
-
+    // Handle Gmail sending - only if user is authenticated and explicitly requested
+    if (actualSendVia === "gmail" && user) {
       // Fetch user's Gmail tokens
       const { data: gmailToken, error: gmailError } = await serviceClient
         .from("user_gmail_tokens")
@@ -200,6 +199,12 @@ serve(async (req) => {
 
       console.log(`Email sent via Gmail from ${fromAddress} to ${lead.email}`);
     } else {
+      // Fall back to Resend if Gmail requested but user not authenticated
+      if (actualSendVia === "gmail" && !user) {
+        console.warn("Gmail requested but user not authenticated, falling back to Resend");
+        actualSendVia = "resend";
+      }
+
       // Send via Resend (default)
       let replyToAddress = "noreply@resend.dev";
 
@@ -332,9 +337,9 @@ serve(async (req) => {
         subject,
         templateId: templateId || "custom",
         campaignId: campaignId || null,
-        from: sendVia === "gmail" ? fromAddress : `${senderName} <${fromAddress}>`,
+        from: actualSendVia === "gmail" ? fromAddress : `${senderName} <${fromAddress}>`,
         to: lead.email,
-        sendVia: sendVia || "resend",
+        sendVia: actualSendVia,
       },
     });
 
@@ -452,7 +457,7 @@ serve(async (req) => {
         success: true,
         emailId: emailResult.id,
         recipient: lead.email,
-        sentVia: sendVia || "resend",
+        sentVia: actualSendVia,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
