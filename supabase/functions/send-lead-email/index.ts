@@ -6,13 +6,109 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Refresh Gmail access token if expired
+async function refreshGmailToken(
+  serviceClient: any,
+  userId: string,
+  refreshToken: string
+): Promise<string> {
+  const clientId = Deno.env.get("GOOGLE_OAUTH_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET");
+
+  if (!clientId || !clientSecret) {
+    throw new Error("Google OAuth credentials not configured");
+  }
+
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  const tokenData = await tokenResponse.json();
+
+  if (!tokenResponse.ok) {
+    console.error("Token refresh failed:", tokenData);
+    throw new Error("Failed to refresh Gmail token");
+  }
+
+  const { access_token, expires_in } = tokenData;
+  const tokenExpiresAt = new Date(Date.now() + expires_in * 1000).toISOString();
+
+  // Update token in database
+  await serviceClient
+    .from("user_gmail_tokens")
+    .update({
+      access_token,
+      token_expires_at: tokenExpiresAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId);
+
+  return access_token;
+}
+
+// Send email via Gmail API
+async function sendViaGmail(
+  accessToken: string,
+  from: string,
+  to: string,
+  subject: string,
+  htmlBody: string
+): Promise<{ id: string }> {
+  // Create RFC 2822 formatted email
+  const emailLines = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: text/html; charset=utf-8`,
+    ``,
+    htmlBody,
+  ];
+
+  const email = emailLines.join("\r\n");
+
+  // Base64url encode the email
+  const encodedEmail = btoa(unescape(encodeURIComponent(email)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const response = await fetch(
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ raw: encodedEmail }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    console.error("Gmail API error:", errorData);
+    throw new Error(`Gmail API error: ${errorData.error?.message || response.status}`);
+  }
+
+  const result = await response.json();
+  return { id: result.id };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { leadId, subject, body, templateId, campaignId } = await req.json();
+    const { leadId, subject, body, templateId, campaignId, sendVia } = await req.json();
 
     if (!leadId || !subject || !body) {
       throw new Error("Lead ID, subject, and body are required");
@@ -35,6 +131,12 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Get current user
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+
     // Fetch the lead details
     const { data: lead, error: leadError } = await supabaseClient
       .from("leads")
@@ -53,33 +155,69 @@ serve(async (req) => {
     // Settings are now keyed by workspace_id (tenant-scoped)
     const workspaceId = lead.workspace_id as string;
 
-
-
-
-    // Fetch email settings from ai_settings_email
-    // Default to Resend sandbox for testing if no settings configured
+    let emailResult: { id: string };
     let fromAddress = "onboarding@resend.dev";
-    let replyToAddress = "noreply@resend.dev";
     let senderName = "UbiGrowth";
 
-    if (workspaceId) {
-      const { data: emailSettings } = await supabaseClient
-        .from("ai_settings_email")
-        .select("from_address, reply_to_address, sender_name")
-        .eq("tenant_id", workspaceId)
-        .maybeSingle();
+    // Handle Gmail sending
+    if (sendVia === "gmail") {
+      // Fetch user's Gmail tokens
+      const { data: gmailToken, error: gmailError } = await serviceClient
+        .from("user_gmail_tokens")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
 
-      if (emailSettings) {
-        if (emailSettings.from_address) fromAddress = emailSettings.from_address;
-        if (emailSettings.reply_to_address) replyToAddress = emailSettings.reply_to_address;
-        if (emailSettings.sender_name) senderName = emailSettings.sender_name;
+      if (gmailError || !gmailToken) {
+        throw new Error("Gmail account not connected. Please connect your Gmail account in Settings > Integrations.");
       }
-    }
 
-    // Fallback: Fetch business profile for sender name if not in email settings
-    if (!senderName || senderName === "Stephen M. Blaising") {
-      const { data: { user } } = await supabaseClient.auth.getUser();
-      if (user) {
+      let accessToken = gmailToken.access_token;
+
+      // Check if token is expired
+      const tokenExpiresAt = new Date(gmailToken.token_expires_at);
+      if (tokenExpiresAt <= new Date()) {
+        console.log("Gmail token expired, refreshing...");
+        accessToken = await refreshGmailToken(
+          serviceClient,
+          user.id,
+          gmailToken.refresh_token
+        );
+      }
+
+      // Send via Gmail API
+      emailResult = await sendViaGmail(
+        accessToken,
+        gmailToken.email,
+        lead.email,
+        subject,
+        body
+      );
+
+      fromAddress = gmailToken.email;
+      senderName = gmailToken.email.split("@")[0];
+
+      console.log(`Email sent via Gmail from ${fromAddress} to ${lead.email}`);
+    } else {
+      // Send via Resend (default)
+      let replyToAddress = "noreply@resend.dev";
+
+      if (workspaceId) {
+        const { data: emailSettings } = await supabaseClient
+          .from("ai_settings_email")
+          .select("from_address, reply_to_address, sender_name")
+          .eq("tenant_id", workspaceId)
+          .maybeSingle();
+
+        if (emailSettings) {
+          if (emailSettings.from_address) fromAddress = emailSettings.from_address;
+          if (emailSettings.reply_to_address) replyToAddress = emailSettings.reply_to_address;
+          if (emailSettings.sender_name) senderName = emailSettings.sender_name;
+        }
+      }
+
+      // Fallback: Fetch business profile for sender name if not in email settings
+      if (!senderName || senderName === "Stephen M. Blaising") {
         const { data: profile } = await supabaseClient
           .from("business_profiles")
           .select("business_name")
@@ -90,109 +228,110 @@ serve(async (req) => {
           senderName = profile.business_name;
         }
       }
-    }
 
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      throw new Error("RESEND_API_KEY not configured");
-    }
-
-    // Build tags for Resend - include all IDs needed for webhook tracking
-    const emailTags = [
-      { name: "lead_id", value: leadId },
-      { name: "workspace_id", value: lead.workspace_id },
-      { name: "template_id", value: templateId || "custom" },
-    ];
-    
-    // Add campaign_id if provided - required for campaign_metrics updates via webhooks
-    if (campaignId) {
-      emailTags.push({ name: "campaign_id", value: campaignId });
-    }
-
-    // Send email via Resend with tracking enabled
-    const sendEmail = async (fromAddr: string) => {
-      return await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: `${senderName} <${fromAddr}>`,
-          reply_to: replyToAddress,
-          to: [lead.email],
-          subject: subject,
-          html: body,
-          tags: emailTags,
-          headers: {
-            "X-Entity-Ref-ID": leadId,
-          },
-        }),
-      });
-    };
-
-    // Attempt 1: tenant-configured sender
-    let response = await sendEmail(fromAddress);
-
-    // If sender domain isn't authorized in Resend, fall back to Resend sandbox sender for testing
-    if (!response.ok) {
-      let errorText = "";
-      try {
-        const errorData = await response.json();
-        errorText = String(errorData?.message || response.status);
-      } catch {
-        errorText = String(response.status);
+      const resendApiKey = Deno.env.get("RESEND_API_KEY");
+      if (!resendApiKey) {
+        throw new Error("RESEND_API_KEY not configured");
       }
 
-      const notAuthorized =
-        (response.status === 403 || errorText.toLowerCase().includes("not authorized")) &&
-        (errorText.toLowerCase().includes("not authorized to send emails from") ||
-          errorText.toLowerCase().includes("not authorized"));
+      // Build tags for Resend - include all IDs needed for webhook tracking
+      const emailTags = [
+        { name: "lead_id", value: leadId },
+        { name: "workspace_id", value: lead.workspace_id },
+        { name: "template_id", value: templateId || "custom" },
+      ];
+      
+      // Add campaign_id if provided - required for campaign_metrics updates via webhooks
+      if (campaignId) {
+        emailTags.push({ name: "campaign_id", value: campaignId });
+      }
 
-      console.warn(
-        `Resend send attempt failed: status=${response.status} from=${fromAddress} msg=${errorText}`
-      );
+      // Send email via Resend with tracking enabled
+      const sendEmail = async (fromAddr: string) => {
+        return await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: `${senderName} <${fromAddr}>`,
+            reply_to: replyToAddress,
+            to: [lead.email],
+            subject: subject,
+            html: body,
+            tags: emailTags,
+            headers: {
+              "X-Entity-Ref-ID": leadId,
+            },
+          }),
+        });
+      };
 
-      if (notAuthorized) {
+      // Attempt 1: tenant-configured sender
+      let response = await sendEmail(fromAddress);
+
+      // If sender domain isn't authorized in Resend, fall back to Resend sandbox sender for testing
+      if (!response.ok) {
+        let errorText = "";
+        try {
+          const errorData = await response.json();
+          errorText = String(errorData?.message || response.status);
+        } catch {
+          errorText = String(response.status);
+        }
+
+        const notAuthorized =
+          (response.status === 403 || errorText.toLowerCase().includes("not authorized")) &&
+          (errorText.toLowerCase().includes("not authorized to send emails from") ||
+            errorText.toLowerCase().includes("not authorized"));
+
         console.warn(
-          `Sender domain not authorized for from=${fromAddress}. Falling back to onboarding@resend.dev.`
+          `Resend send attempt failed: status=${response.status} from=${fromAddress} msg=${errorText}`
         );
-        fromAddress = "onboarding@resend.dev";
-        response = await sendEmail(fromAddress);
-      } else {
+
+        if (notAuthorized) {
+          console.warn(
+            `Sender domain not authorized for from=${fromAddress}. Falling back to onboarding@resend.dev.`
+          );
+          fromAddress = "onboarding@resend.dev";
+          response = await sendEmail(fromAddress);
+        } else {
+          throw new Error(`Failed to send email: ${errorText}`);
+        }
+      }
+
+      if (!response.ok) {
+        // If fallback also failed, surface the error
+        let errorText = "";
+        try {
+          const errorData = await response.json();
+          errorText = String(errorData?.message || response.status);
+        } catch {
+          errorText = String(response.status);
+        }
         throw new Error(`Failed to send email: ${errorText}`);
       }
-    }
 
-    if (!response.ok) {
-      // If fallback also failed, surface the error
-      let errorText = "";
-      try {
-        const errorData = await response.json();
-        errorText = String(errorData?.message || response.status);
-      } catch {
-        errorText = String(response.status);
-      }
-      throw new Error(`Failed to send email: ${errorText}`);
+      emailResult = await response.json();
+      console.log(`Email sent via Resend from ${senderName} <${fromAddress}> to ${lead.email}`);
     }
-
-    const emailResult = await response.json();
 
     // Log activity using service role (bypasses RLS for internal audit logging)
-    const { data: { user } } = await supabaseClient.auth.getUser();
     const { error: activityError } = await serviceClient.from("lead_activities").insert({
       lead_id: leadId,
       workspace_id: lead.workspace_id,
       activity_type: "email_sent",
       description: `Outreach email sent: ${subject}`,
-      created_by: user?.id,
+      created_by: user.id,
       metadata: {
         emailId: emailResult.id,
         subject,
         templateId: templateId || "custom",
         campaignId: campaignId || null,
-        from: `${senderName} <${fromAddress}>`,
+        from: sendVia === "gmail" ? fromAddress : `${senderName} <${fromAddress}>`,
         to: lead.email,
+        sendVia: sendVia || "resend",
       },
     });
 
@@ -305,13 +444,12 @@ serve(async (req) => {
         .eq("id", leadId);
     }
 
-    console.log(`Email sent to ${lead.email} from ${senderName} <${fromAddress}>`);
-
     return new Response(
       JSON.stringify({
         success: true,
         emailId: emailResult.id,
         recipient: lead.email,
+        sentVia: sendVia || "resend",
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

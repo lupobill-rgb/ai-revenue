@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Send, FileText, Mail } from "lucide-react";
+import { Loader2, Send, FileText, Mail, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -31,6 +31,8 @@ interface EmailTemplate {
   subject: string;
   body: string;
 }
+
+type SendVia = "resend" | "gmail";
 
 // Dynamic templates that will use business name from profile
 const getEmailTemplates = (businessName: string = "Our Team"): EmailTemplate[] => [
@@ -108,14 +110,32 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(getEmailTemplates());
   const [fromEmail, setFromEmail] = useState<string>("");
   const [senderName, setSenderName] = useState<string>("");
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+  const [sendVia, setSendVia] = useState<SendVia>("resend");
 
-  // Fetch business profile and email settings when dialog opens
+  // Fetch business profile, email settings, and Gmail status when dialog opens
   useEffect(() => {
     if (!open) return;
     
     const fetchSettings = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Fetch Gmail token status
+      const { data: gmailToken } = await supabase
+        .from("user_gmail_tokens")
+        .select("email")
+        .maybeSingle();
+      
+      if (gmailToken?.email) {
+        setGmailConnected(true);
+        setGmailEmail(gmailToken.email);
+      } else {
+        setGmailConnected(false);
+        setGmailEmail(null);
+        setSendVia("resend"); // Reset to resend if Gmail not connected
+      }
 
       // Get workspace ID
       const { data: ownedWorkspace } = await supabase
@@ -201,6 +221,7 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
           subject: subject.trim(),
           body: htmlBody,
           templateId: selectedTemplate || "custom",
+          sendVia: sendVia,
         },
       });
 
@@ -228,6 +249,13 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
     setBody("");
   };
 
+  const getFromDisplayText = () => {
+    if (sendVia === "gmail" && gmailEmail) {
+      return gmailEmail;
+    }
+    return senderName ? `${senderName} <${fromEmail}>` : fromEmail || "Loading...";
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
@@ -236,11 +264,6 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
             <Send className="h-5 w-5 text-primary" />
             Send Email
           </DialogTitle>
-          {lead && (
-            <DialogDescription>
-              To: {lead.first_name} {lead.last_name} ({lead.email})
-            </DialogDescription>
-          )}
         </DialogHeader>
 
         <div className="space-y-4 flex-1 overflow-y-auto py-4">
@@ -250,8 +273,43 @@ export function EmailOutreachDialog({ open, onOpenChange, lead, onEmailSent }: E
               <Mail className="h-4 w-4" />
               From
             </Label>
+            {gmailConnected ? (
+              <Select value={sendVia} onValueChange={(value: SendVia) => setSendVia(value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select sender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="resend">
+                    <span className="flex items-center gap-2">
+                      {senderName ? `${senderName} <${fromEmail}>` : fromEmail || "Default sender"}
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="gmail">
+                    <span className="flex items-center gap-2">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22 6L12 13L2 6V4L12 11L22 4V6Z" fill="#EA4335"/>
+                        <path d="M22 6V18C22 19.1 21.1 20 20 20H4C2.9 20 2 19.1 2 18V6L12 13L22 6Z" fill="#4285F4"/>
+                      </svg>
+                      {gmailEmail}
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="px-3 py-2 bg-muted rounded-md text-sm text-muted-foreground">
+                {getFromDisplayText()}
+              </div>
+            )}
+          </div>
+
+          {/* To Address */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              To
+            </Label>
             <div className="px-3 py-2 bg-muted rounded-md text-sm text-muted-foreground">
-              {senderName ? `${senderName} <${fromEmail}>` : fromEmail || "Loading..."}
+              {lead ? `${lead.first_name} ${lead.last_name} <${lead.email}>` : "No lead selected"}
             </div>
           </div>
 
