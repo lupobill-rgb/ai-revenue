@@ -131,12 +131,6 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Get current user
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) {
-      throw new Error("User not authenticated");
-    }
-
     // Fetch the lead details
     const { data: lead, error: leadError } = await supabaseClient
       .from("leads")
@@ -155,12 +149,19 @@ serve(async (req) => {
     // Settings are now keyed by workspace_id (tenant-scoped)
     const workspaceId = lead.workspace_id as string;
 
+    // Get current user (needed for Gmail and activity logging)
+    const { data: { user } } = await supabaseClient.auth.getUser();
+
     let emailResult: { id: string };
     let fromAddress = "onboarding@resend.dev";
     let senderName = "UbiGrowth";
 
     // Handle Gmail sending
     if (sendVia === "gmail") {
+      if (!user) {
+        throw new Error("User must be authenticated to send via Gmail");
+      }
+
       // Fetch user's Gmail tokens
       const { data: gmailToken, error: gmailError } = await serviceClient
         .from("user_gmail_tokens")
@@ -218,14 +219,16 @@ serve(async (req) => {
 
       // Fallback: Fetch business profile for sender name if not in email settings
       if (!senderName || senderName === "Stephen M. Blaising") {
-        const { data: profile } = await supabaseClient
-          .from("business_profiles")
-          .select("business_name")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        
-        if (profile?.business_name) {
-          senderName = profile.business_name;
+        if (workspaceId) {
+          const { data: profile } = await supabaseClient
+            .from("business_profiles")
+            .select("business_name")
+            .eq("workspace_id", workspaceId)
+            .maybeSingle();
+          
+          if (profile?.business_name) {
+            senderName = profile.business_name;
+          }
         }
       }
 
@@ -323,7 +326,7 @@ serve(async (req) => {
       workspace_id: lead.workspace_id,
       activity_type: "email_sent",
       description: `Outreach email sent: ${subject}`,
-      created_by: user.id,
+      created_by: user?.id || null,
       metadata: {
         emailId: emailResult.id,
         subject,
