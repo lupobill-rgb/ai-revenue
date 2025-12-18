@@ -1,9 +1,24 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimits, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Rate limit config: 60/min, 500/hr, 2000/day per tenant+IP
+const RATE_LIMIT_CONFIG = {
+  perMinute: 60,
+  perHour: 500,
+  perDay: 2000,
+};
+
+// Common disposable email domains to block
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  "mailinator.com", "guerrillamail.com", "tempmail.com", "throwaway.email",
+  "10minutemail.com", "fakeinbox.com", "trashmail.com", "maildrop.cc",
+  "dispostable.com", "yopmail.com", "sharklasers.com", "spam4.me",
+]);
 
 interface FormPayload {
   tenantSlug: string;
@@ -27,6 +42,8 @@ interface FormPayload {
     utm_term?: string;
     utm_content?: string;
   };
+  // Honeypot field - if filled, it's a bot
+  _hp?: string;
 }
 
 Deno.serve(async (req) => {
@@ -40,9 +57,20 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
+  const clientIp = getClientIp(req);
+
   try {
     const payload: FormPayload = await req.json();
-    console.log("[landing-form-submit] Received payload:", JSON.stringify(payload, null, 2));
+    console.log("[landing-form-submit] Received submission for:", payload.tenantSlug, payload.slug);
+
+    // Honeypot check - if filled, silently reject (looks like success to bot)
+    if (payload._hp) {
+      console.warn("[landing-form-submit] Honeypot triggered, likely bot");
+      return new Response(
+        JSON.stringify({ success: true, message: "Form submitted successfully" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Validate required fields
     if (!payload.tenantSlug || !payload.slug) {
@@ -51,6 +79,20 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "Missing tenantSlug or slug" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Rate limiting check - using tenantSlug as identifier before we resolve tenant
+    const rateLimitResult = await checkRateLimits(
+      supabase,
+      "landing-form-submit",
+      payload.tenantSlug,
+      clientIp,
+      RATE_LIMIT_CONFIG
+    );
+
+    if (!rateLimitResult.allowed) {
+      console.warn(`[landing-form-submit] Rate limited: ${payload.tenantSlug} from ${clientIp}`);
+      return rateLimitResponse(rateLimitResult, corsHeaders);
     }
 
     // 1. Resolve tenant from os_tenant_registry
@@ -117,6 +159,16 @@ Deno.serve(async (req) => {
       console.error("[landing-form-submit] Invalid email format:", email);
       return new Response(
         JSON.stringify({ error: "Invalid email format" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check for disposable email domains
+    const emailDomain = email.split("@")[1];
+    if (DISPOSABLE_EMAIL_DOMAINS.has(emailDomain)) {
+      console.warn("[landing-form-submit] Disposable email rejected:", emailDomain);
+      return new Response(
+        JSON.stringify({ error: "Please use a valid business email address" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

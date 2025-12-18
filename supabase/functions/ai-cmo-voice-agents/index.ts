@@ -131,15 +131,30 @@ serve(async (req) => {
       );
     }
 
-    // Get workspace for tenant
-    const { data: workspace } = await supabase
+    // Get workspace for tenant - use separate queries to avoid SQL injection
+    let workspaceId: string | null = null;
+    
+    // First try to find workspace where user is owner
+    const { data: ownedWorkspace } = await supabase
       .from("workspaces")
       .select("id")
-      .or(`owner_id.eq.${tenantId},id.in.(select workspace_id from workspace_members where user_id = '${user.id}')`)
+      .eq("owner_id", tenantId)
       .limit(1)
-      .single();
-
-    const workspaceId = workspace?.id || tenantId;
+      .maybeSingle();
+    
+    if (ownedWorkspace) {
+      workspaceId = ownedWorkspace.id;
+    } else {
+      // Check workspace membership
+      const { data: membership } = await supabase
+        .from("workspace_members")
+        .select("workspace_id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+      
+      workspaceId = membership?.workspace_id || tenantId;
+    }
 
     // Call kernel cmo_voice_agent_builder
     console.log("Calling kernel cmo_voice_agent_builder...");
