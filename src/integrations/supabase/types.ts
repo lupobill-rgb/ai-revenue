@@ -5519,6 +5519,158 @@ export type Database = {
           },
         ]
       }
+      voice_call_records: {
+        Row: {
+          analysis: Json | null
+          call_type: string
+          campaign_id: string | null
+          cost: number | null
+          created_at: string
+          customer_name: string | null
+          customer_number: string | null
+          duration_seconds: number | null
+          ended_at: string | null
+          failure_reason: string | null
+          id: string
+          lead_id: string | null
+          outcome: string | null
+          phone_number_id: string | null
+          provider_call_id: string | null
+          recording_url: string | null
+          started_at: string | null
+          status: string
+          summary: string | null
+          tenant_id: string
+          transcript: string | null
+          updated_at: string
+          voice_agent_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          analysis?: Json | null
+          call_type?: string
+          campaign_id?: string | null
+          cost?: number | null
+          created_at?: string
+          customer_name?: string | null
+          customer_number?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          failure_reason?: string | null
+          id?: string
+          lead_id?: string | null
+          outcome?: string | null
+          phone_number_id?: string | null
+          provider_call_id?: string | null
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string
+          summary?: string | null
+          tenant_id: string
+          transcript?: string | null
+          updated_at?: string
+          voice_agent_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          analysis?: Json | null
+          call_type?: string
+          campaign_id?: string | null
+          cost?: number | null
+          created_at?: string
+          customer_name?: string | null
+          customer_number?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          failure_reason?: string | null
+          id?: string
+          lead_id?: string | null
+          outcome?: string | null
+          phone_number_id?: string | null
+          provider_call_id?: string | null
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string
+          summary?: string | null
+          tenant_id?: string
+          transcript?: string | null
+          updated_at?: string
+          voice_agent_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_call_records_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_call_records_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_call_records_phone_number_id_fkey"
+            columns: ["phone_number_id"]
+            isOneToOne: false
+            referencedRelation: "voice_phone_numbers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_call_records_voice_agent_id_fkey"
+            columns: ["voice_agent_id"]
+            isOneToOne: false
+            referencedRelation: "voice_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_phone_numbers: {
+        Row: {
+          created_at: string
+          display_name: string
+          id: string
+          is_default: boolean
+          phone_number: string
+          provider: string
+          provider_number_id: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          id?: string
+          is_default?: boolean
+          phone_number: string
+          provider?: string
+          provider_number_id?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_default?: boolean
+          phone_number?: string
+          provider?: string
+          provider_number_id?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
       workspace_members: {
         Row: {
           created_at: string
