@@ -5668,6 +5668,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      user_belongs_to_tenant: { Args: { _tenant_id: string }; Returns: boolean }
       user_has_workspace_access: {
         Args: { _workspace_id: string }
         Returns: boolean
