@@ -53,7 +53,7 @@ const Login = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'https://cmo.ubigrowth.ai/',
+          redirectTo: 'https://cmo.ubigrowth.ai/auth/callback',
         },
       });
 
