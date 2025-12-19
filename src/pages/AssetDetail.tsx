@@ -47,6 +47,8 @@ const AssetDetail = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [justSaved, setJustSaved] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockedReason, setLockedReason] = useState<string | null>(null);
 
   // Form fields
   const [name, setName] = useState("");
@@ -167,6 +169,21 @@ const AssetDetail = () => {
       setCustomDomain(data.custom_domain || "");
       setDeploymentStatus(data.deployment_status || "staging");
       setLastRefreshedAt(new Date());
+
+      // Check if associated campaign is locked
+      const { data: campaign } = await supabase
+        .from("campaigns")
+        .select("is_locked, locked_reason")
+        .eq("asset_id", id)
+        .maybeSingle();
+
+      if (campaign?.is_locked) {
+        setIsLocked(true);
+        setLockedReason(campaign.locked_reason || "This campaign has been deployed and cannot be edited.");
+      } else {
+        setIsLocked(false);
+        setLockedReason(null);
+      }
     } catch (error: any) {
       console.error("Error fetching asset:", error);
       toast({
@@ -1007,10 +1024,38 @@ const AssetDetail = () => {
             <div className="lg:col-span-3">
               <Card className="border-border bg-card shadow-md">
                 <CardHeader>
-                  <CardTitle className="text-foreground">Edit Asset</CardTitle>
-                  <CardDescription>Manage asset details and content</CardDescription>
+                  <CardTitle className="text-foreground flex items-center gap-2">
+                    Edit Asset
+                    {isLocked && (
+                      <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20">
+                        Locked
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <CardDescription>
+                    {isLocked 
+                      ? lockedReason || "This campaign is deployed. Create a new version to make changes."
+                      : "Manage asset details and content"
+                    }
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  {isLocked && (
+                    <div className="mb-6 p-4 rounded-lg border border-orange-500/30 bg-orange-500/5">
+                      <p className="text-sm text-orange-600 dark:text-orange-400">
+                        This campaign has been deployed and content is locked to maintain data integrity.
+                        You can still view all content but editing core fields is disabled.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={() => navigate("/new-campaign")}
+                      >
+                        Create New Version
+                      </Button>
+                    </div>
+                  )}
                   <Tabs defaultValue="general" className="w-full">
                     <TabsList className="grid w-full grid-cols-5 mb-6">
                       <TabsTrigger value="general">General</TabsTrigger>
@@ -1030,7 +1075,8 @@ const AssetDetail = () => {
                           id="name"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
-                          className="bg-background border-input focus:ring-2 focus:ring-primary"
+                          disabled={isLocked}
+                          className="bg-background border-input focus:ring-2 focus:ring-primary disabled:opacity-60"
                         />
                         {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
                       </div>

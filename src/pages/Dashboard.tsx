@@ -52,8 +52,10 @@ const Dashboard = () => {
   const [campaigns, setCampaigns] = useState<CampaignPerformance[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasIntegrations, setHasIntegrations] = useState(false);
-  const [showSampleData, setShowSampleData] = useState(true);
+  const [hasRealData, setHasRealData] = useState(false);
+  const [showDemoData, setShowDemoData] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   // Demo data for demonstration
   const sampleRevenueData = [
@@ -137,7 +139,7 @@ const Dashboard = () => {
         }
       }
 
-      // Fetch campaigns with metrics
+      // Fetch campaigns with metrics - include deployed and running statuses
       const { data: campaignsData, error: campaignsError } = await supabase
         .from("campaigns")
         .select(`
@@ -145,10 +147,25 @@ const Dashboard = () => {
           assets!inner(*),
           campaign_metrics(*)
         `)
-        .eq("status", "active")
+        .in("status", ["deployed", "running", "active"])
         .order("deployed_at", { ascending: false });
 
       if (campaignsError) throw campaignsError;
+
+      // Check if user has real data (campaigns or leads)
+      const { count: leadCount } = await supabase
+        .from("crm_leads")
+        .select("*", { count: "exact", head: true });
+
+      const hasData = (campaignsData?.length || 0) > 0 || (leadCount || 0) > 0;
+      setHasRealData(hasData);
+      
+      // Only show demo mode toggle if NO real data exists
+      if (!hasData && !showDemoData) {
+        setShowDemoData(false);
+      }
+      
+      setLastRefresh(new Date());
 
       // Calculate rollup metrics
       let totalRevenue = 0;
@@ -335,32 +352,34 @@ const Dashboard = () => {
                 <AIQuickActions onActionClick={handleAIAction} />
               </div>
 
-              {/* Sample Data Toggle */}
-              <Card className="mb-8 border-border bg-card">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-foreground text-xl">Platform Preview Mode</CardTitle>
-                      <CardDescription>
-                        View demo metrics to explore the platform's analytics capabilities
-                      </CardDescription>
+              {/* Demo Data Toggle - only show if no real data */}
+              {!hasRealData && (
+                <Card className="mb-8 border-border bg-card">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-foreground text-xl">Platform Preview Mode</CardTitle>
+                        <CardDescription>
+                          No campaigns deployed yet. Toggle demo data to explore analytics features.
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Label htmlFor="demo-data-toggle" className="text-sm font-medium cursor-pointer">
+                          {showDemoData ? "Hide Demo Data" : "Show Demo Data"}
+                        </Label>
+                        <Switch
+                          id="demo-data-toggle"
+                          checked={showDemoData}
+                          onCheckedChange={setShowDemoData}
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <Label htmlFor="sample-data-toggle" className="text-sm font-medium cursor-pointer">
-                        {showSampleData ? "Hide Demo Data" : "Show Demo Data"}
-                      </Label>
-                      <Switch
-                        id="sample-data-toggle"
-                        checked={showSampleData}
-                        onCheckedChange={setShowSampleData}
-                      />
-                    </div>
-                  </div>
-                </CardHeader>
-              </Card>
+                  </CardHeader>
+                </Card>
+              )}
 
-              {/* Sample Metrics Graphs */}
-              {showSampleData && (
+              {/* Demo Metrics Graphs - only show if demo mode enabled and no real data */}
+              {showDemoData && !hasRealData && (
                 <div className="mb-8 grid gap-6 lg:grid-cols-2">
                   {/* Revenue vs Cost Chart */}
                   <Card className="border-border bg-card">
@@ -510,26 +529,44 @@ const Dashboard = () => {
               {/* Individual Campaigns */}
               <Card className="border-border bg-card">
                 <CardHeader>
-                  <CardTitle className="text-foreground text-xl">
-                    Live Campaigns
-                  </CardTitle>
-                  <CardDescription>
-                    Real-time performance metrics from deployed campaigns
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-foreground text-xl">
+                        Live Campaigns
+                      </CardTitle>
+                      <CardDescription>
+                        {lastRefresh ? (
+                          <>Real-time metrics • Last updated: {lastRefresh.toLocaleTimeString()}</>
+                        ) : (
+                          "Real-time performance metrics from deployed campaigns"
+                        )}
+                      </CardDescription>
+                    </div>
+                    {campaigns.length > 0 && (
+                      <Badge variant="outline" className="text-xs">
+                        {campaigns.length} active
+                      </Badge>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {campaigns.length === 0 ? (
                     <div className="py-16 text-center">
                       <TrendingUp className="mx-auto h-12 w-12 text-muted-foreground" />
-                      <p className="mt-4 text-sm text-muted-foreground">
-                        No active campaigns yet
+                      <p className="mt-4 text-lg font-medium text-foreground">
+                        No activity yet
                       </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Create and approve campaigns to see live metrics
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Deploy campaigns to start tracking real performance data
                       </p>
+                      {lastRefresh && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Last checked: {lastRefresh.toLocaleTimeString()}
+                        </p>
+                      )}
                       <Button
                         onClick={() => navigate("/new-campaign")}
-                        className="mt-4"
+                        className="mt-6"
                       >
                         Create Campaign
                       </Button>

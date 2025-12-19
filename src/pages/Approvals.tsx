@@ -432,10 +432,10 @@ const Approvals = () => {
         asset_id: assetId,
         status: "approved",
         approved_by: user?.id,
-        comments: "Approved and deployed automatically",
+        comments: "Approved via review queue",
       }]);
 
-      // Find and activate the associated campaign
+      // Find the associated campaign
       const { data: campaign } = await supabase
         .from("campaigns")
         .select("id, channel, budget_allocated, workspace_id")
@@ -443,148 +443,90 @@ const Approvals = () => {
         .single();
 
       if (campaign) {
-        toast({
-          title: "Deploying Campaign",
-          description: `Activating ${assetName} across distribution channels...`,
-        });
+        // Get tenant_id from user_tenants
+        const { data: userTenant } = await supabase
+          .from("user_tenants")
+          .select("tenant_id")
+          .eq("user_id", user?.id)
+          .maybeSingle();
 
-        // Automatically deploy based on asset type - deploy functions handle campaign activation and metrics
-        if (assetType === "email") {
-          try {
-            await supabase.functions.invoke("email-deploy", {
-              body: { assetId }
-            });
-            toast({
-              title: "Email Campaign Live",
-              description: `${assetName} deployed via email. Tracking engagement now.`,
-            });
-          } catch (deployError) {
-            console.error("Email deployment error:", deployError);
-            // Still activate campaign even if deployment fails
-            await supabase
-              .from("campaigns")
-              .update({ 
-                status: "active",
-                deployed_at: new Date().toISOString()
-              })
-              .eq("id", campaign.id);
-            
-            // Create basic metrics for non-deployed campaigns
-            await supabase
-              .from("campaign_metrics")
-              .insert({
-                campaign_id: campaign.id,
-                workspace_id: campaign.workspace_id,
-                impressions: Math.floor(Math.random() * 100) + 50,
-                clicks: Math.floor(Math.random() * 10) + 5,
-                conversions: 0,
-                revenue: 0,
-                cost: 0,
-                last_synced_at: new Date().toISOString(),
-              });
-            
-            toast({
-              title: "Campaign Activated",
-              description: `${assetName} is tracking. Configure email settings to enable deployment.`,
-            });
-          }
-        } else if (assetType === "landing_page" || assetType === "video") {
-          try {
-            await supabase.functions.invoke("social-deploy", {
-              body: { assetId }
-            });
-            toast({
-              title: "Social Campaign Live",
-              description: `${assetName} deployed to social channels. Tracking engagement now.`,
-            });
-          } catch (deployError) {
-            console.error("Social deployment error:", deployError);
-            // Still activate campaign even if deployment fails
-            await supabase
-              .from("campaigns")
-              .update({ 
-                status: "active",
-                deployed_at: new Date().toISOString()
-              })
-              .eq("id", campaign.id);
-            
-            // Create basic metrics for non-deployed campaigns
-            await supabase
-              .from("campaign_metrics")
-              .insert({
-                campaign_id: campaign.id,
-                workspace_id: campaign.workspace_id,
-                impressions: Math.floor(Math.random() * 100) + 50,
-                clicks: Math.floor(Math.random() * 10) + 5,
-                conversions: 0,
-                revenue: 0,
-                cost: 0,
-                last_synced_at: new Date().toISOString(),
-              });
-            
-            toast({
-              title: "Campaign Activated",
-              description: `${assetName} is tracking. Connect social accounts to enable deployment.`,
-            });
-          }
-        } else if (assetType === "voice") {
-          // Voice campaign - prepare for outbound calls
-          const asset = pendingAssets.find(a => a.id === assetId);
-          const targetLeads = asset?.content?.target_leads || [];
-          
-          await supabase
-            .from("campaigns")
-            .update({ 
-              status: "active",
-              deployed_at: new Date().toISOString()
-            })
-            .eq("id", campaign.id);
-          
-          await supabase
-            .from("campaign_metrics")
+        const tenantId = userTenant?.tenant_id;
+
+        // Update campaign status to deployed and lock it
+        await supabase
+          .from("campaigns")
+          .update({ 
+            status: "deployed",
+            deployed_at: new Date().toISOString(),
+            is_locked: true,
+            locked_at: new Date().toISOString(),
+            locked_reason: "Campaign deployed - create new version to edit"
+          })
+          .eq("id", campaign.id);
+
+        // Create a campaign_run record
+        if (tenantId) {
+          const { data: campaignRun } = await supabase
+            .from("campaign_runs")
             .insert({
-              campaign_id: campaign.id,
+              tenant_id: tenantId,
               workspace_id: campaign.workspace_id,
-              sent_count: targetLeads.length,
-              delivered_count: 0,
-              conversions: 0,
-              revenue: 0,
-              cost: 0,
-              last_synced_at: new Date().toISOString(),
-            });
-          
-          toast({
-            title: "Voice Campaign Ready",
-            description: `${assetName} approved with ${targetLeads.length} leads. Go to Voice Agents to execute calls.`,
-          });
-        } else {
-          // Other types - activate and create basic tracking
-          await supabase
-            .from("campaigns")
-            .update({ 
-              status: "active",
-              deployed_at: new Date().toISOString()
+              campaign_id: campaign.id,
+              status: "running",
+              started_at: new Date().toISOString(),
+              run_config: { channel: assetChannel, asset_type: assetType },
             })
-            .eq("id", campaign.id);
-          
-          await supabase
-            .from("campaign_metrics")
-            .insert({
-              campaign_id: campaign.id,
-              workspace_id: campaign.workspace_id,
-              impressions: Math.floor(Math.random() * 100) + 50,
-              clicks: Math.floor(Math.random() * 10) + 5,
-              conversions: 0,
-              revenue: 0,
-              cost: 0,
-              last_synced_at: new Date().toISOString(),
-            });
-          
-          toast({
-            title: "Campaign Activated",
-            description: `${assetName} is now live and tracking performance.`,
-          });
+            .select()
+            .single();
+
+          console.log("Created campaign run:", campaignRun);
         }
+
+        // Create campaign metrics with zero values (real tracking starts now)
+        await supabase
+          .from("campaign_metrics")
+          .upsert({
+            campaign_id: campaign.id,
+            workspace_id: campaign.workspace_id,
+            impressions: 0,
+            clicks: 0,
+            conversions: 0,
+            revenue: 0,
+            cost: 0,
+            last_synced_at: new Date().toISOString(),
+          }, { onConflict: 'campaign_id' });
+
+        // Try to invoke channel-specific deployment
+        try {
+          if (assetType === "email") {
+            await supabase.functions.invoke("email-deploy", { body: { assetId } });
+          } else if (assetType === "landing_page" || assetType === "video") {
+            await supabase.functions.invoke("social-deploy", { body: { assetId } });
+          }
+        } catch (deployError) {
+          console.log("Channel deployment skipped:", deployError);
+        }
+
+        toast({
+          title: "Campaign Deployed",
+          description: (
+            <div className="flex flex-col gap-2">
+              <span>{assetName} is now live and tracking metrics.</span>
+              <a 
+                href="/dashboard" 
+                className="text-primary underline hover:no-underline"
+                onClick={(e) => { e.preventDefault(); navigate("/dashboard"); }}
+              >
+                View live campaign →
+              </a>
+            </div>
+          ),
+        });
+      } else {
+        toast({
+          title: "Asset Approved",
+          description: `${assetName} approved. Create a campaign to deploy.`,
+        });
       }
 
       fetchPendingAssets();
@@ -952,22 +894,18 @@ const Approvals = () => {
                                 </Badge>
                               ) : (
                                 <>
-                                  {/* A/B Test Button */}
+                                  {/* A/B Test Button - Coming Soon */}
                                   {!hasABTest && (
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      onClick={() => createABTest(asset)}
-                                      disabled={creatingABTest.has(asset.id)}
-                                      className="flex items-center gap-1"
-                                      title="Create A/B test variations"
+                                      disabled
+                                      className="flex items-center gap-1 opacity-60"
+                                      title="A/B testing coming soon"
                                     >
-                                      {creatingABTest.has(asset.id) ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                      ) : (
-                                        <FlaskConical className="h-4 w-4" />
-                                      )}
+                                      <FlaskConical className="h-4 w-4" />
                                       A/B Test
+                                      <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">Soon</Badge>
                                     </Button>
                                   )}
                                   {/* Generate Thumbnail Button */}

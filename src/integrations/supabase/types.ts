@@ -852,6 +852,72 @@ export type Database = {
           },
         ]
       }
+      campaign_runs: {
+        Row: {
+          campaign_id: string
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          last_run_at: string | null
+          metrics_snapshot: Json | null
+          next_run_at: string | null
+          run_config: Json | null
+          started_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          campaign_id: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          last_run_at?: string | null
+          metrics_snapshot?: Json | null
+          next_run_at?: string | null
+          run_config?: Json | null
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          campaign_id?: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          last_run_at?: string | null
+          metrics_snapshot?: Json | null
+          next_run_at?: string | null
+          run_config?: Json | null
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_runs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaigns: {
         Row: {
           asset_id: string
@@ -861,6 +927,9 @@ export type Database = {
           deployed_at: string | null
           external_campaign_id: string | null
           id: string
+          is_locked: boolean | null
+          locked_at: string | null
+          locked_reason: string | null
           status: string
           target_audience: Json | null
           updated_at: string
@@ -874,6 +943,9 @@ export type Database = {
           deployed_at?: string | null
           external_campaign_id?: string | null
           id?: string
+          is_locked?: boolean | null
+          locked_at?: string | null
+          locked_reason?: string | null
           status?: string
           target_audience?: Json | null
           updated_at?: string
@@ -887,6 +959,9 @@ export type Database = {
           deployed_at?: string | null
           external_campaign_id?: string | null
           id?: string
+          is_locked?: boolean | null
+          locked_at?: string | null
+          locked_reason?: string | null
           status?: string
           target_audience?: Json | null
           updated_at?: string
