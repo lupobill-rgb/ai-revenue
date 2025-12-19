@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
-import { Menu, X, LogOut, User, Settings, Plus, Shield, Plug, Home, PenSquare, CheckSquare, Rocket, BarChart3, Users, ChevronDown, FileText, Video, Mail, Phone, Globe, Layout, Database, Workflow } from "lucide-react";
+import { Menu, X, LogOut, User, Settings, Plus, Shield, Plug, Home, PenSquare, CheckSquare, Rocket, BarChart3, Users, ChevronDown, FileText, Video, Mail, Phone, Globe, Layout, Database, Workflow, HelpCircle, Sparkles } from "lucide-react";
 import Logo from "@/components/Logo";
 import NotificationBell from "@/components/NotificationBell";
 import FeedbackButton from "@/components/FeedbackButton";
@@ -206,6 +206,28 @@ const NavBar = () => {
               <Plus className="mr-2 h-4 w-4" />
               New Campaign
             </Button>
+            {/* Help Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <HelpCircle className="h-5 w-5 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => {
+                  window.dispatchEvent(new CustomEvent('trigger-product-tour'));
+                }}>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Restart Tour
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  window.dispatchEvent(new CustomEvent('open-ai-chat'));
+                }}>
+                  <HelpCircle className="mr-2 h-4 w-4" />
+                  AI Assistant
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <NotificationBell />
             <FeedbackButton />
             <DropdownMenu>

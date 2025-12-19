@@ -35,17 +35,11 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ onStartTour }) => {
 
   const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "there";
 
+  // Opening is now controlled by App.tsx which checks the database
+  // This component just needs to ensure it opens when mounted
   useEffect(() => {
-    if (!user) return;
-
-    const hasSeenWelcome = localStorage.getItem(WELCOME_SEEN_KEY);
-    const hasSeenTour = sessionStorage.getItem("product_tour_seen");
-
-    if (!hasSeenWelcome && !hasSeenTour) {
-      const timer = setTimeout(() => {
-        setIsOpen(true);
-      }, 500);
-      return () => clearTimeout(timer);
+    if (user) {
+      setIsOpen(true);
     }
   }, [user]);
 

@@ -5432,6 +5432,7 @@ export type Database = {
           created_at: string
           id: string
           last_used_workspace_id: string | null
+          onboarding_completed_at: string | null
           role: string | null
           tenant_id: string
           user_id: string
@@ -5441,6 +5442,7 @@ export type Database = {
           created_at?: string
           id?: string
           last_used_workspace_id?: string | null
+          onboarding_completed_at?: string | null
           role?: string | null
           tenant_id: string
           user_id: string
@@ -5450,6 +5452,7 @@ export type Database = {
           created_at?: string
           id?: string
           last_used_workspace_id?: string | null
+          onboarding_completed_at?: string | null
           role?: string | null
           tenant_id?: string
           user_id?: string
