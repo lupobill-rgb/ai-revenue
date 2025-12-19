@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./hooks/useAuth";
+import { WorkspaceProvider } from "./contexts/WorkspaceContext";
+import { CMOProvider } from "./contexts/CMOContext";
 import WelcomeModal from "./components/WelcomeModal";
 import ProductTour from "./components/ProductTour";
 import AIChatWidget from "./components/AIChatWidget";
@@ -57,60 +59,64 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <SystemBanner />
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              <Route path="/change-password" element={<ForcePasswordChange />} />
-              <Route path="/onboarding" element={<Onboarding />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/approvals" element={<Approvals />} />
-              <Route path="/assets" element={<AssetCatalog />} />
-              <Route path="/assets/new" element={<NewAsset />} />
-              <Route path="/assets/:id" element={<AssetDetail />} />
-              <Route path="/websites" element={<WebsiteCatalog />} />
-              <Route path="/video" element={<Video />} />
-              <Route path="/email" element={<Email />} />
-              <Route path="/social" element={<Social />} />
-              <Route path="/new-campaign" element={<NewCampaign />} />
-              <Route path="/voice-agents" element={<VoiceAgents />} />
-              <Route path="/users" element={<UserManagement />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/crm" element={<CRM />} />
-              <Route path="/crm/:id" element={<LeadDetail />} />
-              <Route path="/crm/import/monday" element={<MondayLeadConverter />} />
-              <Route path="/automation" element={<Automation />} />
-              <Route path="/os" element={<OSDashboard />} />
-              <Route path="/cro" element={<CRODashboard />} />
-              <Route path="/cro/dashboard" element={<CRODashboard />} />
-              <Route path="/cro/forecast" element={<CROForecast />} />
-              <Route path="/cro/pipeline" element={<CROPipeline />} />
-              <Route path="/cro/deals/:id" element={<CRODealDetail />} />
-              <Route path="/cro/recommendations" element={<CRORecommendations />} />
-              <Route path="/outbound" element={<OutboundDashboard />} />
-              <Route path="/outbound/campaigns/new" element={<OutboundCampaignBuilder />} />
-              <Route path="/outbound/campaigns/:id" element={<OutboundCampaignDetail />} />
-              <Route path="/outbound/linkedin-queue" element={<OutboundLinkedInQueue />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/settings/integrations" element={<SettingsIntegrations />} />
-              <Route path="/landing-pages" element={<LandingPages />} />
-              <Route path="/cmo/leads" element={<LeadsPage />} />
-              <Route path="/platform-admin" element={<PlatformAdmin />} />
-              <Route path="/profile" element={<Profile />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-            <AIChatWidget />
-            <WelcomeModal onStartTour={() => setShowTour(true)} />
-            <ProductTour forceShow={showTour} onComplete={() => setShowTour(false)} />
-          </BrowserRouter>
-        </TooltipProvider>
+        <WorkspaceProvider>
+          <CMOProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <SystemBanner />
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/signup" element={<Signup />} />
+                  <Route path="/auth/callback" element={<AuthCallback />} />
+                  <Route path="/change-password" element={<ForcePasswordChange />} />
+                  <Route path="/onboarding" element={<Onboarding />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/approvals" element={<Approvals />} />
+                  <Route path="/assets" element={<AssetCatalog />} />
+                  <Route path="/assets/new" element={<NewAsset />} />
+                  <Route path="/assets/:id" element={<AssetDetail />} />
+                  <Route path="/websites" element={<WebsiteCatalog />} />
+                  <Route path="/video" element={<Video />} />
+                  <Route path="/email" element={<Email />} />
+                  <Route path="/social" element={<Social />} />
+                  <Route path="/new-campaign" element={<NewCampaign />} />
+                  <Route path="/voice-agents" element={<VoiceAgents />} />
+                  <Route path="/users" element={<UserManagement />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/crm" element={<CRM />} />
+                  <Route path="/crm/:id" element={<LeadDetail />} />
+                  <Route path="/crm/import/monday" element={<MondayLeadConverter />} />
+                  <Route path="/automation" element={<Automation />} />
+                  <Route path="/os" element={<OSDashboard />} />
+                  <Route path="/cro" element={<CRODashboard />} />
+                  <Route path="/cro/dashboard" element={<CRODashboard />} />
+                  <Route path="/cro/forecast" element={<CROForecast />} />
+                  <Route path="/cro/pipeline" element={<CROPipeline />} />
+                  <Route path="/cro/deals/:id" element={<CRODealDetail />} />
+                  <Route path="/cro/recommendations" element={<CRORecommendations />} />
+                  <Route path="/outbound" element={<OutboundDashboard />} />
+                  <Route path="/outbound/campaigns/new" element={<OutboundCampaignBuilder />} />
+                  <Route path="/outbound/campaigns/:id" element={<OutboundCampaignDetail />} />
+                  <Route path="/outbound/linkedin-queue" element={<OutboundLinkedInQueue />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/settings/integrations" element={<SettingsIntegrations />} />
+                  <Route path="/landing-pages" element={<LandingPages />} />
+                  <Route path="/cmo/leads" element={<LeadsPage />} />
+                  <Route path="/platform-admin" element={<PlatformAdmin />} />
+                  <Route path="/profile" element={<Profile />} />
+                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+                <AIChatWidget />
+                <WelcomeModal onStartTour={() => setShowTour(true)} />
+                <ProductTour forceShow={showTour} onComplete={() => setShowTour(false)} />
+              </BrowserRouter>
+            </TooltipProvider>
+          </CMOProvider>
+        </WorkspaceProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
