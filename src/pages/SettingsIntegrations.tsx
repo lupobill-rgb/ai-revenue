@@ -192,6 +192,7 @@ export default function SettingsIntegrations() {
 
   // Email state
   const [emailSettings, setEmailSettings] = useState<EmailSettings | null>(null);
+  const [emailMethod, setEmailMethod] = useState<"resend" | "gmail" | "smtp">("resend");
   const [senderName, setSenderName] = useState("");
   const [fromAddress, setFromAddress] = useState("");
   const [replyToAddress, setReplyToAddress] = useState("");
@@ -200,6 +201,14 @@ export default function SettingsIntegrations() {
   const [smtpUsername, setSmtpUsername] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
   const [smtpOpen, setSmtpOpen] = useState(false);
+
+  // Integration test states
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [testingCalendar, setTestingCalendar] = useState(false);
+  const [testingStripe, setTestingStripe] = useState(false);
+  const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [calendarTestResult, setCalendarTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [stripeTestResult, setStripeTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Gmail OAuth state
   const [gmailConnected, setGmailConnected] = useState(false);
@@ -1062,6 +1071,103 @@ export default function SettingsIntegrations() {
     return format(new Date(date), "MMM d, yyyy 'at' h:mm a");
   };
 
+  // Test connection functions
+  const testSmtpConnection = async () => {
+    if (!smtpHost || !smtpPort) {
+      toast({ title: "Missing Configuration", description: "Please enter SMTP host and port", variant: "destructive" });
+      return;
+    }
+    
+    setTestingSmtp(true);
+    setSmtpTestResult(null);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('test-integration', {
+        body: {
+          integrationType: 'smtp',
+          config: { host: smtpHost, port: smtpPort, username: smtpUsername, password: smtpPassword }
+        }
+      });
+      
+      if (error) throw error;
+      setSmtpTestResult({ success: data.success, message: data.message });
+      
+      if (data.success) {
+        toast({ title: "SMTP Test Passed", description: data.message });
+      } else {
+        toast({ title: "SMTP Test Failed", description: data.details || data.message, variant: "destructive" });
+      }
+    } catch (error: any) {
+      const message = error.message || "Connection test failed";
+      setSmtpTestResult({ success: false, message });
+      toast({ title: "Test Failed", description: message, variant: "destructive" });
+    } finally {
+      setTestingSmtp(false);
+    }
+  };
+
+  const testCalendarUrl = async () => {
+    if (!bookingUrl) {
+      toast({ title: "Missing URL", description: "Please enter a booking URL", variant: "destructive" });
+      return;
+    }
+    
+    setTestingCalendar(true);
+    setCalendarTestResult(null);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('test-integration', {
+        body: { integrationType: 'calendar', config: { bookingUrl } }
+      });
+      
+      if (error) throw error;
+      setCalendarTestResult({ success: data.success, message: data.message });
+      
+      if (data.success) {
+        toast({ title: "Calendar Test Passed", description: data.message });
+      } else {
+        toast({ title: "Calendar Test Failed", description: data.details || data.message, variant: "destructive" });
+      }
+    } catch (error: any) {
+      const message = error.message || "Validation failed";
+      setCalendarTestResult({ success: false, message });
+      toast({ title: "Test Failed", description: message, variant: "destructive" });
+    } finally {
+      setTestingCalendar(false);
+    }
+  };
+
+  const testStripeConnection = async () => {
+    if (!stripePublishableKey) {
+      toast({ title: "Missing Key", description: "Please enter a Stripe publishable key", variant: "destructive" });
+      return;
+    }
+    
+    setTestingStripe(true);
+    setStripeTestResult(null);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('test-integration', {
+        body: { integrationType: 'stripe', config: { publishableKey: stripePublishableKey, secretKey: stripeSecretKeyHint } }
+      });
+      
+      if (error) throw error;
+      setStripeTestResult({ success: data.success, message: data.message });
+      
+      if (data.success) {
+        toast({ title: "Stripe Test Passed", description: data.message });
+      } else {
+        toast({ title: "Stripe Test Failed", description: data.details || data.message, variant: "destructive" });
+      }
+    } catch (error: any) {
+      const message = error.message || "Validation failed";
+      setStripeTestResult({ success: false, message });
+      toast({ title: "Test Failed", description: message, variant: "destructive" });
+    } finally {
+      setTestingStripe(false);
+    }
+  };
+
   if (loading) {
     return (
       <ProtectedRoute>
@@ -1151,6 +1257,69 @@ export default function SettingsIntegrations() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
+                      {/* Email Method Selection */}
+                      <div className="space-y-3">
+                        <Label>Email Delivery Method *</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Choose how emails will be sent from your outbound campaigns.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setEmailMethod("resend")}
+                            className={`p-4 rounded-lg border-2 text-left transition-all ${
+                              emailMethod === "resend" 
+                                ? "border-primary bg-primary/5" 
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            <div className="font-medium">Resend (Default)</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Managed email service with high deliverability
+                            </p>
+                            {emailMethod === "resend" && (
+                              <Badge className="mt-2" variant="default">Active</Badge>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEmailMethod("gmail")}
+                            className={`p-4 rounded-lg border-2 text-left transition-all ${
+                              emailMethod === "gmail" 
+                                ? "border-primary bg-primary/5" 
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            <div className="font-medium">Gmail OAuth</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Send from your Gmail inbox directly
+                            </p>
+                            {gmailConnected && emailMethod === "gmail" && (
+                              <Badge className="mt-2 bg-green-500/10 text-green-600">Connected</Badge>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEmailMethod("smtp")}
+                            className={`p-4 rounded-lg border-2 text-left transition-all ${
+                              emailMethod === "smtp" 
+                                ? "border-primary bg-primary/5" 
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            <div className="font-medium">Custom SMTP</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Use your own SMTP server
+                            </p>
+                            {smtpTestResult?.success && emailMethod === "smtp" && (
+                              <Badge className="mt-2 bg-green-500/10 text-green-600">Verified</Badge>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <Separator />
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="sender-name">Sender Name *</Label>
@@ -1187,77 +1356,72 @@ export default function SettingsIntegrations() {
                         </p>
                       </div>
 
-                      <Separator />
-
-                      {/* Gmail OAuth Connection */}
-                      <div className="space-y-3">
-                        <Label>Connect Gmail Account</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Connect your Gmail account to send emails directly from your inbox with better deliverability.
-                        </p>
-                        
-                        {gmailConnected ? (
-                          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center">
-                                <Mail className="h-5 w-5 text-green-500" />
+                      {/* Gmail OAuth Connection - Only show if Gmail method selected */}
+                      {emailMethod === "gmail" && (
+                        <div className="space-y-3">
+                          <Separator className="mb-4" />
+                          <Label>Connect Gmail Account</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Connect your Gmail account to send emails directly from your inbox with better deliverability.
+                          </p>
+                          
+                          {gmailConnected ? (
+                            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                                  <Mail className="h-5 w-5 text-green-500" />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-sm">Gmail Connected</p>
+                                  <p className="text-sm text-muted-foreground">{gmailEmail}</p>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-medium text-sm">Gmail Connected</p>
-                                <p className="text-sm text-muted-foreground">{gmailEmail}</p>
-                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleDisconnectGmail}
+                                disabled={gmailDisconnecting}
+                              >
+                                {gmailDisconnecting ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <LogOut className="h-4 w-4 mr-2" />
+                                    Disconnect
+                                  </>
+                                )}
+                              </Button>
                             </div>
+                          ) : (
                             <Button
                               variant="outline"
-                              size="sm"
-                              onClick={handleDisconnectGmail}
-                              disabled={gmailDisconnecting}
+                              onClick={handleConnectGmail}
+                              disabled={gmailConnecting}
+                              className="w-full sm:w-auto"
                             >
-                              {gmailDisconnecting ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                              {gmailConnecting ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Connecting...
+                                </>
                               ) : (
                                 <>
-                                  <LogOut className="h-4 w-4 mr-2" />
-                                  Disconnect
+                                  <Mail className="h-4 w-4 mr-2" />
+                                  Connect Gmail Account
                                 </>
                               )}
                             </Button>
-                          </div>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            onClick={handleConnectGmail}
-                            disabled={gmailConnecting}
-                            className="w-full sm:w-auto"
-                          >
-                            {gmailConnecting ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Connecting...
-                              </>
-                            ) : (
-                              <>
-                                <Mail className="h-4 w-4 mr-2" />
-                                Connect Gmail Account
-                              </>
-                            )}
-                          </Button>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
 
-                      <Separator />
-
-                      <Collapsible open={smtpOpen} onOpenChange={setSmtpOpen}>
-                        <CollapsibleTrigger asChild>
-                          <Button variant="ghost" className="w-full justify-between">
-                            <span>Advanced: Custom SMTP Settings</span>
-                            <ChevronDown className={`h-4 w-4 transition-transform ${smtpOpen ? "rotate-180" : ""}`} />
-                          </Button>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="space-y-4 pt-4">
+                      {/* SMTP Settings - Only show if SMTP method selected */}
+                      {emailMethod === "smtp" && (
+                        <div className="space-y-4">
+                          <Separator className="mb-4" />
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                              <Label htmlFor="smtp-host">SMTP Host</Label>
+                              <Label htmlFor="smtp-host">SMTP Host *</Label>
                               <Input
                                 id="smtp-host"
                                 placeholder="smtp.example.com"
@@ -1266,7 +1430,7 @@ export default function SettingsIntegrations() {
                               />
                             </div>
                             <div className="space-y-2">
-                              <Label htmlFor="smtp-port">SMTP Port</Label>
+                              <Label htmlFor="smtp-port">SMTP Port *</Label>
                               <Input
                                 id="smtp-port"
                                 type="number"
@@ -1297,8 +1461,21 @@ export default function SettingsIntegrations() {
                               />
                             </div>
                           </div>
-                        </CollapsibleContent>
-                      </Collapsible>
+                          <Button 
+                            variant="outline" 
+                            onClick={testSmtpConnection}
+                            disabled={testingSmtp}
+                          >
+                            {testingSmtp ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                            Test SMTP Connection
+                          </Button>
+                          {smtpTestResult && (
+                            <div className={`p-3 rounded-lg text-sm ${smtpTestResult.success ? "bg-green-500/10 text-green-700" : "bg-destructive/10 text-destructive"}`}>
+                              {smtpTestResult.message}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <Separator />
 

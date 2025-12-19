@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, UserPlus, Mail, Trash2, Shield, User, Crown } from "lucide-react";
+import { Users, UserPlus, Mail, Trash2, Shield, User, Crown, RefreshCw, Clock, CheckCircle2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { formatDistanceToNow } from "date-fns";
 
 interface TeamMember {
   id: string;
@@ -23,11 +25,13 @@ const teamInvitationsTable = () => supabase.from("team_invitations" as any);
 
 export default function TeamManagement() {
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("editor");
   const [inviting, setInviting] = useState(false);
+  const [resending, setResending] = useState<string | null>(null);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,7 +60,6 @@ export default function TeamManagement() {
 
     if (error) {
       console.error("Error fetching team members:", error);
-      // If table doesn't exist, just show empty state
       setTeamMembers([]);
     } else {
       setTeamMembers((data || []) as unknown as TeamMember[]);
@@ -74,7 +77,6 @@ export default function TeamManagement() {
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(inviteEmail)) {
       toast({
@@ -92,14 +94,12 @@ export default function TeamManagement() {
       return;
     }
 
-    // Get the user's tenant_id
     const { data: userTenant } = await supabase
       .from("user_tenants")
       .select("tenant_id")
       .eq("user_id", user.id)
       .single();
 
-    // Use tenant_id from user_tenants, or fall back to user.id
     const tenantId = userTenant?.tenant_id || user.id;
 
     const { error } = await teamInvitationsTable()
@@ -137,6 +137,30 @@ export default function TeamManagement() {
     }
   };
 
+  const resendInvitation = async (member: TeamMember) => {
+    setResending(member.id);
+    
+    // Update the invited_at timestamp to trigger re-send
+    const { error } = await teamInvitationsTable()
+      .update({ invited_at: new Date().toISOString() })
+      .eq("id", member.id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to resend invitation",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Invitation Resent",
+        description: `Invitation resent to ${member.email}`,
+      });
+      fetchTeamMembers();
+    }
+    setResending(null);
+  };
+
   const removeTeamMember = async (id: string) => {
     const { error } = await teamInvitationsTable()
       .delete()
@@ -158,6 +182,15 @@ export default function TeamManagement() {
   };
 
   const updateRole = async (id: string, newRole: string) => {
+    if (!isAdmin) {
+      toast({
+        title: "Permission Denied",
+        description: "Only admins can change roles",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const { error } = await teamInvitationsTable()
       .update({ role: newRole })
       .eq("id", id);
@@ -188,7 +221,7 @@ export default function TeamManagement() {
     }
   };
 
-  const getRoleBadgeVariant = (role: string) => {
+  const getRoleBadgeVariant = (role: string): "default" | "secondary" | "outline" => {
     switch (role) {
       case "admin":
         return "default";
@@ -199,70 +232,93 @@ export default function TeamManagement() {
     }
   };
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
-      case "accepted":
-        return "default";
-      case "pending":
-        return "secondary";
-      default:
-        return "destructive";
+  const getStatusBadge = (status: string, invitedAt: string) => {
+    const inviteDate = new Date(invitedAt);
+    const now = new Date();
+    const daysSinceInvite = Math.floor((now.getTime() - inviteDate.getTime()) / (1000 * 60 * 60 * 24));
+    const isExpired = daysSinceInvite > 7 && status === "pending";
+
+    if (status === "accepted") {
+      return (
+        <Badge variant="default" className="bg-green-500/10 text-green-600 border-green-500/20">
+          <CheckCircle2 className="h-3 w-3 mr-1" />
+          Accepted
+        </Badge>
+      );
     }
+
+    if (isExpired) {
+      return (
+        <Badge variant="destructive">
+          <Clock className="h-3 w-3 mr-1" />
+          Expired
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge variant="secondary">
+        <Clock className="h-3 w-3 mr-1" />
+        Pending
+      </Badge>
+    );
   };
 
   return (
     <div className="space-y-6">
-      {/* Invite New Member */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <UserPlus className="h-6 w-6 text-primary" />
-            <div>
-              <CardTitle>Invite Team Member</CardTitle>
-              <CardDescription>
-                Add new users to your workspace. They'll receive an email invitation.
-              </CardDescription>
+      {/* Invite New Member - Only show for admins */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <UserPlus className="h-6 w-6 text-primary" />
+              <div>
+                <CardTitle>Invite Team Member</CardTitle>
+                <CardDescription>
+                  Add new users to your workspace. They'll receive an email invitation.
+                </CardDescription>
+              </div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="invite-email">Email Address</Label>
-              <Input
-                id="invite-email"
-                type="email"
-                placeholder="colleague@company.com"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendInvitation()}
-              />
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="invite-email">Email Address</Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="colleague@company.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && sendInvitation()}
+                />
+              </div>
+              <div className="w-full sm:w-40 space-y-2">
+                <Label htmlFor="invite-role">Role</Label>
+                <Select value={inviteRole} onValueChange={setInviteRole}>
+                  <SelectTrigger id="invite-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="viewer">Viewer</SelectItem>
+                    <SelectItem value="editor">Editor</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end">
+                <Button onClick={sendInvitation} disabled={inviting}>
+                  <Mail className="h-4 w-4 mr-2" />
+                  {inviting ? "Sending..." : "Send Invite"}
+                </Button>
+              </div>
             </div>
-            <div className="w-full sm:w-40 space-y-2">
-              <Label htmlFor="invite-role">Role</Label>
-              <Select value={inviteRole} onValueChange={setInviteRole}>
-                <SelectTrigger id="invite-role">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="viewer">Viewer</SelectItem>
-                  <SelectItem value="editor">Editor</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button onClick={sendInvitation} disabled={inviting}>
-                <Mail className="h-4 w-4 mr-2" />
-                {inviting ? "Sending..." : "Send Invite"}
-              </Button>
-            </div>
-          </div>
-          <p className="text-sm text-muted-foreground mt-3">
-            <strong>Viewer:</strong> Can view campaigns and reports. <strong>Editor:</strong> Can create and edit campaigns. <strong>Admin:</strong> Full access including settings.
-          </p>
-        </CardContent>
-      </Card>
+            <p className="text-sm text-muted-foreground mt-3">
+              <strong>Viewer:</strong> Can view campaigns and reports. <strong>Editor:</strong> Can create and edit campaigns. <strong>Admin:</strong> Full access including settings.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Current Team Members */}
       <Card>
@@ -272,7 +328,7 @@ export default function TeamManagement() {
             <div>
               <CardTitle>Team Members</CardTitle>
               <CardDescription>
-                Manage your team's access and permissions
+                {isAdmin ? "Manage your team's access and permissions" : "View your team members"}
               </CardDescription>
             </div>
           </div>
@@ -282,11 +338,11 @@ export default function TeamManagement() {
             <div className="flex items-center justify-center py-8">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
-          ) : teamMembers.length === 0 ? (
+          ) : teamMembers.length === 0 && !currentUserEmail ? (
             <div className="text-center py-8 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>No team members yet</p>
-              <p className="text-sm">Invite colleagues to collaborate on campaigns</p>
+              {isAdmin && <p className="text-sm">Invite colleagues to collaborate on campaigns</p>}
             </div>
           ) : (
             <div className="space-y-3">
@@ -319,39 +375,63 @@ export default function TeamManagement() {
                     <div>
                       <p className="font-medium">{member.email}</p>
                       <div className="flex items-center gap-2 mt-1">
-                        <Badge variant={getStatusBadgeVariant(member.status)}>
-                          {member.status}
-                        </Badge>
+                        {getStatusBadge(member.status, member.invited_at)}
                         {member.invited_at && (
                           <span className="text-xs text-muted-foreground">
-                            Invited {new Date(member.invited_at).toLocaleDateString()}
+                            {member.status === "accepted" && member.accepted_at
+                              ? `Joined ${formatDistanceToNow(new Date(member.accepted_at), { addSuffix: true })}`
+                              : `Invited ${formatDistanceToNow(new Date(member.invited_at), { addSuffix: true })}`}
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Select
-                      value={member.role}
-                      onValueChange={(value) => updateRole(member.id, value)}
-                    >
-                      <SelectTrigger className="w-28">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="viewer">Viewer</SelectItem>
-                        <SelectItem value="editor">Editor</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeTeamMember(member.id)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {/* Resend button for pending invitations */}
+                    {member.status === "pending" && isAdmin && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => resendInvitation(member)}
+                        disabled={resending === member.id}
+                      >
+                        <RefreshCw className={`h-4 w-4 mr-1 ${resending === member.id ? "animate-spin" : ""}`} />
+                        Resend
+                      </Button>
+                    )}
+
+                    {/* Role selector - only for admins */}
+                    {isAdmin ? (
+                      <Select
+                        value={member.role}
+                        onValueChange={(value) => updateRole(member.id, value)}
+                      >
+                        <SelectTrigger className="w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="viewer">Viewer</SelectItem>
+                          <SelectItem value="editor">Editor</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge variant={getRoleBadgeVariant(member.role)}>
+                        {member.role}
+                      </Badge>
+                    )}
+
+                    {/* Delete button - only for admins */}
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeTeamMember(member.id)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
