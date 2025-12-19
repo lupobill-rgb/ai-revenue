@@ -6,34 +6,24 @@ const AuthCallback = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const handleCallback = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        console.error("Auth callback error:", error);
-        navigate("/login");
-        return;
-      }
-
-      if (session) {
-        // Check if user needs onboarding (new user from signup)
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session) {
         const { data: profile } = await supabase
           .from("business_profiles")
           .select("id")
           .eq("user_id", session.user.id)
           .maybeSingle();
 
-        if (!profile) {
-          navigate("/onboarding");
-        } else {
-          navigate("/dashboard");
-        }
-      } else {
-        navigate("/login");
+        navigate(profile ? "/dashboard" : "/onboarding", { replace: true });
       }
-    };
+    });
 
-    handleCallback();
+    // Fallback: if session already exists
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) navigate("/login", { replace: true });
+    });
+
+    return () => sub.subscription.unsubscribe();
   }, [navigate]);
 
   return (
