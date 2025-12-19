@@ -5335,6 +5335,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          last_used_workspace_id: string | null
           role: string | null
           tenant_id: string
           user_id: string
@@ -5343,6 +5344,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          last_used_workspace_id?: string | null
           role?: string | null
           tenant_id: string
           user_id: string
@@ -5351,12 +5353,21 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          last_used_workspace_id?: string | null
           role?: string | null
           tenant_id?: string
           user_id?: string
           wants_product_updates?: boolean
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_tenants_last_used_workspace_id_fkey"
+            columns: ["last_used_workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       voice_agents: {
         Row: {
@@ -5448,6 +5459,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_default: boolean | null
           name: string
           owner_id: string
           public_form_password_hash: string | null
@@ -5458,6 +5470,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_default?: boolean | null
           name: string
           owner_id: string
           public_form_password_hash?: string | null
@@ -5468,6 +5481,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_default?: boolean | null
           name?: string
           owner_id?: string
           public_form_password_hash?: string | null
@@ -5575,6 +5589,14 @@ export type Database = {
         }[]
       }
       get_user_tenant_ids: { Args: { _user_id: string }; Returns: string[] }
+      get_user_workspace: {
+        Args: { p_user_id: string }
+        Returns: {
+          is_owner: boolean
+          workspace_id: string
+          workspace_name: string
+        }[]
+      }
       get_weekly_cfo_portfolio_summary: {
         Args: never
         Returns: {
@@ -5656,6 +5678,10 @@ export type Database = {
       sequence_step_workspace_access: {
         Args: { step_sequence_id: string }
         Returns: boolean
+      }
+      set_last_used_workspace: {
+        Args: { p_user_id: string; p_workspace_id: string }
+        Returns: undefined
       }
       upsert_campaign_daily_stat: {
         Args: {
