@@ -49,6 +49,43 @@ interface PhoneNumber {
   phone_number: string;
 }
 
+interface QueueStats {
+  queued: number;
+  locked: number;
+  completed: number;
+  failed: number;
+  dead: number;
+}
+
+// Log job queue tick for audit trail
+async function logJobQueueTick(
+  supabase: any,
+  workerId: string,
+  invocationType: string,
+  stats: QueueStats,
+  processedCount: number,
+  error: string | null
+): Promise<void> {
+  try {
+    await supabase.from("campaign_audit_log").insert({
+      tenant_id: "00000000-0000-0000-0000-000000000000", // System-level audit
+      workspace_id: "00000000-0000-0000-0000-000000000000",
+      event_type: "job_queue_tick",
+      actor_type: "scheduler",
+      details: {
+        worker_id: workerId,
+        invocation_type: invocationType,
+        timestamp: new Date().toISOString(),
+        queue_stats: stats,
+        jobs_processed: processedCount,
+        error: error,
+      },
+    } as never);
+  } catch (logError) {
+    console.error(`[${workerId}] Failed to log job queue tick:`, logError);
+  }
+}
+
 // Send email via Resend
 async function sendEmail(
   resendApiKey: string,
@@ -434,25 +471,32 @@ Deno.serve(async (req) => {
   }
 
   const workerId = `worker-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-  console.log(`[${workerId}] Starting job queue processing`);
+  const runStartTime = new Date().toISOString();
+  console.log(`[${workerId}] Starting job queue processing at ${runStartTime}`);
 
   try {
-    // Verify internal secret for cron calls
+    // Check if this is a scheduled invocation (Supabase passes specific headers)
+    const isScheduledCall = req.headers.get("x-supabase-cron") === "true";
+    
+    // Verify internal secret for manual/API calls
     const internalSecret = req.headers.get("x-internal-secret");
     const expectedSecret = Deno.env.get("INTERNAL_FUNCTION_SECRET");
     
-    // Allow both internal cron and authenticated requests
+    // Allow scheduled calls, internal secret calls, or authenticated requests
     const authHeader = req.headers.get("Authorization");
-    const isInternalCall = internalSecret === expectedSecret;
+    const isInternalCall = internalSecret && internalSecret === expectedSecret;
     const isAuthenticatedCall = authHeader?.startsWith("Bearer ");
 
-    if (!isInternalCall && !isAuthenticatedCall) {
-      console.log(`[${workerId}] Unauthorized request`);
+    if (!isScheduledCall && !isInternalCall && !isAuthenticatedCall) {
+      console.log(`[${workerId}] Unauthorized request - rejecting`);
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const invocationType = isScheduledCall ? "scheduled" : isInternalCall ? "internal" : "authenticated";
+    console.log(`[${workerId}] Authorized via: ${invocationType}`);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -462,6 +506,27 @@ Deno.serve(async (req) => {
     const resendApiKey = Deno.env.get("RESEND_API_KEY") || "";
     const vapiPrivateKey = Deno.env.get("VAPI_PRIVATE_KEY") || "";
 
+    // Get job queue stats before processing
+    const { data: queueStats } = await supabase
+      .from("job_queue")
+      .select("status")
+      .in("status", ["queued", "locked", "completed", "failed", "dead"]);
+    
+    const statusCounts = {
+      queued: 0,
+      locked: 0,
+      completed: 0,
+      failed: 0,
+      dead: 0,
+    };
+    
+    for (const job of queueStats || []) {
+      const status = job.status as keyof typeof statusCounts;
+      if (status in statusCounts) {
+        statusCounts[status]++;
+      }
+    }
+
     // Claim queued jobs
     const { data: jobs, error: claimError } = await supabase.rpc("claim_queued_jobs", {
       p_worker_id: workerId,
@@ -470,15 +535,29 @@ Deno.serve(async (req) => {
 
     if (claimError) {
       console.error(`[${workerId}] Failed to claim jobs:`, claimError);
+      
+      // Log the tick even on error
+      await logJobQueueTick(supabase, workerId, invocationType, statusCounts, 0, claimError.message);
+      
       return new Response(JSON.stringify({ error: "Failed to claim jobs", details: claimError.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    const claimedCount = jobs?.length || 0;
+
     if (!jobs || jobs.length === 0) {
       console.log(`[${workerId}] No queued jobs found`);
-      return new Response(JSON.stringify({ message: "No jobs to process", worker_id: workerId }), {
+      
+      // Log the tick with no jobs
+      await logJobQueueTick(supabase, workerId, invocationType, statusCounts, 0, null);
+      
+      return new Response(JSON.stringify({ 
+        message: "No jobs to process", 
+        worker_id: workerId,
+        queue_stats: statusCounts,
+      }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -572,10 +651,18 @@ Deno.serve(async (req) => {
 
     console.log(`[${workerId}] Completed processing ${results.length} jobs`);
 
+    // Log the tick with results
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    statusCounts.completed += successCount;
+    statusCounts.failed += failCount;
+    await logJobQueueTick(supabase, workerId, invocationType, statusCounts, results.length, null);
+
     return new Response(
       JSON.stringify({
         message: `Processed ${results.length} jobs`,
         worker_id: workerId,
+        queue_stats: statusCounts,
         results,
       }),
       {
