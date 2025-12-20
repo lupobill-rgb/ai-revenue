@@ -421,6 +421,7 @@ async function processSocialBatch(
   job: Job
 ): Promise<{ success: boolean; posted: number; failed: number; error?: string }> {
   const campaignId = job.payload.campaign_id as string;
+  const provider = (job.payload.provider as string) || "internal";
 
   // Get campaign asset with social content
   const { data: campaign } = await supabase
@@ -433,8 +434,34 @@ async function processSocialBatch(
     return { success: false, posted: 0, failed: 0, error: "Campaign not found" };
   }
 
-  // For now, mark as posted since social integration is limited
-  // In production, this would call LinkedIn/Twitter APIs
+  // Check if social integration is connected
+  const { data: socialSettings } = await supabase
+    .from("ai_settings_social")
+    .select("*")
+    .eq("tenant_id", job.tenant_id)
+    .single();
+
+  // If no integration or not connected, return clear error
+  if (!socialSettings?.is_connected) {
+    const errorMsg = "Social integration not connected. Configure in Settings → Social to deploy social campaigns.";
+    
+    await supabase.from("channel_outbox").insert({
+      tenant_id: job.tenant_id,
+      workspace_id: job.workspace_id,
+      run_id: job.run_id,
+      job_id: job.id,
+      channel: "social",
+      provider: provider,
+      payload: { campaign_id: campaignId },
+      status: "failed",
+      error: errorMsg,
+    } as never);
+
+    return { success: false, posted: 0, failed: 1, error: errorMsg };
+  }
+
+  // Real social posting would happen here using the connected provider
+  // For now, we mark as pending_review to indicate it needs manual posting
   const campaignData = campaign as { assets?: { content?: Record<string, unknown> } };
   
   const outboxEntry = {
@@ -443,9 +470,10 @@ async function processSocialBatch(
     run_id: job.run_id,
     job_id: job.id,
     channel: "social",
-    provider: "internal",
+    provider: socialSettings.social_provider || provider,
     payload: { campaign_id: campaignId, content: campaignData.assets?.content },
-    status: "posted",
+    status: "pending_review",
+    error: null,
   };
 
   await supabase.from("channel_outbox").insert(outboxEntry as never);
@@ -459,7 +487,12 @@ async function processSocialBatch(
     job_id: job.id,
     event_type: "job_completed",
     actor_type: "system",
-    details: { posted: 1, failed: 0, note: "Social post scheduled internally" },
+    details: { 
+      posted: 1, 
+      failed: 0, 
+      note: `Social post queued for ${socialSettings.social_provider || "manual"} review`,
+      provider: socialSettings.social_provider,
+    },
   } as never);
 
   return { success: true, posted: 1, failed: 0 };
@@ -628,8 +661,38 @@ Deno.serve(async (req) => {
         p_error: result.error || null,
       });
 
-      // Log result
-      if (!result.success) {
+      // Update campaign_runs status based on job result
+      if (result.success) {
+        // Check if all jobs for this run are complete
+        const { data: pendingJobs } = await supabase
+          .from("job_queue")
+          .select("id")
+          .eq("run_id", job.run_id)
+          .in("status", ["queued", "locked"])
+          .limit(1);
+
+        if (!pendingJobs || pendingJobs.length === 0) {
+          // All jobs done - mark run as completed
+          await supabase
+            .from("campaign_runs")
+            .update({ 
+              status: "completed", 
+              completed_at: new Date().toISOString() 
+            })
+            .eq("id", job.run_id);
+        }
+      } else {
+        // Job failed - update campaign_runs with error
+        await supabase
+          .from("campaign_runs")
+          .update({ 
+            status: "failed", 
+            error_message: result.error,
+            completed_at: new Date().toISOString()
+          })
+          .eq("id", job.run_id);
+
+        // Log failure audit
         await supabase.from("campaign_audit_log").insert({
           tenant_id: job.tenant_id,
           workspace_id: job.workspace_id,
