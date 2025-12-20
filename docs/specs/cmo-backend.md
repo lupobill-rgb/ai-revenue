@@ -120,3 +120,26 @@ Implemented via `check_and_increment_rate_limit()` SQL function:
 - Per-minute, per-hour, per-day windows
 - Scoped by endpoint + tenant + IP
 - Fail-closed on any error
+
+## Campaign Run Status Updates
+
+### Who Can Call `update_campaign_run_status()`
+- **ONLY** the `run-job-queue` edge function (via service_role)
+- Regular authenticated users: ❌ DENIED
+- Anonymous users: ❌ DENIED
+- Other edge functions: ❌ DENIED (unless using service_role key)
+
+### Access Control
+- EXECUTE revoked from `PUBLIC`, `authenticated`, `anon`
+- EXECUTE granted only to `service_role`
+- Function validates `request.jwt.claim.role = 'service_role'`
+
+### Status Transitions (Enforced)
+```
+queued → running → completed|partial|failed
+queued → failed (scheduler rejection only)
+```
+No backwards transitions allowed.
+
+### Protected Fields (Immutable)
+- `tenant_id`, `workspace_id`, `campaign_id`, `created_by`, `scheduled_for`

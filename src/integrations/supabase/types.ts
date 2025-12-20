@@ -6247,7 +6247,7 @@ export type Database = {
           p_started_at?: string
           p_status: string
         }
-        Returns: undefined
+        Returns: Json
       }
       upsert_campaign_daily_stat: {
         Args: {
