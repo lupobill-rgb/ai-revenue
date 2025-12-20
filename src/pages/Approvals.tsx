@@ -454,6 +454,17 @@ const Approvals = () => {
 
         if (deployError) {
           console.error("Deploy RPC error:", deployError);
+          // Log to audit for debugging
+          supabase.from('agent_runs').insert({
+            tenant_id: campaign.workspace_id, // Use workspace as fallback
+            workspace_id: campaign.workspace_id,
+            agent: 'deploy_campaign_ui',
+            mode: 'error',
+            status: 'failed',
+            error_message: deployError.message,
+            input: { campaign_id: campaign.id, asset_id: assetId },
+          }); // Non-blocking audit log
+          
           toast({
             variant: "destructive",
             title: "Deploy Failed",
@@ -464,6 +475,17 @@ const Approvals = () => {
 
         if (!result?.success) {
           console.error("Deploy failed:", result?.error);
+          // Log to audit for debugging
+          supabase.from('agent_runs').insert({
+            tenant_id: campaign.workspace_id,
+            workspace_id: campaign.workspace_id,
+            agent: 'deploy_campaign_ui',
+            mode: 'error',
+            status: 'failed',
+            error_message: result?.error || 'Unknown error',
+            input: { campaign_id: campaign.id, asset_id: assetId },
+          }); // Non-blocking audit log
+          
           toast({
             variant: "destructive",
             title: "Deploy Failed",
