@@ -290,3 +290,12 @@ verify_jwt = false
 
 [functions.gmail-disconnect]
 verify_jwt = true
+
+[functions.run-job-queue]
+verify_jwt = false
+
+[functions.send-feedback-email]
+verify_jwt = true
+
+[functions.test-integration]
+verify_jwt = false

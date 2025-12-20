@@ -664,6 +664,48 @@ export type Database = {
           },
         ]
       }
+      campaign_audit_log: {
+        Row: {
+          actor_id: string | null
+          actor_type: string | null
+          campaign_id: string | null
+          created_at: string
+          details: Json | null
+          event_type: string
+          id: string
+          job_id: string | null
+          run_id: string | null
+          tenant_id: string
+          workspace_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_type?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          details?: Json | null
+          event_type: string
+          id?: string
+          job_id?: string | null
+          run_id?: string | null
+          tenant_id: string
+          workspace_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_type?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          details?: Json | null
+          event_type?: string
+          id?: string
+          job_id?: string | null
+          run_id?: string | null
+          tenant_id?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
       campaign_channel_stats_daily: {
         Row: {
           bounces: number
@@ -854,15 +896,20 @@ export type Database = {
       }
       campaign_runs: {
         Row: {
+          attempts: number | null
           campaign_id: string
+          channel: string | null
           completed_at: string | null
           created_at: string
+          created_by: string | null
+          error_code: string | null
           error_message: string | null
           id: string
           last_run_at: string | null
           metrics_snapshot: Json | null
           next_run_at: string | null
           run_config: Json | null
+          scheduled_for: string | null
           started_at: string | null
           status: string
           tenant_id: string
@@ -870,15 +917,20 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          attempts?: number | null
           campaign_id: string
+          channel?: string | null
           completed_at?: string | null
           created_at?: string
+          created_by?: string | null
+          error_code?: string | null
           error_message?: string | null
           id?: string
           last_run_at?: string | null
           metrics_snapshot?: Json | null
           next_run_at?: string | null
           run_config?: Json | null
+          scheduled_for?: string | null
           started_at?: string | null
           status?: string
           tenant_id: string
@@ -886,15 +938,20 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          attempts?: number | null
           campaign_id?: string
+          channel?: string | null
           completed_at?: string | null
           created_at?: string
+          created_by?: string | null
+          error_code?: string | null
           error_message?: string | null
           id?: string
           last_run_at?: string | null
           metrics_snapshot?: Json | null
           next_run_at?: string | null
           run_config?: Json | null
+          scheduled_for?: string | null
           started_at?: string | null
           status?: string
           tenant_id?: string
@@ -980,6 +1037,78 @@ export type Database = {
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_outbox: {
+        Row: {
+          channel: string
+          created_at: string
+          error: string | null
+          id: string
+          job_id: string | null
+          payload: Json
+          provider: string
+          provider_message_id: string | null
+          provider_response: Json | null
+          recipient_email: string | null
+          recipient_id: string | null
+          recipient_phone: string | null
+          run_id: string | null
+          status: string
+          tenant_id: string
+          workspace_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          job_id?: string | null
+          payload?: Json
+          provider: string
+          provider_message_id?: string | null
+          provider_response?: Json | null
+          recipient_email?: string | null
+          recipient_id?: string | null
+          recipient_phone?: string | null
+          run_id?: string | null
+          status?: string
+          tenant_id: string
+          workspace_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          job_id?: string | null
+          payload?: Json
+          provider?: string
+          provider_message_id?: string | null
+          provider_response?: Json | null
+          recipient_email?: string | null
+          recipient_id?: string | null
+          recipient_phone?: string | null
+          run_id?: string | null
+          status?: string
+          tenant_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_outbox_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_outbox_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_runs"
             referencedColumns: ["id"]
           },
         ]
@@ -3215,6 +3344,65 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      job_queue: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: string
+          job_type: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          payload: Json
+          run_id: string | null
+          scheduled_for: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          job_type: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          payload?: Json
+          run_id?: string | null
+          scheduled_for?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          job_type?: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          payload?: Json
+          run_id?: string | null
+          scheduled_for?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_queue_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       kernel_cycle_slo: {
         Row: {
@@ -5784,6 +5972,35 @@ export type Database = {
         Args: { _password: string; _workspace_id: string }
         Returns: boolean
       }
+      claim_queued_jobs: {
+        Args: { p_limit?: number; p_worker_id: string }
+        Returns: {
+          attempts: number
+          created_at: string
+          id: string
+          job_type: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          payload: Json
+          run_id: string | null
+          scheduled_for: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "job_queue"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      complete_job: {
+        Args: { p_error?: string; p_job_id: string; p_success: boolean }
+        Returns: undefined
+      }
       content_variant_workspace_access: {
         Args: { variant_asset_id: string }
         Returns: boolean
@@ -5934,6 +6151,7 @@ export type Database = {
         Args: { _lead_id: string; _user_id: string }
         Returns: undefined
       }
+      retry_job: { Args: { p_job_id: string }; Returns: boolean }
       sequence_step_workspace_access: {
         Args: { step_sequence_id: string }
         Returns: boolean
