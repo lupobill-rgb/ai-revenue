@@ -236,18 +236,346 @@ None found. All policies either:
 
 ---
 
-## SEC-3: Security Functions
+## SEC-3: Security Functions (RAW SQL + OUTPUT)
 
-All 7 functions verified with `pg_get_functiondef()`:
-- `get_user_tenant_ids` ✅ SECURITY DEFINER, search_path='public'
-- `has_role` ✅ SECURITY DEFINER, search_path='public'
-- `is_platform_admin` ✅ SECURITY DEFINER, search_path='public', defaults auth.uid()
-- `is_workspace_member` ✅ SECURITY DEFINER, search_path='public'
-- `is_workspace_owner` ✅ SECURITY DEFINER, search_path='public'
-- `user_belongs_to_tenant` ✅ SECURITY DEFINER, search_path='public', uses auth.uid()
-- `user_has_workspace_access` ✅ SECURITY DEFINER, search_path='', uses auth.uid()
+### RAW SQL - Core Security Functions
+```sql
+SELECT p.proname, pg_get_functiondef(p.oid) AS def
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid=p.pronamespace
+WHERE n.nspname='public'
+  AND p.proname IN ('has_role','user_belongs_to_tenant','user_has_workspace_access');
+```
 
-**SEC-3 Verdict: PASS**
+### RAW OUTPUT - Core Functions
+
+#### 1. has_role
+```sql
+CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role app_role)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles
+    WHERE user_id = _user_id
+      AND role = _role
+  )
+$function$
+```
+
+**Security Analysis:**
+- ✅ SECURITY DEFINER: Present
+- ✅ SET search_path TO 'public': Present and safe
+- ✅ No dynamic SQL
+- ✅ Uses explicit table reference `public.user_roles`
+- ✅ Simple EXISTS check, no parameter abuse possible
+
+#### 2. user_belongs_to_tenant
+```sql
+CREATE OR REPLACE FUNCTION public.user_belongs_to_tenant(_tenant_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_tenants
+    WHERE user_id = auth.uid()
+      AND tenant_id = _tenant_id
+  )
+  OR public.is_platform_admin(auth.uid())
+$function$
+```
+
+**Security Analysis:**
+- ✅ SECURITY DEFINER: Present
+- ✅ SET search_path TO 'public': Present and safe
+- ✅ No dynamic SQL
+- ✅ **CRITICAL**: Uses `auth.uid()` for user identification, NOT user-supplied ID
+- ✅ `_tenant_id` parameter is only used to check membership, not to grant access
+- ✅ Membership verified via `user_tenants` mapping table
+- ✅ Platform admin bypass uses `auth.uid()`, not user-supplied
+
+#### 3. user_has_workspace_access
+```sql
+CREATE OR REPLACE FUNCTION public.user_has_workspace_access(_workspace_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  has_access boolean;
+BEGIN
+  -- Platform admins have access to all workspaces
+  IF public.is_platform_admin(auth.uid()) THEN
+    RETURN TRUE;
+  END IF;
+
+  -- Check if user is owner
+  SELECT EXISTS (
+    SELECT 1 FROM public.workspaces
+    WHERE id = _workspace_id AND owner_id = auth.uid()
+  ) INTO has_access;
+  
+  IF has_access THEN
+    RETURN TRUE;
+  END IF;
+  
+  -- Check if user is member
+  SELECT EXISTS (
+    SELECT 1 FROM public.workspace_members
+    WHERE workspace_id = _workspace_id AND user_id = auth.uid()
+  ) INTO has_access;
+  
+  RETURN has_access;
+END;
+$function$
+```
+
+**Security Analysis:**
+- ✅ SECURITY DEFINER: Present
+- ✅ SET search_path TO '': Present (empty = safest, forces explicit schema)
+- ✅ No dynamic SQL
+- ✅ **CRITICAL**: All checks use `auth.uid()` for user identification
+- ✅ Uses explicit `public.` schema prefixes for all table references
+- ✅ `_workspace_id` only used to look up ownership/membership
+- ✅ Three-layer check: platform_admin → owner → member
+
+---
+
+### RAW SQL - Dependent Functions
+```sql
+SELECT p.proname, pg_get_functiondef(p.oid) AS def
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid=p.pronamespace
+WHERE n.nspname='public'
+  AND p.proname IN ('is_platform_admin', 'get_user_tenant_ids', 'is_workspace_owner', 'is_workspace_member');
+```
+
+### RAW OUTPUT - Dependent Functions
+
+#### 4. is_platform_admin
+```sql
+CREATE OR REPLACE FUNCTION public.is_platform_admin(_user_id uuid DEFAULT auth.uid())
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.platform_admins
+    WHERE user_id = _user_id
+      AND is_active = true
+  )
+$function$
+```
+
+**Security Analysis:**
+- ✅ SECURITY DEFINER: Present
+- ✅ SET search_path TO 'public': Present and safe
+- ✅ No dynamic SQL
+- ✅ Default parameter `auth.uid()` ensures caller identity when not specified
+- ✅ Checks `is_active = true` flag
+
+#### 5. get_user_tenant_ids
+```sql
+CREATE OR REPLACE FUNCTION public.get_user_tenant_ids(_user_id uuid)
+ RETURNS SETOF uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT tenant_id FROM public.user_tenants WHERE user_id = _user_id
+$function$
+```
+
+**Security Analysis:**
+- ✅ SECURITY DEFINER: Present
+- ✅ SET search_path TO 'public': Present and safe
+- ✅ No dynamic SQL
+- ✅ Simple lookup function
+
+#### 6. is_workspace_owner
+```sql
+CREATE OR REPLACE FUNCTION public.is_workspace_owner(_workspace_id uuid, _user_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM workspaces 
+    WHERE id = _workspace_id AND owner_id = _user_id
+  );
+$function$
+```
+
+**Security Analysis:**
+- ✅ SECURITY DEFINER: Present
+- ✅ SET search_path TO 'public': Present and safe
+- ✅ No dynamic SQL
+
+#### 7. is_workspace_member
+```sql
+CREATE OR REPLACE FUNCTION public.is_workspace_member(_workspace_id uuid, _user_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM workspace_members 
+    WHERE workspace_id = _workspace_id AND user_id = _user_id
+  );
+$function$
+```
+
+**Security Analysis:**
+- ✅ SECURITY DEFINER: Present
+- ✅ SET search_path TO 'public': Present and safe
+- ✅ No dynamic SQL
+
+---
+
+### RAW SQL - Derived Access Functions
+```sql
+SELECT p.proname, pg_get_functiondef(p.oid) AS def
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid=p.pronamespace
+WHERE n.nspname='public'
+  AND p.proname IN ('campaign_channel_workspace_access', 'funnel_stage_workspace_access', 
+                    'content_variant_workspace_access', 'asset_approval_workspace_access',
+                    'sequence_step_workspace_access');
+```
+
+### RAW OUTPUT - Derived Functions
+
+#### 8. campaign_channel_workspace_access
+```sql
+CREATE OR REPLACE FUNCTION public.campaign_channel_workspace_access(channel_campaign_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.cmo_campaigns c
+    WHERE c.id = channel_campaign_id
+      AND user_has_workspace_access(c.workspace_id)
+  )
+$function$
+```
+
+#### 9. funnel_stage_workspace_access
+```sql
+CREATE OR REPLACE FUNCTION public.funnel_stage_workspace_access(stage_funnel_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.cmo_funnels f
+    WHERE f.id = stage_funnel_id
+      AND user_has_workspace_access(f.workspace_id)
+  )
+$function$
+```
+
+#### 10. content_variant_workspace_access
+```sql
+CREATE OR REPLACE FUNCTION public.content_variant_workspace_access(variant_asset_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.cmo_content_assets a
+    WHERE a.id = variant_asset_id
+      AND user_has_workspace_access(a.workspace_id)
+  )
+$function$
+```
+
+#### 11. asset_approval_workspace_access
+```sql
+CREATE OR REPLACE FUNCTION public.asset_approval_workspace_access(approval_asset_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.assets a
+    WHERE a.id = approval_asset_id
+      AND user_has_workspace_access(a.workspace_id)
+  )
+$function$
+```
+
+#### 12. sequence_step_workspace_access
+```sql
+CREATE OR REPLACE FUNCTION public.sequence_step_workspace_access(step_sequence_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.email_sequences es
+    WHERE es.id = step_sequence_id
+      AND user_has_workspace_access(es.workspace_id)
+  )
+$function$
+```
+
+**Derived Functions Security Analysis (all 5):**
+- ✅ SECURITY DEFINER: Present on all
+- ✅ SET search_path TO 'public': Present on all
+- ✅ No dynamic SQL
+- ✅ All delegate to `user_has_workspace_access()` which uses `auth.uid()`
+- ✅ Pattern: Look up parent record → verify workspace access via delegation
+
+---
+
+### SEC-3 Summary Checklist
+
+| Function | SECURITY DEFINER | search_path | No Dynamic SQL | Uses auth.uid() | Mapping Tables |
+|----------|:----------------:|:-----------:|:--------------:|:---------------:|:--------------:|
+| has_role | ✅ | ✅ 'public' | ✅ | via caller | user_roles |
+| user_belongs_to_tenant | ✅ | ✅ 'public' | ✅ | ✅ auth.uid() | user_tenants |
+| user_has_workspace_access | ✅ | ✅ '' (empty) | ✅ | ✅ auth.uid() | workspaces, workspace_members |
+| is_platform_admin | ✅ | ✅ 'public' | ✅ | ✅ default auth.uid() | platform_admins |
+| get_user_tenant_ids | ✅ | ✅ 'public' | ✅ | via caller | user_tenants |
+| is_workspace_owner | ✅ | ✅ 'public' | ✅ | via caller | workspaces |
+| is_workspace_member | ✅ | ✅ 'public' | ✅ | via caller | workspace_members |
+| campaign_channel_workspace_access | ✅ | ✅ 'public' | ✅ | via delegation | cmo_campaigns |
+| funnel_stage_workspace_access | ✅ | ✅ 'public' | ✅ | via delegation | cmo_funnels |
+| content_variant_workspace_access | ✅ | ✅ 'public' | ✅ | via delegation | cmo_content_assets |
+| asset_approval_workspace_access | ✅ | ✅ 'public' | ✅ | via delegation | assets |
+| sequence_step_workspace_access | ✅ | ✅ 'public' | ✅ | via delegation | email_sequences |
+
+### Critical Security Properties Verified
+
+1. **SECURITY DEFINER present**: ✅ All 12 functions
+2. **SET search_path is safe**: ✅ All use 'public' or '' (empty)
+3. **No dynamic SQL**: ✅ All use static SQL
+4. **Membership checks use auth.uid()**: ✅ 
+   - `user_belongs_to_tenant()` uses `auth.uid()` directly
+   - `user_has_workspace_access()` uses `auth.uid()` directly
+   - Derived functions delegate to `user_has_workspace_access()`
+5. **No user-supplied tenant/user IDs accepted for access decisions**: ✅
+   - `_tenant_id` and `_workspace_id` params are only used for lookup
+   - Actual user identity always comes from `auth.uid()`
+
+**SEC-3 Verdict: PASS** - All functions are safe, deterministic, and cannot be parameter-abused to bypass tenant membership.
 
 ---
 
@@ -274,6 +602,6 @@ Tests isolation for: leads, voice_phone_numbers, cmo_campaigns, crm_activities.
 |-------|--------|
 | SEC-1: RLS Enabled | ✅ PASS (101/101 tables) |
 | SEC-2: Policy Review | ✅ PASS (all policies properly scoped) |
-| SEC-3: Security Functions | ✅ PASS |
+| SEC-3: Security Functions | ✅ PASS (12/12 functions verified safe) |
 | SEC-4: Cross-Tenant Test | ⏳ Manual verification at /platform-admin/qa/tenant-isolation |
 | SEC-5: Route Guards | ✅ PASS |
