@@ -184,3 +184,30 @@ No backwards transitions allowed.
 
 ### Protected Fields (Immutable)
 - `tenant_id`, `workspace_id`, `campaign_id`, `created_by`, `scheduled_for`
+
+## Idempotency (Duplicate Prevention)
+
+### How It Works
+Each channel action (email, voice, social) generates a unique `idempotency_key` stored in `channel_outbox`:
+- **Email**: `sha256(run_id + lead_id + asset_id + scheduled_for)`
+- **Voice**: `sha256(run_id + lead_id + script_version + scheduled_for)`
+- **Social**: `sha256(run_id + post_id + channel + scheduled_for)`
+
+### Behavior
+1. Before making a provider call, check if `idempotency_key` exists in `channel_outbox`
+2. If exists with terminal status (`sent`, `called`, `posted`, `generated`, `pending_review`), skip
+3. Use `UPSERT` with `ON CONFLICT DO NOTHING` to prevent race conditions
+
+### Database Index
+```sql
+UNIQUE INDEX channel_outbox_idempotency_key_unique 
+ON channel_outbox (tenant_id, workspace_id, idempotency_key)
+```
+
+### Test Plan
+| Test | Action | Expected |
+|------|--------|----------|
+| ID1: First send | Deploy campaign with 3 leads | 3 emails sent, 3 outbox rows |
+| ID2: Retry same job | Re-run job with same run_id | 0 emails sent (all skipped) |
+| ID3: Failed retry | Mark job as failed, retry | Only failed leads re-attempted |
+| ID4: New run | Create new campaign run | All leads processed (new run_id) |

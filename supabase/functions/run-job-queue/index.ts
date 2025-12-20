@@ -69,8 +69,43 @@ interface BatchResult {
   called?: number;
   posted?: number;
   failed?: number;
+  skipped?: number; // idempotency: already processed
   error?: string;
 }
+
+// Generate idempotency key using SHA-256
+async function generateIdempotencyKey(parts: string[]): Promise<string> {
+  const data = parts.filter(Boolean).join("|");
+  const encoder = new TextEncoder();
+  const dataBuffer = encoder.encode(data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Check if action already processed (idempotency check)
+async function checkIdempotency(
+  supabase: any,
+  tenantId: string,
+  workspaceId: string,
+  idempotencyKey: string
+): Promise<{ exists: boolean; status?: string }> {
+  const { data } = await supabase
+    .from("channel_outbox")
+    .select("id, status")
+    .eq("tenant_id", tenantId)
+    .eq("workspace_id", workspaceId)
+    .eq("idempotency_key", idempotencyKey)
+    .maybeSingle();
+  
+  if (data) {
+    return { exists: true, status: data.status };
+  }
+  return { exists: false };
+}
+
+// Terminal statuses that indicate action was completed (skip on retry)
+const TERMINAL_STATUSES = ["sent", "called", "posted", "generated", "pending_review"];
 
 // Log job queue tick for audit trail
 async function logJobQueueTick(
@@ -265,10 +300,35 @@ async function processEmailBatch(
 
   let sent = 0;
   let failed = 0;
+  let skipped = 0;
   const outboxEntries: Record<string, unknown>[] = [];
+  const assetId = String(campaign.asset_id || campaignId);
+  const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
 
   for (const lead of leads) {
     if (!lead.email) continue;
+    
+    // Generate idempotency key: sha256(run_id + lead_id + asset_id + scheduled_for)
+    const idempotencyKey = await generateIdempotencyKey([
+      job.run_id,
+      lead.id,
+      assetId,
+      scheduledFor,
+    ]);
+    
+    // Check if already processed (idempotency)
+    const existing = await checkIdempotency(
+      supabase,
+      job.tenant_id,
+      job.workspace_id,
+      idempotencyKey
+    );
+    
+    if (existing.exists && TERMINAL_STATUSES.includes(existing.status || "")) {
+      console.log(`[email] Skipping lead ${lead.id} - already processed (status: ${existing.status})`);
+      skipped++;
+      continue;
+    }
     
     // Personalize content
     const personalizedBody = body
@@ -289,8 +349,6 @@ async function processEmailBatch(
         );
         break;
       case "gmail":
-        // Gmail would use OAuth tokens stored in user_gmail_tokens
-        // For now, fall back to resend with a note
         result = await sendEmail(
           resendApiKey,
           `${emailSettings.sender_name || "Team"} <${emailSettings.from_address}>`,
@@ -300,8 +358,6 @@ async function processEmailBatch(
         );
         break;
       case "smtp":
-        // SMTP would use custom SMTP settings
-        // For now, fall back to resend
         result = await sendEmail(
           resendApiKey,
           `${emailSettings.sender_name || "Team"} <${emailSettings.from_address}>`,
@@ -320,13 +376,14 @@ async function processEmailBatch(
       run_id: job.run_id,
       job_id: job.id,
       channel: "email",
-      provider: selectedProvider, // Use the selected provider
+      provider: selectedProvider,
       recipient_id: lead.id,
       recipient_email: lead.email,
       payload: { subject, campaign_id: campaignId },
       status: result.success ? "sent" : "failed",
       provider_message_id: result.messageId,
       error: result.error,
+      idempotency_key: idempotencyKey,
     });
 
     if (result.success) {
@@ -336,9 +393,15 @@ async function processEmailBatch(
     }
   }
 
-  // Insert outbox entries
+  // Insert outbox entries (upsert by idempotency key)
   if (outboxEntries.length > 0) {
-    await supabase.from("channel_outbox").insert(outboxEntries as never[]);
+    // Use insert with ON CONFLICT DO NOTHING for idempotency
+    for (const entry of outboxEntries) {
+      await supabase.from("channel_outbox").upsert(entry as never, {
+        onConflict: "tenant_id,workspace_id,idempotency_key",
+        ignoreDuplicates: true,
+      });
+    }
   }
 
   // Log audit
@@ -350,11 +413,11 @@ async function processEmailBatch(
     job_id: job.id,
     event_type: "job_completed",
     actor_type: "system",
-    details: { sent, failed, total: leads.length },
+    details: { sent, failed, skipped, total: leads.length },
   } as never);
 
   // Return partial success if some sent but some failed
-  return { success: failed === 0, sent, failed, partial: sent > 0 && failed > 0 };
+  return { success: failed === 0, sent, failed, skipped, partial: sent > 0 && failed > 0 };
 }
 
 // Process voice call batch job - supports VAPI and ElevenLabs
@@ -416,10 +479,35 @@ async function processVoiceBatch(
 
     let called = 0;
     let failed = 0;
+    let skipped = 0;
     const outboxEntries: Record<string, unknown>[] = [];
+    const scriptVersion = voiceSettings.default_vapi_assistant_id || "v1";
+    const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
 
     for (const lead of leads) {
       if (!lead.phone) continue;
+      
+      // Generate idempotency key: sha256(run_id + lead_id + script_version + scheduled_for)
+      const idempotencyKey = await generateIdempotencyKey([
+        job.run_id,
+        lead.id,
+        scriptVersion,
+        scheduledFor,
+      ]);
+      
+      // Check if already processed (idempotency)
+      const existing = await checkIdempotency(
+        supabase,
+        job.tenant_id,
+        job.workspace_id,
+        idempotencyKey
+      );
+      
+      if (existing.exists && TERMINAL_STATUSES.includes(existing.status || "")) {
+        console.log(`[voice] Skipping lead ${lead.id} - already processed (status: ${existing.status})`);
+        skipped++;
+        continue;
+      }
       
       const result = await initiateVapiCall(
         vapiPrivateKey,
@@ -442,6 +530,7 @@ async function processVoiceBatch(
         status: result.success ? "called" : "failed",
         provider_message_id: result.callId,
         error: result.error,
+        idempotency_key: idempotencyKey,
       });
 
       if (result.success) {
@@ -462,8 +551,12 @@ async function processVoiceBatch(
       }
     }
 
-    if (outboxEntries.length > 0) {
-      await supabase.from("channel_outbox").insert(outboxEntries as never[]);
+    // Insert outbox entries with idempotency
+    for (const entry of outboxEntries) {
+      await supabase.from("channel_outbox").upsert(entry as never, {
+        onConflict: "tenant_id,workspace_id,idempotency_key",
+        ignoreDuplicates: true,
+      });
     }
 
     await supabase.from("campaign_audit_log").insert({
@@ -474,10 +567,10 @@ async function processVoiceBatch(
       job_id: job.id,
       event_type: "job_completed",
       actor_type: "system",
-      details: { provider: "vapi", called, failed, total: leads.length },
+      details: { provider: "vapi", called, failed, skipped, total: leads.length },
     } as never);
 
-    return { success: failed === 0, called, failed, partial: called > 0 && failed > 0 };
+    return { success: failed === 0, called, failed, skipped, partial: called > 0 && failed > 0 };
   } 
   
   // ElevenLabs TTS provider
@@ -504,6 +597,28 @@ async function processVoiceBatch(
                    (campaignData.assets?.content as Record<string, string>)?.body ||
                    "Hello, this is an automated message.";
 
+    // Generate idempotency key: sha256(run_id + campaign_id + voice_id + scheduled_for)
+    const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
+    const idempotencyKey = await generateIdempotencyKey([
+      job.run_id,
+      campaignId,
+      voiceId,
+      scheduledFor,
+    ]);
+    
+    // Check if already processed
+    const existing = await checkIdempotency(
+      supabase,
+      job.tenant_id,
+      job.workspace_id,
+      idempotencyKey
+    );
+    
+    if (existing.exists && TERMINAL_STATUSES.includes(existing.status || "")) {
+      console.log(`[elevenlabs] Skipping - already processed (status: ${existing.status})`);
+      return { success: true, called: 0, failed: 0, skipped: 1 };
+    }
+
     // Generate audio using ElevenLabs
     const result = await generateElevenLabsAudio(elevenLabsApiKey, script, voiceId);
 
@@ -522,9 +637,13 @@ async function processVoiceBatch(
       status: result.success ? "generated" : "failed",
       provider_message_id: result.success ? `elevenlabs_${Date.now()}` : null,
       error: result.error,
+      idempotency_key: idempotencyKey,
     };
 
-    await supabase.from("channel_outbox").insert(outboxEntry as never);
+    await supabase.from("channel_outbox").upsert(outboxEntry as never, {
+      onConflict: "tenant_id,workspace_id,idempotency_key",
+      ignoreDuplicates: true,
+    });
 
     await supabase.from("campaign_audit_log").insert({
       tenant_id: job.tenant_id,
@@ -583,7 +702,16 @@ async function processSocialBatch(
   if (!socialSettings?.is_connected) {
     const errorMsg = "Social integration not connected. Configure in Settings → Social to deploy social campaigns.";
     
-    await supabase.from("channel_outbox").insert({
+    // Still need idempotency key for failed entries
+    const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
+    const failedIdempotencyKey = await generateIdempotencyKey([
+      job.run_id,
+      campaignId,
+      "social",
+      scheduledFor,
+    ]);
+    
+    await supabase.from("channel_outbox").upsert({
       tenant_id: job.tenant_id,
       workspace_id: job.workspace_id,
       run_id: job.run_id,
@@ -593,9 +721,36 @@ async function processSocialBatch(
       payload: { campaign_id: campaignId },
       status: "failed",
       error: errorMsg,
-    } as never);
+      idempotency_key: failedIdempotencyKey,
+    } as never, {
+      onConflict: "tenant_id,workspace_id,idempotency_key",
+      ignoreDuplicates: true,
+    });
 
     return { success: false, posted: 0, failed: 1, error: errorMsg };
+  }
+
+  // Generate idempotency key: sha256(run_id + post_id + channel + scheduled_for)
+  const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
+  const postId = String(campaign.asset_id || campaignId);
+  const idempotencyKey = await generateIdempotencyKey([
+    job.run_id,
+    postId,
+    "social",
+    scheduledFor,
+  ]);
+  
+  // Check if already processed
+  const existing = await checkIdempotency(
+    supabase,
+    job.tenant_id,
+    job.workspace_id,
+    idempotencyKey
+  );
+  
+  if (existing.exists && TERMINAL_STATUSES.includes(existing.status || "")) {
+    console.log(`[social] Skipping - already processed (status: ${existing.status})`);
+    return { success: true, posted: 0, failed: 0, skipped: 1 };
   }
 
   // Real social posting would happen here using the connected provider
@@ -612,9 +767,13 @@ async function processSocialBatch(
     payload: { campaign_id: campaignId, content: campaignData.assets?.content },
     status: "pending_review",
     error: null,
+    idempotency_key: idempotencyKey,
   };
 
-  await supabase.from("channel_outbox").insert(outboxEntry as never);
+  await supabase.from("channel_outbox").upsert(outboxEntry as never, {
+    onConflict: "tenant_id,workspace_id,idempotency_key",
+    ignoreDuplicates: true,
+  });
 
   // Log audit
   await supabase.from("campaign_audit_log").insert({

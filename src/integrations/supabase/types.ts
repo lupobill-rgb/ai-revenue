@@ -1115,6 +1115,7 @@ export type Database = {
           created_at: string
           error: string | null
           id: string
+          idempotency_key: string
           job_id: string | null
           payload: Json
           provider: string
@@ -1133,6 +1134,7 @@ export type Database = {
           created_at?: string
           error?: string | null
           id?: string
+          idempotency_key: string
           job_id?: string | null
           payload?: Json
           provider: string
@@ -1151,6 +1153,7 @@ export type Database = {
           created_at?: string
           error?: string | null
           id?: string
+          idempotency_key?: string
           job_id?: string | null
           payload?: Json
           provider?: string
