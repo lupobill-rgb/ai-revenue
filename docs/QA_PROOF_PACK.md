@@ -568,11 +568,165 @@ Available at: `/platform-admin/qa/tenant-isolation`
 
 ---
 
-## SEC-5: Route Guards
+## SEC-5: Route Guard Inventory
 
-426 matches in 24 files for `ProtectedRoute`. All app routes wrapped.
+### Source File
+`src/App.tsx` - Main router configuration (lines 123-167)
 
-**SEC-5 Verdict: PASS**
+### Route Classification
+
+| Route | Type | Protection Mechanism | File Path | Code Reference |
+|-------|------|---------------------|-----------|----------------|
+| `/` | Public | Landing page, redirects authenticated users to /dashboard | `src/pages/Index.tsx` | Lines 36-42: `useEffect` → `navigate("/dashboard")` |
+| `/login` | Public (Auth) | No auth required (login page) | `src/pages/Login.tsx` | No wrapper needed |
+| `/signup` | Public (Auth) | No auth required (signup page) | `src/pages/Signup.tsx` | No wrapper needed |
+| `/auth/callback` | Public (Auth) | OAuth callback handler | `src/pages/AuthCallback.tsx` | No wrapper needed |
+| `/change-password` | Public (Auth) | Password reset flow | `src/pages/ForcePasswordChange.tsx` | No wrapper needed |
+| `/onboarding` | Semi-Protected | In-page auth check + workspace creation | `src/pages/Onboarding.tsx` | Auth check via Supabase calls |
+| `/dashboard` | Protected | `<ProtectedRoute>` wrapper | `src/pages/Dashboard.tsx` | Line 254: wraps entire return |
+| `/approvals` | Protected | `<ProtectedRoute>` wrapper | `src/pages/Approvals.tsx` | Line 12 import, wraps return |
+| `/assets` | Protected | `<ProtectedRoute>` wrapper | `src/pages/AssetCatalog.tsx` | Line 14 import, line 143 wrap |
+| `/assets/new` | Protected | `<ProtectedRoute>` wrapper | `src/pages/NewAsset.tsx` | Line 14 import, line 166 wrap |
+| `/assets/:id` | Protected | `<ProtectedRoute>` wrapper | `src/pages/AssetDetail.tsx` | Lines 913-944 wrap all returns |
+| `/websites` | Protected | `<ProtectedRoute>` wrapper | `src/pages/WebsiteCatalog.tsx` | Line 11 import, wraps return |
+| `/video` | Protected | `<ProtectedRoute>` wrapper | `src/pages/Video.tsx` | Line 5 import, line 119 wrap |
+| `/email` | Protected | `<ProtectedRoute>` wrapper | `src/pages/Email.tsx` | Line 7 import, line 194 wrap |
+| `/social` | Protected | `<ProtectedRoute>` wrapper | `src/pages/Social.tsx` | Line 7 import, wraps return |
+| `/new-campaign` | Protected | `<ProtectedRoute>` wrapper | `src/pages/NewCampaign.tsx` | Line 6 import, line 238 wrap |
+| `/voice-agents` | Protected | `<ProtectedRoute>` wrapper | `src/pages/VoiceAgents.tsx` | Lines 9, 833-851 wrap all returns |
+| `/users` | Protected + Admin | `<ProtectedRoute>` + role check | `src/pages/UserManagement.tsx` | Lines 13, 40-44: `isAdmin` check + redirect |
+| `/reports` | Protected | `<ProtectedRoute>` wrapper | `src/pages/Reports.tsx` | Line 4 import, wraps return |
+| `/crm` | Protected | `<ProtectedRoute>` wrapper | `src/pages/CRM.tsx` | Line 15 import, line 670 wrap |
+| `/crm/:id` | Protected | `<ProtectedRoute>` wrapper | `src/pages/LeadDetail.tsx` | Uses ProtectedRoute wrapper |
+| `/crm/import/monday` | Protected | `<ProtectedRoute>` wrapper | `src/pages/MondayLeadConverter.tsx` | Uses ProtectedRoute wrapper |
+| `/automation` | Protected | `<ProtectedRoute>` wrapper | `src/pages/Automation.tsx` | Line 4 import, line 16 wrap |
+| `/os` | Protected | `<ProtectedRoute>` wrapper | `src/pages/OSDashboard.tsx` | Line 5 import, wraps return |
+| `/cro` | Protected | In-page auth check | `src/pages/cro/CRODashboard.tsx` | Uses `useAuth()` hook |
+| `/cro/dashboard` | Protected | In-page auth check | `src/pages/cro/CRODashboard.tsx` | Uses `useAuth()` hook |
+| `/cro/forecast` | Protected | In-page auth check | `src/pages/cro/CROForecast.tsx` | Uses `useAuth()` hook |
+| `/cro/pipeline` | Protected | In-page auth check | `src/pages/cro/CROPipeline.tsx` | Uses `useAuth()` hook |
+| `/cro/deals/:id` | Protected | In-page auth check | `src/pages/cro/CRODealDetail.tsx` | Uses `useAuth()` hook |
+| `/cro/recommendations` | Protected | In-page auth check | `src/pages/cro/CRORecommendations.tsx` | Uses `useAuth()` hook |
+| `/outbound` | Protected | `<ProtectedRoute>` wrapper | `src/pages/OutboundDashboard.tsx` | Line 6 import, wraps return |
+| `/outbound/campaigns/new` | Protected | `<ProtectedRoute>` wrapper | `src/pages/OutboundCampaignBuilder.tsx` | Line 6 import, line 317 wrap |
+| `/outbound/campaigns/:id` | Protected | `<ProtectedRoute>` wrapper | `src/pages/OutboundCampaignDetail.tsx` | Uses ProtectedRoute wrapper |
+| `/outbound/linkedin-queue` | Protected | `<ProtectedRoute>` wrapper | `src/pages/OutboundLinkedInQueue.tsx` | Uses ProtectedRoute wrapper |
+| `/settings` | Protected | `<ProtectedRoute>` wrapper | `src/pages/Settings.tsx` | Line 15 import, line 210 wrap |
+| `/settings/integrations` | Protected | `<ProtectedRoute>` wrapper | `src/pages/SettingsIntegrations.tsx` | Uses ProtectedRoute wrapper |
+| `/landing-pages` | Protected | In-page auth check | `src/pages/LandingPages.tsx` | Lines 13-17: `useEffect` redirect |
+| `/cmo/leads` | Protected | In-page auth check | `src/pages/cmo/LeadsPage.tsx` | Uses `useAuth()` hook |
+| `/platform-admin` | Protected + Admin | In-page role check | `src/pages/PlatformAdmin.tsx` | Lines 52-70: `is_platform_admin` RPC |
+| `/platform-admin/qa/tenant-isolation` | Protected + Admin | In-page role check | `src/pages/platform-admin/TenantIsolationQA.tsx` | Platform admin check |
+| `/profile` | Protected | In-page auth check | `src/pages/Profile.tsx` | Lines 26-30: `useEffect` redirect |
+| `*` (404) | Public | No auth required | `src/pages/NotFound.tsx` | Displays 404 message |
+
+### Protection Mechanisms Summary
+
+#### 1. `<ProtectedRoute>` Component Wrapper (Primary Method)
+**File:** `src/components/ProtectedRoute.tsx`
+```typescript
+// Lines 16-41: Core protection logic
+const { data: { subscription } } = supabase.auth.onAuthStateChange(
+  (event, session) => {
+    setSession(session);
+    setUser(session?.user ?? null);
+    setLoading(false);
+    
+    if (!session) {
+      navigate("/login");
+    }
+  }
+);
+```
+- Used by 23+ pages
+- Listens to auth state changes
+- Redirects unauthenticated users to `/login`
+- Shows loading spinner during session check
+
+#### 2. In-Page Auth Check (Alternative Method)
+**Pattern used by CRO pages, Profile, LandingPages:**
+```typescript
+const { user, isLoading } = useAuth();
+const navigate = useNavigate();
+
+useEffect(() => {
+  if (!isLoading && !user) {
+    navigate("/login");
+  }
+}, [user, isLoading, navigate]);
+```
+- Functionally equivalent to ProtectedRoute
+- Uses `useAuth()` hook from `src/hooks/useAuth.tsx`
+- Redirects unauthenticated users to `/login`
+
+#### 3. Admin-Only Protection (Role-Based)
+**UserManagement page (`src/pages/UserManagement.tsx`):**
+```typescript
+// Lines 30-44
+const { isAdmin, isLoading: authLoading } = useAuth();
+
+useEffect(() => {
+  if (!authLoading && !isAdmin) {
+    toast.error("Access denied. Admin role required.");
+    navigate("/dashboard");
+  }
+}, [isAdmin, authLoading, navigate]);
+```
+
+**PlatformAdmin page (`src/pages/PlatformAdmin.tsx`):**
+```typescript
+// Lines 52-70
+const checkPlatformAdmin = async () => {
+  const { data, error } = await supabase.rpc('is_platform_admin', { _user_id: user.id });
+  setIsPlatformAdmin(data);
+  // Renders "Access Denied" if false
+};
+```
+
+### AI Chat Widget Auth Route Exclusion
+
+**File:** `src/components/AIChatWidget.tsx`
+
+```typescript
+// Line 9: Routes where AI chat should NOT appear
+const AUTH_ROUTES = ["/login", "/signup", "/change-password", "/auth/callback", "/"];
+
+// Line 19: Check current route
+const isAuthRoute = AUTH_ROUTES.includes(location.pathname);
+
+// Lines 48-50: Conditional render
+if (isAuthRoute) {
+  return null;
+}
+```
+
+**Verification:**
+- ✅ `/login` - AI chat NOT rendered
+- ✅ `/signup` - AI chat NOT rendered  
+- ✅ `/auth/callback` - AI chat NOT rendered
+- ✅ `/change-password` - AI chat NOT rendered
+- ✅ `/` (landing page) - AI chat NOT rendered
+
+### Route Protection Consistency Analysis
+
+| Protection Type | Route Count | Status |
+|-----------------|-------------|--------|
+| `<ProtectedRoute>` wrapper | 23 | ✅ Consistent |
+| In-page `useAuth()` check | 10 | ✅ Consistent |
+| Admin role check | 2 | ✅ Consistent |
+| Public (auth pages) | 5 | ✅ Appropriate |
+| Public (landing/404) | 2 | ✅ Appropriate |
+
+### SEC-5 Verdict: PASS
+
+**Criteria Evaluation:**
+- ✅ All protected routes enforce authentication at router/layout level OR consistently within pages
+- ✅ No unprotected app routes that should require auth
+- ✅ Admin routes are role-gated (`/users` requires `isAdmin`, `/platform-admin` requires `is_platform_admin`)
+- ✅ AI Chat widget is absent from auth routes (verified via `AUTH_ROUTES` constant)
+- ✅ Both protection methods (`ProtectedRoute` wrapper and in-page `useAuth()` check) redirect unauthenticated users to `/login`
+
+**Note on CRO pages:** While CRO pages use in-page auth checks instead of `<ProtectedRoute>` wrapper, this is functionally equivalent and provides consistent protection. The `useAuth()` hook uses the same underlying Supabase auth state listener.
 
 ---
 
@@ -582,6 +736,6 @@ Available at: `/platform-admin/qa/tenant-isolation`
 |-------|--------|
 | SEC-1: RLS Enabled | ✅ PASS (101/101 tables) |
 | SEC-2: Policy Review | ✅ PASS (all policies properly scoped) |
-| SEC-3: Security Functions | ✅ PASS (7/7 functions verified safe) |
+| SEC-3: Security Functions | ✅ PASS (12/12 functions verified safe) |
 | SEC-4: Cross-Tenant Test | ✅ PASS (0 cross-tenant data leaks) |
-| SEC-5: Route Guards | ✅ PASS |
+| SEC-5: Route Guards | ✅ PASS (42 routes audited, all protected appropriately) |
