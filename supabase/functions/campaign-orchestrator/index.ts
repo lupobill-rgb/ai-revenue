@@ -261,7 +261,7 @@ serve(async (req) => {
         const { data: emailCampaign, error: emailCampaignError } = await supabaseClient.from("campaigns").insert({
           asset_id: emailAsset.id,
           channel: "email",
-          status: "pending",
+          status: "pending_approval",
           budget_allocated: budgetPerChannel,
           workspace_id: workspaceId,
           target_audience: { 
@@ -335,7 +335,7 @@ serve(async (req) => {
         const { data: socialCampaign, error: socialCampaignError } = await supabaseClient.from("campaigns").insert({
           asset_id: socialAsset.id,
           channel: "social",
-          status: "pending",
+          status: "pending_approval",
           budget_allocated: budgetPerChannel,
           workspace_id: workspaceId,
           target_audience: { vertical, campaignName, goal },
@@ -393,7 +393,7 @@ serve(async (req) => {
         const { data: videoCampaign, error: videoCampaignError } = await supabaseClient.from("campaigns").insert({
           asset_id: videoAsset.id,
           channel: "video",
-          status: "pending",
+          status: "pending_approval",
           budget_allocated: budgetPerChannel,
           workspace_id: workspaceId,
           target_audience: { vertical, campaignName, goal },
@@ -470,7 +470,7 @@ serve(async (req) => {
         const { data: voiceCampaign, error: voiceCampaignError } = await supabaseClient.from("campaigns").insert({
           asset_id: voiceAsset.id,
           channel: "voice",
-          status: "pending",
+          status: "pending_approval",
           budget_allocated: budgetPerChannel,
           workspace_id: workspaceId,
           target_audience: { 
