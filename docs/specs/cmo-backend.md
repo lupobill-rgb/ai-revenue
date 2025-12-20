@@ -211,3 +211,32 @@ ON channel_outbox (tenant_id, workspace_id, idempotency_key)
 | ID2: Retry same job | Re-run job with same run_id | 0 emails sent (all skipped) |
 | ID3: Failed retry | Mark job as failed, retry | Only failed leads re-attempted |
 | ID4: New run | Create new campaign run | All leads processed (new run_id) |
+
+## Provider Webhook Integration
+
+### Email (Resend)
+The `channel-outbox-webhook` edge function handles Resend webhook callbacks to track delivery status.
+
+**Webhook URL**: `https://<project>.supabase.co/functions/v1/channel-outbox-webhook`
+
+**Events Tracked**:
+- `email.delivered` → status: `delivered`
+- `email.opened` → status: `opened`
+- `email.clicked` → status: `clicked`
+- `email.bounced` → status: `bounced`
+- `email.complained` → status: `complained`
+
+**Flow**:
+1. Resend sends webhook with `email_id` (matches `channel_outbox.provider_message_id`)
+2. Edge function looks up record, updates `status` and `provider_response`
+3. Logs event to `campaign_audit_log`
+
+**Required Secret**: `RESEND_WEBHOOK_SECRET` for signature verification
+
+### Test Plan (E1: Email Provider Verification)
+| Test | Action | Expected |
+|------|--------|----------|
+| E1a: Send | Launch email campaign | `channel_outbox` row with `provider_message_id` populated |
+| E1b: Delivery webhook | Resend POSTs `email.delivered` | `status` updated to `delivered` |
+| E1c: Open tracking | Resend POSTs `email.opened` | `status` updated to `opened` |
+| E1d: Bounce handling | Resend POSTs `email.bounced` | `status` updated to `bounced` |

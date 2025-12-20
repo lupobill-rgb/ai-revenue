@@ -300,3 +300,6 @@ verify_jwt = true
 
 [functions.test-integration]
 verify_jwt = false
+
+[functions.channel-outbox-webhook]
+verify_jwt = false
