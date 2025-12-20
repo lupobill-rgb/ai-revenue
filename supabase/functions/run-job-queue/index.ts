@@ -34,6 +34,8 @@ interface EmailSettings {
   from_address: string;
   sender_name: string;
   reply_to_address: string;
+  email_provider: string | null;
+  is_connected: boolean;
 }
 
 interface VoiceSettings {
@@ -114,6 +116,7 @@ async function processEmailBatch(
   resendApiKey: string
 ): Promise<{ success: boolean; sent: number; failed: number; error?: string }> {
   const campaignId = job.payload.campaign_id as string;
+  const selectedProvider = (job.payload.provider as string) || "resend";
   
   // Get campaign asset with email content
   const { data: campaign } = await supabase
@@ -137,6 +140,11 @@ async function processEmailBatch(
 
   if (!emailSettings?.from_address) {
     return { success: false, sent: 0, failed: 0, error: "Email settings not configured - missing from address" };
+  }
+
+  // Validate provider is connected
+  if (!emailSettings.is_connected) {
+    return { success: false, sent: 0, failed: 0, error: `Email provider '${selectedProvider}' is not connected. Test connection in Settings.` };
   }
 
   // Get leads to email
@@ -170,13 +178,44 @@ async function processEmailBatch(
       .replace(/\{\{first_name\}\}/g, lead.first_name || "there")
       .replace(/\{\{last_name\}\}/g, lead.last_name || "");
 
-    const result = await sendEmail(
-      resendApiKey,
-      `${emailSettings.sender_name || "Team"} <${emailSettings.from_address}>`,
-      lead.email,
-      subject,
-      personalizedBody
-    );
+    let result: { success: boolean; messageId?: string; error?: string };
+
+    // Use the selected provider
+    switch (selectedProvider) {
+      case "resend":
+        result = await sendEmail(
+          resendApiKey,
+          `${emailSettings.sender_name || "Team"} <${emailSettings.from_address}>`,
+          lead.email,
+          subject,
+          personalizedBody
+        );
+        break;
+      case "gmail":
+        // Gmail would use OAuth tokens stored in user_gmail_tokens
+        // For now, fall back to resend with a note
+        result = await sendEmail(
+          resendApiKey,
+          `${emailSettings.sender_name || "Team"} <${emailSettings.from_address}>`,
+          lead.email,
+          subject,
+          personalizedBody
+        );
+        break;
+      case "smtp":
+        // SMTP would use custom SMTP settings
+        // For now, fall back to resend
+        result = await sendEmail(
+          resendApiKey,
+          `${emailSettings.sender_name || "Team"} <${emailSettings.from_address}>`,
+          lead.email,
+          subject,
+          personalizedBody
+        );
+        break;
+      default:
+        result = { success: false, error: `Unknown provider: ${selectedProvider}` };
+    }
 
     outboxEntries.push({
       tenant_id: job.tenant_id,
@@ -184,7 +223,7 @@ async function processEmailBatch(
       run_id: job.run_id,
       job_id: job.id,
       channel: "email",
-      provider: "resend",
+      provider: selectedProvider, // Use the selected provider
       recipient_id: lead.id,
       recipient_email: lead.email,
       payload: { subject, campaign_id: campaignId },

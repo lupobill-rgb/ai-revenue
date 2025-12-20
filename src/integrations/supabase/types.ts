@@ -212,7 +212,11 @@ export type Database = {
       }
       ai_settings_email: {
         Row: {
+          email_provider: string | null
           from_address: string
+          is_connected: boolean | null
+          last_test_result: Json | null
+          last_tested_at: string | null
           reply_to_address: string
           sender_name: string
           smtp_host: string | null
@@ -223,7 +227,11 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          email_provider?: string | null
           from_address?: string
+          is_connected?: boolean | null
+          last_test_result?: Json | null
+          last_tested_at?: string | null
           reply_to_address?: string
           sender_name?: string
           smtp_host?: string | null
@@ -234,7 +242,11 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          email_provider?: string | null
           from_address?: string
+          is_connected?: boolean | null
+          last_test_result?: Json | null
+          last_tested_at?: string | null
           reply_to_address?: string
           sender_name?: string
           smtp_host?: string | null
@@ -286,6 +298,47 @@ export type Database = {
           },
         ]
       }
+      ai_settings_social: {
+        Row: {
+          account_name: string | null
+          account_url: string | null
+          is_connected: boolean | null
+          last_test_result: Json | null
+          last_tested_at: string | null
+          social_provider: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          account_name?: string | null
+          account_url?: string | null
+          is_connected?: boolean | null
+          last_test_result?: Json | null
+          last_tested_at?: string | null
+          social_provider?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          account_name?: string | null
+          account_url?: string | null
+          is_connected?: boolean | null
+          last_test_result?: Json | null
+          last_tested_at?: string | null
+          social_provider?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_settings_social_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_settings_stripe: {
         Row: {
           account_name: string | null
@@ -327,33 +380,48 @@ export type Database = {
       ai_settings_voice: {
         Row: {
           default_elevenlabs_voice_id: string | null
+          default_phone_number_id: string | null
           default_vapi_assistant_id: string | null
           elevenlabs_api_key: string | null
           elevenlabs_model: string | null
+          is_connected: boolean | null
+          last_test_result: Json | null
+          last_tested_at: string | null
           tenant_id: string
           updated_at: string | null
           vapi_private_key: string | null
           vapi_public_key: string | null
+          voice_provider: string | null
         }
         Insert: {
           default_elevenlabs_voice_id?: string | null
+          default_phone_number_id?: string | null
           default_vapi_assistant_id?: string | null
           elevenlabs_api_key?: string | null
           elevenlabs_model?: string | null
+          is_connected?: boolean | null
+          last_test_result?: Json | null
+          last_tested_at?: string | null
           tenant_id: string
           updated_at?: string | null
           vapi_private_key?: string | null
           vapi_public_key?: string | null
+          voice_provider?: string | null
         }
         Update: {
           default_elevenlabs_voice_id?: string | null
+          default_phone_number_id?: string | null
           default_vapi_assistant_id?: string | null
           elevenlabs_api_key?: string | null
           elevenlabs_model?: string | null
+          is_connected?: boolean | null
+          last_test_result?: Json | null
+          last_tested_at?: string | null
           tenant_id?: string
           updated_at?: string | null
           vapi_private_key?: string | null
           vapi_public_key?: string | null
+          voice_provider?: string | null
         }
         Relationships: [
           {
@@ -5968,6 +6036,10 @@ export type Database = {
             }
             Returns: boolean
           }
+      check_campaign_launch_prerequisites: {
+        Args: { p_campaign_id: string; p_tenant_id: string }
+        Returns: Json
+      }
       check_workspace_form_password: {
         Args: { _password: string; _workspace_id: string }
         Returns: boolean
