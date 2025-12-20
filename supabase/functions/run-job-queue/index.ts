@@ -742,11 +742,12 @@ Deno.serve(async (req) => {
     for (const job of jobs as Job[]) {
       console.log(`[${workerId}] Processing job ${job.id} (${job.job_type})`);
 
-      // Update run status to running
-      await supabase
-        .from("campaign_runs")
-        .update({ status: "running", started_at: new Date().toISOString() })
-        .eq("id", job.run_id);
+      // Update run status to running via SECURITY DEFINER RPC (Single Writer Rule)
+      await supabase.rpc("update_campaign_run_status", {
+        p_run_id: job.run_id,
+        p_status: "running",
+        p_started_at: new Date().toISOString(),
+      });
 
       // Log job started
       await supabase.from("campaign_audit_log").insert({
@@ -794,7 +795,8 @@ Deno.serve(async (req) => {
         p_error: result.error || null,
       });
 
-      // Update campaign_runs status based on job result
+      // Update campaign_runs status via SECURITY DEFINER RPC (Single Writer Rule)
+      // This is the ONLY pathway for updating campaign_runs after initial insert
       if (result.success) {
         // Check if all jobs for this run are complete
         const { data: pendingJobs } = await supabase
@@ -805,25 +807,21 @@ Deno.serve(async (req) => {
           .limit(1);
 
         if (!pendingJobs || pendingJobs.length === 0) {
-          // All jobs done - mark run as completed
-          await supabase
-            .from("campaign_runs")
-            .update({ 
-              status: "completed", 
-              completed_at: new Date().toISOString() 
-            })
-            .eq("id", job.run_id);
+          // All jobs done - mark run as completed via RPC
+          await supabase.rpc("update_campaign_run_status", {
+            p_run_id: job.run_id,
+            p_status: "completed",
+            p_completed_at: new Date().toISOString(),
+          });
         }
       } else if (result.partial) {
         // Partial success - some items succeeded, some failed
-        await supabase
-          .from("campaign_runs")
-          .update({ 
-            status: "partial", 
-            error_message: result.error || "Some items failed",
-            completed_at: new Date().toISOString()
-          })
-          .eq("id", job.run_id);
+        await supabase.rpc("update_campaign_run_status", {
+          p_run_id: job.run_id,
+          p_status: "partial",
+          p_error_message: result.error || "Some items failed",
+          p_completed_at: new Date().toISOString(),
+        });
 
         // Log partial audit
         await supabase.from("campaign_audit_log").insert({
@@ -842,15 +840,13 @@ Deno.serve(async (req) => {
           },
         } as never);
       } else {
-        // Job failed - update campaign_runs with error
-        await supabase
-          .from("campaign_runs")
-          .update({ 
-            status: "failed", 
-            error_message: result.error,
-            completed_at: new Date().toISOString()
-          })
-          .eq("id", job.run_id);
+        // Job failed - update campaign_runs via RPC
+        await supabase.rpc("update_campaign_run_status", {
+          p_run_id: job.run_id,
+          p_status: "failed",
+          p_error_message: result.error,
+          p_completed_at: new Date().toISOString(),
+        });
 
         // Log failure audit
         await supabase.from("campaign_audit_log").insert({
