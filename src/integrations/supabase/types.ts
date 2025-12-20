@@ -5312,6 +5312,7 @@ export type Database = {
           created_at: string
           default_currency: string
           id: string
+          metrics_mode: string
           name: string
           revenue_os_activated_at: string | null
           revenue_os_enabled: boolean
@@ -5326,6 +5327,7 @@ export type Database = {
           created_at?: string
           default_currency?: string
           id?: string
+          metrics_mode?: string
           name: string
           revenue_os_activated_at?: string | null
           revenue_os_enabled?: boolean
@@ -5340,6 +5342,7 @@ export type Database = {
           created_at?: string
           default_currency?: string
           id?: string
+          metrics_mode?: string
           name?: string
           revenue_os_activated_at?: string | null
           revenue_os_enabled?: boolean
@@ -5826,12 +5829,17 @@ export type Database = {
           lead_id: string
         }[]
       }
+      deploy_campaign: { Args: { p_campaign_id: string }; Returns: Json }
       dispatch_outbound_cron: { Args: never; Returns: undefined }
       funnel_stage_workspace_access: {
         Args: { stage_funnel_id: string }
         Returns: boolean
       }
       gc_rate_limit_counters: { Args: never; Returns: undefined }
+      get_tenant_metrics_mode: {
+        Args: { p_tenant_id: string }
+        Returns: string
+      }
       get_user_by_email: {
         Args: { _email: string }
         Returns: {

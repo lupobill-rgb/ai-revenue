@@ -25,7 +25,7 @@ serve(async (req) => {
       );
     }
 
-    // Extract user ID from JWT (verify_jwt=true means Supabase already validated the token)
+    // Extract user ID from JWT
     const jwt = authHeader.replace('Bearer ', '');
     let userId: string;
     try {
@@ -45,9 +45,52 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } }
     });
 
-    console.log(`[sync-campaign-metrics] User ${userId} syncing campaign metrics...`);
+    console.log(`[sync-campaign-metrics] User ${userId} requesting metrics sync...`);
 
-    // RLS will automatically filter to only campaigns the user has access to
+    // Get user's tenant to check metrics_mode
+    const { data: userTenant } = await supabase
+      .from('user_tenants')
+      .select('tenant_id')
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!userTenant?.tenant_id) {
+      console.log('[sync-campaign-metrics] No tenant found for user');
+      return new Response(
+        JSON.stringify({ success: false, error: 'No tenant found', mode: 'unknown' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check tenant's metrics_mode
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select('metrics_mode')
+      .eq('id', userTenant.tenant_id)
+      .single();
+
+    const metricsMode = tenant?.metrics_mode || 'real';
+    console.log(`[sync-campaign-metrics] Tenant ${userTenant.tenant_id} metrics_mode: ${metricsMode}`);
+
+    // Only run simulation in 'demo' mode
+    if (metricsMode !== 'demo') {
+      console.log('[sync-campaign-metrics] Real mode - skipping simulation. Real metrics come from provider integrations.');
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          mode: 'real',
+          message: 'Real mode active - metrics sync skipped. Connect analytics providers in Settings for real data.',
+          campaignsSynced: 0,
+          results: []
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // DEMO MODE: Generate simulated metrics
+    console.log('[sync-campaign-metrics] Demo mode - generating simulated metrics');
+
     const { data: campaigns, error: campaignsError } = await supabase
       .from('campaigns')
       .select('*, assets!inner(created_by), campaign_metrics(*)')
@@ -58,13 +101,12 @@ serve(async (req) => {
       throw campaignsError;
     }
 
-    console.log(`Found ${campaigns?.length || 0} active campaigns to sync`);
+    console.log(`Found ${campaigns?.length || 0} active campaigns to sync (DEMO mode)`);
 
     const syncResults = [];
 
     for (const campaign of campaigns || []) {
       try {
-        // Check for existing metrics
         const existingMetrics = campaign.campaign_metrics?.[0];
         
         if (!existingMetrics) {
@@ -77,7 +119,7 @@ serve(async (req) => {
         const now = new Date();
         const hoursActive = Math.max(1, (now.getTime() - deployedAt.getTime()) / (1000 * 60 * 60));
 
-        // Channel-specific growth multipliers
+        // Channel-specific growth multipliers (DEMO ONLY)
         const channelMultipliers: Record<string, { impressions: number; clicks: number; conversions: number }> = {
           email: { impressions: 50, clicks: 5, conversions: 0.5 },
           social: { impressions: 200, clicks: 15, conversions: 1 },
@@ -87,13 +129,13 @@ serve(async (req) => {
 
         const multiplier = channelMultipliers[campaign.channel] || channelMultipliers.social;
 
-        // Simulate realistic growth with some randomness
-        const growthFactor = Math.random() * 0.5 + 0.75; // 0.75 to 1.25
+        // Simulate growth with randomness (DEMO DATA)
+        const growthFactor = Math.random() * 0.5 + 0.75;
         const newImpressions = Math.floor(existingMetrics.impressions + (multiplier.impressions * hoursActive * growthFactor));
         const newClicks = Math.floor(existingMetrics.clicks + (multiplier.clicks * hoursActive * growthFactor));
         const newConversions = Math.floor(existingMetrics.conversions + (multiplier.conversions * hoursActive * growthFactor));
 
-        // Calculate revenue based on channel
+        // Calculate simulated revenue
         let estimatedRevenue = 0;
         if (campaign.channel === 'video') {
           estimatedRevenue = newImpressions * 0.05;
@@ -109,7 +151,7 @@ serve(async (req) => {
         const costIncrement = budgetAllocated * 0.05 * hoursActive;
         const newCost = Math.min(existingMetrics.cost + costIncrement, budgetAllocated);
 
-        // Update metrics - RLS will enforce workspace access
+        // Update metrics (DEMO DATA)
         const { error: updateError } = await supabase
           .from('campaign_metrics')
           .update({
@@ -153,6 +195,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        mode: 'demo',
+        message: 'Demo mode - simulated metrics generated',
         campaignsSynced: syncResults.filter(r => r.success).length,
         results: syncResults,
       }),

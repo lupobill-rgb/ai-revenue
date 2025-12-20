@@ -443,74 +443,46 @@ const Approvals = () => {
         .single();
 
       if (campaign) {
-        // Get tenant_id from user_tenants
-        const { data: userTenant } = await supabase
-          .from("user_tenants")
-          .select("tenant_id")
-          .eq("user_id", user?.id)
-          .maybeSingle();
+        // Use deploy_campaign RPC for reliable execution
+        const { data: deployResult, error: deployError } = await supabase.rpc(
+          'deploy_campaign',
+          { p_campaign_id: campaign.id }
+        );
 
-        const tenantId = userTenant?.tenant_id;
+        // Type the result properly
+        const result = deployResult as { success?: boolean; error?: string; run_id?: string } | null;
 
-        // Update campaign status to deployed and lock it
-        await supabase
-          .from("campaigns")
-          .update({ 
-            status: "deployed",
-            deployed_at: new Date().toISOString(),
-            is_locked: true,
-            locked_at: new Date().toISOString(),
-            locked_reason: "Campaign deployed - create new version to edit"
-          })
-          .eq("id", campaign.id);
-
-        // Create a campaign_run record to track execution
-        if (tenantId) {
-          const { data: campaignRun, error: runError } = await supabase
-            .from("campaign_runs")
-            .insert({
-              tenant_id: tenantId,
-              workspace_id: campaign.workspace_id,
-              campaign_id: campaign.id,
-              status: "running",
-              started_at: new Date().toISOString(),
-              run_config: { channel: assetChannel, asset_type: assetType },
-            })
-            .select()
-            .single();
-
-          if (runError) {
-            console.error("Failed to create campaign_run:", runError);
-          } else {
-            console.log("Created campaign run:", campaignRun?.id);
-          }
-        } else {
-          console.warn("No tenant_id found - cannot create campaign_run record");
+        if (deployError) {
+          console.error("Deploy RPC error:", deployError);
+          toast({
+            variant: "destructive",
+            title: "Deploy Failed",
+            description: deployError.message || "Failed to deploy campaign. Please try again.",
+          });
+          return;
         }
 
-        // Create campaign metrics with zero values (real tracking starts now)
-        await supabase
-          .from("campaign_metrics")
-          .upsert({
-            campaign_id: campaign.id,
-            workspace_id: campaign.workspace_id,
-            impressions: 0,
-            clicks: 0,
-            conversions: 0,
-            revenue: 0,
-            cost: 0,
-            last_synced_at: new Date().toISOString(),
-          }, { onConflict: 'campaign_id' });
+        if (!result?.success) {
+          console.error("Deploy failed:", result?.error);
+          toast({
+            variant: "destructive",
+            title: "Deploy Failed",
+            description: result?.error || "Campaign deployment failed. Check permissions.",
+          });
+          return;
+        }
 
-        // Try to invoke channel-specific deployment
+        console.log("Campaign deployed successfully, run_id:", result?.run_id);
+
+        // Try to invoke channel-specific deployment (optional, non-blocking)
         try {
           if (assetType === "email") {
             await supabase.functions.invoke("email-deploy", { body: { assetId } });
           } else if (assetType === "landing_page" || assetType === "video") {
             await supabase.functions.invoke("social-deploy", { body: { assetId } });
           }
-        } catch (deployError) {
-          console.log("Channel deployment skipped:", deployError);
+        } catch (channelError) {
+          console.log("Channel deployment skipped:", channelError);
         }
 
         toast({
