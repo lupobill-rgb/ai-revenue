@@ -6233,6 +6233,18 @@ export type Database = {
         Args: { p_user_id: string; p_workspace_id: string }
         Returns: undefined
       }
+      update_campaign_run_status: {
+        Args: {
+          p_completed_at?: string
+          p_error_code?: string
+          p_error_message?: string
+          p_metrics_snapshot?: Json
+          p_run_id: string
+          p_started_at?: string
+          p_status: string
+        }
+        Returns: undefined
+      }
       upsert_campaign_daily_stat: {
         Args: {
           p_campaign_id: string
