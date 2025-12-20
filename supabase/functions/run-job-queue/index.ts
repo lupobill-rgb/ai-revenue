@@ -301,7 +301,6 @@ async function processEmailBatch(
   let sent = 0;
   let failed = 0;
   let skipped = 0;
-  const outboxEntries: Record<string, unknown>[] = [];
   const assetId = String(campaign.asset_id || campaignId);
   const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
 
@@ -316,19 +315,48 @@ async function processEmailBatch(
       scheduledFor,
     ]);
     
-    // Check if already processed (idempotency)
-    const existing = await checkIdempotency(
-      supabase,
-      job.tenant_id,
-      job.workspace_id,
-      idempotencyKey
-    );
+    // IDEMPOTENCY: Insert outbox entry BEFORE provider call with status 'queued'
+    // If insert conflicts (duplicate key), skip the provider call entirely
+    const { data: insertedOutbox, error: insertError } = await supabase
+      .from("channel_outbox")
+      .insert({
+        tenant_id: job.tenant_id,
+        workspace_id: job.workspace_id,
+        run_id: job.run_id,
+        job_id: job.id,
+        channel: "email",
+        provider: selectedProvider,
+        recipient_id: lead.id,
+        recipient_email: lead.email,
+        payload: { subject, campaign_id: campaignId },
+        status: "queued",
+        idempotency_key: idempotencyKey,
+        skipped: false,
+      } as never)
+      .select("id")
+      .single();
     
-    if (existing.exists && TERMINAL_STATUSES.includes(existing.status || "")) {
-      console.log(`[email] Skipping lead ${lead.id} - already processed (status: ${existing.status})`);
-      skipped++;
+    // If insert failed due to unique constraint (idempotent replay), skip
+    if (insertError) {
+      if (insertError.code === "23505") { // Unique violation
+        console.log(`[email] Idempotent skip for lead ${lead.id} - already in outbox`);
+        // Update the existing entry to mark as skipped replay
+        await supabase
+          .from("channel_outbox")
+          .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
+          .eq("tenant_id", job.tenant_id)
+          .eq("workspace_id", job.workspace_id)
+          .eq("idempotency_key", idempotencyKey);
+        skipped++;
+        continue;
+      }
+      // Other insert error - log and continue
+      console.error(`[email] Failed to insert outbox for lead ${lead.id}:`, insertError);
+      failed++;
       continue;
     }
+    
+    const outboxId = insertedOutbox?.id;
     
     // Personalize content
     const personalizedBody = body
@@ -370,37 +398,20 @@ async function processEmailBatch(
         result = { success: false, error: `Unknown provider: ${selectedProvider}` };
     }
 
-    outboxEntries.push({
-      tenant_id: job.tenant_id,
-      workspace_id: job.workspace_id,
-      run_id: job.run_id,
-      job_id: job.id,
-      channel: "email",
-      provider: selectedProvider,
-      recipient_id: lead.id,
-      recipient_email: lead.email,
-      payload: { subject, campaign_id: campaignId },
-      status: result.success ? "sent" : "failed",
-      provider_message_id: result.messageId,
-      error: result.error,
-      idempotency_key: idempotencyKey,
-    });
+    // Update outbox with provider response
+    await supabase
+      .from("channel_outbox")
+      .update({
+        status: result.success ? "sent" : "failed",
+        provider_message_id: result.messageId,
+        error: result.error,
+      } as never)
+      .eq("id", outboxId);
 
     if (result.success) {
       sent++;
     } else {
       failed++;
-    }
-  }
-
-  // Insert outbox entries (upsert by idempotency key)
-  if (outboxEntries.length > 0) {
-    // Use insert with ON CONFLICT DO NOTHING for idempotency
-    for (const entry of outboxEntries) {
-      await supabase.from("channel_outbox").upsert(entry as never, {
-        onConflict: "tenant_id,workspace_id,idempotency_key",
-        ignoreDuplicates: true,
-      });
     }
   }
 
@@ -480,7 +491,6 @@ async function processVoiceBatch(
     let called = 0;
     let failed = 0;
     let skipped = 0;
-    const outboxEntries: Record<string, unknown>[] = [];
     const scriptVersion = voiceSettings.default_vapi_assistant_id || "v1";
     const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
 
@@ -495,19 +505,45 @@ async function processVoiceBatch(
         scheduledFor,
       ]);
       
-      // Check if already processed (idempotency)
-      const existing = await checkIdempotency(
-        supabase,
-        job.tenant_id,
-        job.workspace_id,
-        idempotencyKey
-      );
+      // IDEMPOTENCY: Insert outbox entry BEFORE provider call with status 'queued'
+      const { data: insertedOutbox, error: insertError } = await supabase
+        .from("channel_outbox")
+        .insert({
+          tenant_id: job.tenant_id,
+          workspace_id: job.workspace_id,
+          run_id: job.run_id,
+          job_id: job.id,
+          channel: "voice",
+          provider: "vapi",
+          recipient_id: lead.id,
+          recipient_phone: lead.phone,
+          payload: { campaign_id: campaignId, assistant_id: voiceSettings.default_vapi_assistant_id },
+          status: "queued",
+          idempotency_key: idempotencyKey,
+          skipped: false,
+        } as never)
+        .select("id")
+        .single();
       
-      if (existing.exists && TERMINAL_STATUSES.includes(existing.status || "")) {
-        console.log(`[voice] Skipping lead ${lead.id} - already processed (status: ${existing.status})`);
-        skipped++;
+      // If insert failed due to unique constraint (idempotent replay), skip
+      if (insertError) {
+        if (insertError.code === "23505") { // Unique violation
+          console.log(`[voice] Idempotent skip for lead ${lead.id} - already in outbox`);
+          await supabase
+            .from("channel_outbox")
+            .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
+            .eq("tenant_id", job.tenant_id)
+            .eq("workspace_id", job.workspace_id)
+            .eq("idempotency_key", idempotencyKey);
+          skipped++;
+          continue;
+        }
+        console.error(`[voice] Failed to insert outbox for lead ${lead.id}:`, insertError);
+        failed++;
         continue;
       }
+      
+      const outboxId = insertedOutbox?.id;
       
       const result = await initiateVapiCall(
         vapiPrivateKey,
@@ -517,21 +553,15 @@ async function processVoiceBatch(
         `${lead.first_name || ""} ${lead.last_name || ""}`.trim()
       );
 
-      outboxEntries.push({
-        tenant_id: job.tenant_id,
-        workspace_id: job.workspace_id,
-        run_id: job.run_id,
-        job_id: job.id,
-        channel: "voice",
-        provider: "vapi",
-        recipient_id: lead.id,
-        recipient_phone: lead.phone,
-        payload: { campaign_id: campaignId, assistant_id: voiceSettings.default_vapi_assistant_id },
-        status: result.success ? "called" : "failed",
-        provider_message_id: result.callId,
-        error: result.error,
-        idempotency_key: idempotencyKey,
-      });
+      // Update outbox with provider response
+      await supabase
+        .from("channel_outbox")
+        .update({
+          status: result.success ? "called" : "failed",
+          provider_message_id: result.callId,
+          error: result.error,
+        } as never)
+        .eq("id", outboxId);
 
       if (result.success) {
         called++;
@@ -549,14 +579,6 @@ async function processVoiceBatch(
       } else {
         failed++;
       }
-    }
-
-    // Insert outbox entries with idempotency
-    for (const entry of outboxEntries) {
-      await supabase.from("channel_outbox").upsert(entry as never, {
-        onConflict: "tenant_id,workspace_id,idempotency_key",
-        ignoreDuplicates: true,
-      });
     }
 
     await supabase.from("campaign_audit_log").insert({
@@ -606,44 +628,62 @@ async function processVoiceBatch(
       scheduledFor,
     ]);
     
-    // Check if already processed
-    const existing = await checkIdempotency(
-      supabase,
-      job.tenant_id,
-      job.workspace_id,
-      idempotencyKey
-    );
+    // IDEMPOTENCY: Insert outbox entry BEFORE provider call with status 'queued'
+    const { data: insertedOutbox, error: insertError } = await supabase
+      .from("channel_outbox")
+      .insert({
+        tenant_id: job.tenant_id,
+        workspace_id: job.workspace_id,
+        run_id: job.run_id,
+        job_id: job.id,
+        channel: "voice",
+        provider: "elevenlabs",
+        payload: { 
+          campaign_id: campaignId, 
+          voice_id: voiceId,
+        },
+        status: "queued",
+        idempotency_key: idempotencyKey,
+        skipped: false,
+      } as never)
+      .select("id")
+      .single();
     
-    if (existing.exists && TERMINAL_STATUSES.includes(existing.status || "")) {
-      console.log(`[elevenlabs] Skipping - already processed (status: ${existing.status})`);
-      return { success: true, called: 0, failed: 0, skipped: 1 };
+    // If insert failed due to unique constraint (idempotent replay), skip
+    if (insertError) {
+      if (insertError.code === "23505") { // Unique violation
+        console.log(`[elevenlabs] Idempotent skip - already in outbox`);
+        await supabase
+          .from("channel_outbox")
+          .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
+          .eq("tenant_id", job.tenant_id)
+          .eq("workspace_id", job.workspace_id)
+          .eq("idempotency_key", idempotencyKey);
+        return { success: true, called: 0, failed: 0, skipped: 1 };
+      }
+      console.error(`[elevenlabs] Failed to insert outbox:`, insertError);
+      return { success: false, called: 0, failed: 1, error: insertError.message };
     }
+    
+    const outboxId = insertedOutbox?.id;
 
     // Generate audio using ElevenLabs
     const result = await generateElevenLabsAudio(elevenLabsApiKey, script, voiceId);
 
-    const outboxEntry = {
-      tenant_id: job.tenant_id,
-      workspace_id: job.workspace_id,
-      run_id: job.run_id,
-      job_id: job.id,
-      channel: "voice",
-      provider: "elevenlabs",
-      payload: { 
-        campaign_id: campaignId, 
-        voice_id: voiceId,
-        audio_generated: result.success,
-      },
-      status: result.success ? "generated" : "failed",
-      provider_message_id: result.success ? `elevenlabs_${Date.now()}` : null,
-      error: result.error,
-      idempotency_key: idempotencyKey,
-    };
-
-    await supabase.from("channel_outbox").upsert(outboxEntry as never, {
-      onConflict: "tenant_id,workspace_id,idempotency_key",
-      ignoreDuplicates: true,
-    });
+    // Update outbox with provider response
+    await supabase
+      .from("channel_outbox")
+      .update({
+        status: result.success ? "generated" : "failed",
+        provider_message_id: result.success ? `elevenlabs_${Date.now()}` : null,
+        error: result.error,
+        payload: { 
+          campaign_id: campaignId, 
+          voice_id: voiceId,
+          audio_generated: result.success,
+        },
+      } as never)
+      .eq("id", outboxId);
 
     await supabase.from("campaign_audit_log").insert({
       tenant_id: job.tenant_id,
@@ -698,39 +738,7 @@ async function processSocialBatch(
     .eq("tenant_id", job.tenant_id)
     .single();
 
-  // If no integration or not connected, return clear error
-  if (!socialSettings?.is_connected) {
-    const errorMsg = "Social integration not connected. Configure in Settings → Social to deploy social campaigns.";
-    
-    // Still need idempotency key for failed entries
-    const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
-    const failedIdempotencyKey = await generateIdempotencyKey([
-      job.run_id,
-      campaignId,
-      "social",
-      scheduledFor,
-    ]);
-    
-    await supabase.from("channel_outbox").upsert({
-      tenant_id: job.tenant_id,
-      workspace_id: job.workspace_id,
-      run_id: job.run_id,
-      job_id: job.id,
-      channel: "social",
-      provider: provider,
-      payload: { campaign_id: campaignId },
-      status: "failed",
-      error: errorMsg,
-      idempotency_key: failedIdempotencyKey,
-    } as never, {
-      onConflict: "tenant_id,workspace_id,idempotency_key",
-      ignoreDuplicates: true,
-    });
-
-    return { success: false, posted: 0, failed: 1, error: errorMsg };
-  }
-
-  // Generate idempotency key: sha256(run_id + post_id + channel + scheduled_for)
+  // Generate idempotency key upfront for all cases
   const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
   const postId = String(campaign.asset_id || campaignId);
   const idempotencyKey = await generateIdempotencyKey([
@@ -739,41 +747,89 @@ async function processSocialBatch(
     "social",
     scheduledFor,
   ]);
-  
-  // Check if already processed
-  const existing = await checkIdempotency(
-    supabase,
-    job.tenant_id,
-    job.workspace_id,
-    idempotencyKey
-  );
-  
-  if (existing.exists && TERMINAL_STATUSES.includes(existing.status || "")) {
-    console.log(`[social] Skipping - already processed (status: ${existing.status})`);
-    return { success: true, posted: 0, failed: 0, skipped: 1 };
+
+  // If no integration or not connected, return clear error
+  if (!socialSettings?.is_connected) {
+    const errorMsg = "Social integration not connected. Configure in Settings → Social to deploy social campaigns.";
+    
+    // Try to insert failed entry with idempotency
+    const { error: insertError } = await supabase
+      .from("channel_outbox")
+      .insert({
+        tenant_id: job.tenant_id,
+        workspace_id: job.workspace_id,
+        run_id: job.run_id,
+        job_id: job.id,
+        channel: "social",
+        provider: provider,
+        payload: { campaign_id: campaignId },
+        status: "failed",
+        error: errorMsg,
+        idempotency_key: idempotencyKey,
+        skipped: false,
+      } as never);
+    
+    if (insertError?.code === "23505") {
+      // Already logged this failure, mark as skipped
+      await supabase
+        .from("channel_outbox")
+        .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
+        .eq("tenant_id", job.tenant_id)
+        .eq("workspace_id", job.workspace_id)
+        .eq("idempotency_key", idempotencyKey);
+      return { success: false, posted: 0, failed: 0, skipped: 1, error: errorMsg };
+    }
+
+    return { success: false, posted: 0, failed: 1, error: errorMsg };
   }
+  
+  // IDEMPOTENCY: Insert outbox entry BEFORE any action with status 'queued'
+  const campaignData = campaign as { assets?: { content?: Record<string, unknown> } };
+  
+  const { data: insertedOutbox, error: insertError } = await supabase
+    .from("channel_outbox")
+    .insert({
+      tenant_id: job.tenant_id,
+      workspace_id: job.workspace_id,
+      run_id: job.run_id,
+      job_id: job.id,
+      channel: "social",
+      provider: socialSettings.social_provider || provider,
+      payload: { campaign_id: campaignId, content: campaignData.assets?.content },
+      status: "queued",
+      idempotency_key: idempotencyKey,
+      skipped: false,
+    } as never)
+    .select("id")
+    .single();
+  
+  // If insert failed due to unique constraint (idempotent replay), skip
+  if (insertError) {
+    if (insertError.code === "23505") { // Unique violation
+      console.log(`[social] Idempotent skip - already in outbox`);
+      await supabase
+        .from("channel_outbox")
+        .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
+        .eq("tenant_id", job.tenant_id)
+        .eq("workspace_id", job.workspace_id)
+        .eq("idempotency_key", idempotencyKey);
+      return { success: true, posted: 0, failed: 0, skipped: 1 };
+    }
+    console.error(`[social] Failed to insert outbox:`, insertError);
+    return { success: false, posted: 0, failed: 1, error: insertError.message };
+  }
+  
+  const outboxId = insertedOutbox?.id;
 
   // Real social posting would happen here using the connected provider
   // For now, we mark as pending_review to indicate it needs manual posting
-  const campaignData = campaign as { assets?: { content?: Record<string, unknown> } };
-  
-  const outboxEntry = {
-    tenant_id: job.tenant_id,
-    workspace_id: job.workspace_id,
-    run_id: job.run_id,
-    job_id: job.id,
-    channel: "social",
-    provider: socialSettings.social_provider || provider,
-    payload: { campaign_id: campaignId, content: campaignData.assets?.content },
-    status: "pending_review",
-    error: null,
-    idempotency_key: idempotencyKey,
-  };
-
-  await supabase.from("channel_outbox").upsert(outboxEntry as never, {
-    onConflict: "tenant_id,workspace_id,idempotency_key",
-    ignoreDuplicates: true,
-  });
+  await supabase
+    .from("channel_outbox")
+    .update({
+      status: "pending_review",
+      error: null,
+    } as never)
+    .eq("id", outboxId);
 
   // Log audit
   await supabase.from("campaign_audit_log").insert({

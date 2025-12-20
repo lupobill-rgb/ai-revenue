@@ -1125,6 +1125,8 @@ export type Database = {
           recipient_id: string | null
           recipient_phone: string | null
           run_id: string | null
+          skip_reason: string | null
+          skipped: boolean | null
           status: string
           tenant_id: string
           workspace_id: string
@@ -1144,6 +1146,8 @@ export type Database = {
           recipient_id?: string | null
           recipient_phone?: string | null
           run_id?: string | null
+          skip_reason?: string | null
+          skipped?: boolean | null
           status?: string
           tenant_id: string
           workspace_id: string
@@ -1163,6 +1167,8 @@ export type Database = {
           recipient_id?: string | null
           recipient_phone?: string | null
           run_id?: string | null
+          skip_reason?: string | null
+          skipped?: boolean | null
           status?: string
           tenant_id?: string
           workspace_id?: string
