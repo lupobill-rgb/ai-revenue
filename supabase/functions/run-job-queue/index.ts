@@ -61,6 +61,17 @@ interface QueueStats {
   dead: number;
 }
 
+// Result from batch processing with partial success tracking
+interface BatchResult {
+  success: boolean;
+  partial?: boolean; // true if some succeeded but some failed
+  sent?: number;
+  called?: number;
+  posted?: number;
+  failed?: number;
+  error?: string;
+}
+
 // Log job queue tick for audit trail
 async function logJobQueueTick(
   supabase: any,
@@ -200,7 +211,7 @@ async function processEmailBatch(
   supabase: any,
   job: Job,
   resendApiKey: string
-): Promise<{ success: boolean; sent: number; failed: number; error?: string }> {
+): Promise<BatchResult> {
   const campaignId = job.payload.campaign_id as string;
   const selectedProvider = (job.payload.provider as string) || "resend";
   
@@ -342,7 +353,8 @@ async function processEmailBatch(
     details: { sent, failed, total: leads.length },
   } as never);
 
-  return { success: failed === 0, sent, failed };
+  // Return partial success if some sent but some failed
+  return { success: failed === 0, sent, failed, partial: sent > 0 && failed > 0 };
 }
 
 // Process voice call batch job - supports VAPI and ElevenLabs
@@ -351,7 +363,7 @@ async function processVoiceBatch(
   job: Job,
   vapiPrivateKey: string,
   elevenLabsApiKey: string
-): Promise<{ success: boolean; called: number; failed: number; error?: string }> {
+): Promise<BatchResult> {
   const campaignId = job.payload.campaign_id as string;
   const provider = (job.payload.provider as string) || "vapi";
 
@@ -465,7 +477,7 @@ async function processVoiceBatch(
       details: { provider: "vapi", called, failed, total: leads.length },
     } as never);
 
-    return { success: failed === 0, called, failed };
+    return { success: failed === 0, called, failed, partial: called > 0 && failed > 0 };
   } 
   
   // ElevenLabs TTS provider
@@ -545,7 +557,7 @@ async function processVoiceBatch(
 async function processSocialBatch(
   supabase: any,
   job: Job
-): Promise<{ success: boolean; posted: number; failed: number; error?: string }> {
+): Promise<BatchResult> {
   const campaignId = job.payload.campaign_id as string;
   const provider = (job.payload.provider as string) || "internal";
 
@@ -725,7 +737,7 @@ Deno.serve(async (req) => {
 
     console.log(`[${workerId}] Processing ${jobs.length} jobs`);
 
-    const results: Array<{ job_id: string; job_type: string; success: boolean; error?: string }> = [];
+    const results: Array<{ job_id: string; job_type: string; success: boolean; partial?: boolean; error?: string }> = [];
 
     for (const job of jobs as Job[]) {
       console.log(`[${workerId}] Processing job ${job.id} (${job.job_type})`);
@@ -747,7 +759,7 @@ Deno.serve(async (req) => {
         details: { job_type: job.job_type, attempt: job.attempts + 1 },
       } as never);
 
-      let result: { success: boolean; error?: string };
+      let result: BatchResult = { success: false };
 
       try {
         switch (job.job_type) {
@@ -755,19 +767,16 @@ Deno.serve(async (req) => {
             if (!resendApiKey) {
               result = { success: false, error: "RESEND_API_KEY not configured" };
             } else {
-              const emailResult = await processEmailBatch(supabase, job, resendApiKey);
-              result = { success: emailResult.success, error: emailResult.error };
+              result = await processEmailBatch(supabase, job, resendApiKey);
             }
             break;
           }
           case "voice_call_batch": {
-            const voiceResult = await processVoiceBatch(supabase, job, vapiPrivateKey, elevenLabsApiKey);
-            result = { success: voiceResult.success, error: voiceResult.error };
+            result = await processVoiceBatch(supabase, job, vapiPrivateKey, elevenLabsApiKey);
             break;
           }
           case "social_post_batch": {
-            const socialResult = await processSocialBatch(supabase, job);
-            result = { success: socialResult.success, error: socialResult.error };
+            result = await processSocialBatch(supabase, job);
             break;
           }
           default:
@@ -777,10 +786,11 @@ Deno.serve(async (req) => {
         result = { success: false, error: err instanceof Error ? err.message : "Unknown error" };
       }
 
-      // Complete the job
+      // Complete the job - partial success still counts as success for job completion
+      const jobSuccess = result.success || result.partial === true;
       await supabase.rpc("complete_job", {
         p_job_id: job.id,
-        p_success: result.success,
+        p_success: jobSuccess,
         p_error: result.error || null,
       });
 
@@ -804,6 +814,33 @@ Deno.serve(async (req) => {
             })
             .eq("id", job.run_id);
         }
+      } else if (result.partial) {
+        // Partial success - some items succeeded, some failed
+        await supabase
+          .from("campaign_runs")
+          .update({ 
+            status: "partial", 
+            error_message: result.error || "Some items failed",
+            completed_at: new Date().toISOString()
+          })
+          .eq("id", job.run_id);
+
+        // Log partial audit
+        await supabase.from("campaign_audit_log").insert({
+          tenant_id: job.tenant_id,
+          workspace_id: job.workspace_id,
+          run_id: job.run_id,
+          job_id: job.id,
+          event_type: "job_partial",
+          actor_type: "system",
+          details: { 
+            sent: result.sent, 
+            called: result.called, 
+            posted: result.posted,
+            failed: result.failed,
+            error: result.error,
+          },
+        } as never);
       } else {
         // Job failed - update campaign_runs with error
         await supabase
@@ -831,6 +868,7 @@ Deno.serve(async (req) => {
         job_id: job.id,
         job_type: job.job_type,
         success: result.success,
+        partial: result.partial,
         error: result.error,
       });
     }
