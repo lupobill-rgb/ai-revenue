@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifySvixSignature } from "../_shared/svix-verify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,18 +21,36 @@ interface ResendWebhookPayload {
   };
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // Clone request to read body twice (once for verification, once for parsing)
+    const rawBody = await req.text();
+
+    // Verify Svix signature if configured
+    const isValid = await verifySvixSignature({
+      req,
+      rawBody,
+      secretEnv: "RESEND_WEBHOOK_SECRET",
+    });
+
+    if (!isValid) {
+      console.error("[outbound-email-webhook] Invalid Svix signature");
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Parse webhook payload
-    const payload: ResendWebhookPayload = await req.json();
+    const payload: ResendWebhookPayload = JSON.parse(rawBody);
     console.log(`[outbound-email-webhook] Received event: ${payload.type}`, payload.data?.email_id);
 
     // Map Resend event types to our event types
