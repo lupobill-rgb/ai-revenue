@@ -6219,6 +6219,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      recover_stale_jobs: {
+        Args: { p_timeout_minutes?: number }
+        Returns: number
+      }
       resume_sequence_for_lead: {
         Args: { _lead_id: string; _user_id: string }
         Returns: undefined
