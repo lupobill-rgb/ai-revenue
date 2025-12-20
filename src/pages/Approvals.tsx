@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, X, PlayCircle, Mail, Phone, Layout, Video, Loader2, RefreshCw, FlaskConical, Image } from "lucide-react";
+import { CheckCircle, X, PlayCircle, Mail, Phone, Layout, Video, Loader2, RefreshCw, FlaskConical, Image, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import NavBar from "@/components/NavBar";
 import PageBreadcrumbs from "@/components/PageBreadcrumbs";
@@ -13,6 +13,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import WorkflowProgress from "@/components/WorkflowProgress";
 import { Progress } from "@/components/ui/progress";
 import { getCampaignPlaceholder } from "@/lib/placeholders";
+import { CampaignRunDetailsDrawer } from "@/components/campaigns/CampaignRunDetailsDrawer";
 
 interface PendingAsset {
   id: string;
@@ -25,6 +26,7 @@ interface PendingAsset {
   preview_url: string | null;
   content: any;
   goal: string | null;
+  campaign_id?: string; // Added for run details
 }
 
 interface BusinessProfile {
@@ -49,6 +51,8 @@ const Approvals = () => {
   const [bulkGeneratingThumbnails, setBulkGeneratingThumbnails] = useState(false);
   const [thumbnailProgress, setThumbnailProgress] = useState({ current: 0, total: 0 });
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
+  const [runDetailsOpen, setRunDetailsOpen] = useState(false);
+  const [selectedAssetForRun, setSelectedAssetForRun] = useState<PendingAsset | null>(null);
 
   useEffect(() => {
     fetchBusinessProfile();
@@ -117,16 +121,17 @@ const Approvals = () => {
 
   const fetchPendingAssets = async () => {
     try {
+      // Fetch assets with their campaigns
       const { data: assets, error } = await supabase
         .from("assets")
-        .select("*")
+        .select("*, campaigns(id)")
         .in("status", ["review", "draft"])
         .is("external_project_url", null)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      const pending = (assets || []).map((a) => ({
+      const pending = (assets || []).map((a: any) => ({
         id: a.id,
         name: a.name,
         type: a.type,
@@ -137,6 +142,7 @@ const Approvals = () => {
         preview_url: a.preview_url,
         content: a.content,
         goal: a.goal,
+        campaign_id: a.campaigns?.[0]?.id || null,
       }));
 
       setPendingAssets(pending);
@@ -925,6 +931,21 @@ const Approvals = () => {
                                       )}
                                     </Button>
                                   )}
+                                  {/* View Run Details Button */}
+                                  {asset.campaign_id && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSelectedAssetForRun(asset);
+                                        setRunDetailsOpen(true);
+                                      }}
+                                      className="flex items-center gap-1"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                      Runs
+                                    </Button>
+                                  )}
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -962,6 +983,16 @@ const Approvals = () => {
           )}
         </main>
         <Footer />
+
+        {/* Run Details Drawer */}
+        {selectedAssetForRun?.campaign_id && (
+          <CampaignRunDetailsDrawer
+            campaignId={selectedAssetForRun.campaign_id}
+            campaignName={selectedAssetForRun.name}
+            open={runDetailsOpen}
+            onOpenChange={setRunDetailsOpen}
+          />
+        )}
       </div>
     </ProtectedRoute>
   );
