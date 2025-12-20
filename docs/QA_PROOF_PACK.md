@@ -1462,5 +1462,103 @@ interface BulkCallStatus {
 
 ### Database Changes:
 - Added `tenants.metrics_mode` column (default: 'real')
-- Created `deploy_campaign(uuid)` RPC function
+- Created `deploy_campaign(uuid)` RPC function with explicit error handling
 - Created `get_tenant_metrics_mode(uuid)` helper function
+- Updated `campaign_runs` RLS to workspace-scoped policies
+
+---
+
+## Gate 3 Re-Test Section (2024-12-20)
+
+### RLS Policies on campaign_runs (Fixed)
+
+**Migration Applied:**
+```sql
+-- Workspace-scoped INSERT with campaign linkage validation
+CREATE POLICY "campaign_runs_insert_workspace_scoped"
+ON public.campaign_runs
+FOR INSERT
+WITH CHECK (
+  user_has_workspace_access(workspace_id)
+  AND EXISTS (
+    SELECT 1
+    FROM public.campaigns c
+    WHERE c.id = campaign_id
+      AND c.workspace_id = campaign_runs.workspace_id
+  )
+);
+
+-- Workspace-scoped SELECT/UPDATE/DELETE
+CREATE POLICY "campaign_runs_select_workspace_scoped" ...
+CREATE POLICY "campaign_runs_update_workspace_scoped" ...
+CREATE POLICY "campaign_runs_delete_workspace_scoped" ...
+```
+
+### deploy_campaign RPC (Fixed)
+
+**Enhanced with explicit error surfacing:**
+```sql
+-- Within the RPC, INSERT to campaign_runs now has:
+BEGIN
+  INSERT INTO campaign_runs (...) RETURNING id INTO v_run_id;
+EXCEPTION WHEN others THEN
+  -- Log the specific RLS error to agent_runs
+  INSERT INTO agent_runs (...error_message: SQLERRM...);
+  RETURN jsonb_build_object('success', false, 'error', 'Failed to create campaign run: ' || SQLERRM);
+END;
+```
+
+### Approvals.tsx Error Surfacing (Fixed)
+
+**Code:** `src/pages/Approvals.tsx` lines 455-495
+```typescript
+if (deployError) {
+  console.error("Deploy RPC error:", deployError);
+  // Log to audit for debugging (non-blocking)
+  supabase.from('agent_runs').insert({
+    tenant_id: campaign.workspace_id,
+    workspace_id: campaign.workspace_id,
+    agent: 'deploy_campaign_ui',
+    mode: 'error',
+    status: 'failed',
+    error_message: deployError.message,
+    input: { campaign_id: campaign.id, asset_id: assetId },
+  });
+  toast({ variant: "destructive", title: "Deploy Failed", description: deployError.message });
+  return;
+}
+```
+
+### Re-Test Verification Queries
+
+**To verify after deploying a campaign:**
+```sql
+-- Check campaign_runs row created
+SELECT id, campaign_id, workspace_id, tenant_id, status, created_at, error_message
+FROM public.campaign_runs
+ORDER BY created_at DESC
+LIMIT 5;
+
+-- Check campaign is locked
+SELECT id, status, deployed_at, is_locked, locked_reason, workspace_id
+FROM public.campaigns
+ORDER BY deployed_at DESC NULLS LAST
+LIMIT 5;
+
+-- Check audit logs for errors
+SELECT id, agent, status, error_message, input, created_at
+FROM agent_runs
+WHERE agent LIKE '%deploy%'
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+### Gate 3 D-1 Checklist:
+- [x] Service role bypass removed
+- [x] RLS workspace-scoped with campaign linkage check
+- [x] RPC sources workspace_id from campaign row
+- [x] RPC has explicit error logging to agent_runs
+- [x] Approvals.tsx shows toast with error.message
+- [x] Approvals.tsx logs failures to agent_runs (non-blocking)
+
+**STATUS:** Ready for user deploy test. Gate 3 D-1 will PASS when verification queries show data.
