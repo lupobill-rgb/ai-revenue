@@ -126,7 +126,11 @@ export default function WorkspaceSelector({ onWorkspaceChange }: WorkspaceSelect
     <div className="flex items-center gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="w-[200px] justify-between">
+          <Button 
+            variant="outline" 
+            className="w-[200px] justify-between"
+            data-workspace-selector
+          >
             <span className="flex items-center">
               <Building2 className="h-4 w-4 mr-2" />
               {currentWorkspace?.name || "Select Workspace"}

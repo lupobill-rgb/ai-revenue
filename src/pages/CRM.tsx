@@ -712,7 +712,49 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
-                    {segments.length > 0 && (
+                    {/* Workspace validation error */}
+                    {!workspaceId && (
+                      <div 
+                        data-testid="import-workspace-error"
+                        className="border border-destructive/50 bg-destructive/10 rounded-lg p-4 space-y-3"
+                      >
+                        <div className="flex items-start gap-2">
+                          <Building2 className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium text-destructive">No workspace selected</p>
+                            <p className="text-sm text-muted-foreground">
+                              Create or select a workspace to import leads.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              setShowImportDialog(false);
+                              // Trigger workspace selector dropdown
+                              const wsSelector = document.querySelector('[data-workspace-selector]') as HTMLElement;
+                              wsSelector?.click();
+                            }}
+                          >
+                            Select workspace
+                          </Button>
+                          <Button 
+                            variant="default" 
+                            size="sm"
+                            onClick={() => {
+                              setShowImportDialog(false);
+                              navigate("/settings?tab=workspaces&new=1");
+                            }}
+                          >
+                            Create workspace
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {workspaceId && segments.length > 0 && (
                       <div className="space-y-2">
                         <Label className="flex items-center gap-2">
                           <Tags className="h-4 w-4" />
@@ -742,69 +784,74 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                         </Select>
                       </div>
                     )}
-                    <Button variant="outline" size="sm" onClick={downloadCSVTemplate} className="w-full">
-                      <Download className="mr-2 h-4 w-4" />
-                      Download Sample CSV
-                    </Button>
-                    <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
-                      <strong>AI auto-maps:</strong> Names, emails, phones, companies, job titles, industry, and more. Just upload your file in any format!
-                    </div>
-                    <div
-                      className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                        isDragging 
-                          ? 'border-primary bg-primary/5' 
-                          : 'border-muted-foreground/25 hover:border-muted-foreground/50'
-                      } ${importing ? 'opacity-50 pointer-events-none' : ''}`}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsDragging(true);
-                      }}
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsDragging(true);
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsDragging(false);
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsDragging(false);
-                        const file = e.dataTransfer.files?.[0];
-                        if (file && file.name.endsWith('.csv')) {
-                          const event = { target: { files: [file], value: '' } } as unknown as React.ChangeEvent<HTMLInputElement>;
-                          handleCSVImport(event);
-                        } else {
-                          toast({
-                            variant: "destructive",
-                            title: "Invalid File",
-                            description: "Please upload a CSV file",
-                          });
-                        }
-                      }}
-                    >
-                      <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
-                      <p className="text-sm font-medium">
-                        {isDragging ? 'Drop CSV file here' : 'Drag & drop CSV file here'}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
-                      <Input
-                        type="file"
-                        accept=".csv"
-                        onChange={handleCSVImport}
-                        disabled={importing}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      />
-                    </div>
-                    {importing && (
-                      <div className="flex items-center justify-center gap-2 text-sm text-primary">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        AI is analyzing and importing leads...
-                      </div>
+                    {workspaceId && (
+                      <>
+                        <Button variant="outline" size="sm" onClick={downloadCSVTemplate} className="w-full">
+                          <Download className="mr-2 h-4 w-4" />
+                          Download Sample CSV
+                        </Button>
+                        <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
+                          <strong>AI auto-maps:</strong> Names, emails, phones, companies, job titles, industry, and more. Just upload your file in any format!
+                        </div>
+                        <div
+                          data-testid="import-dropzone"
+                          className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                            isDragging 
+                              ? 'border-primary bg-primary/5' 
+                              : 'border-muted-foreground/25 hover:border-muted-foreground/50'
+                          } ${importing ? 'opacity-50 pointer-events-none' : ''}`}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsDragging(true);
+                          }}
+                          onDragEnter={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsDragging(true);
+                          }}
+                          onDragLeave={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsDragging(false);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsDragging(false);
+                            const file = e.dataTransfer.files?.[0];
+                            if (file && file.name.endsWith('.csv')) {
+                              const event = { target: { files: [file], value: '' } } as unknown as React.ChangeEvent<HTMLInputElement>;
+                              handleCSVImport(event);
+                            } else {
+                              toast({
+                                variant: "destructive",
+                                title: "Invalid File",
+                                description: "Please upload a CSV file",
+                              });
+                            }
+                          }}
+                        >
+                          <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
+                          <p className="text-sm font-medium">
+                            {isDragging ? 'Drop CSV file here' : 'Drag & drop CSV file here'}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
+                          <Input
+                            type="file"
+                            accept=".csv"
+                            onChange={handleCSVImport}
+                            disabled={importing}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                        </div>
+                        {importing && (
+                          <div className="flex items-center justify-center gap-2 text-sm text-primary">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            AI is analyzing and importing leads...
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </DialogContent>
