@@ -64,6 +64,8 @@ interface ChannelOutboxItem {
   recipient_phone: string | null;
   provider_message_id: string | null;
   error: string | null;
+  skipped: boolean | null;
+  skip_reason: string | null;
   created_at: string;
 }
 
@@ -83,6 +85,8 @@ const statusConfig: Record<string, { color: string; icon: React.ElementType; lab
   sent: { color: "bg-green-500", icon: CheckCircle, label: "Sent" },
   posted: { color: "bg-green-500", icon: CheckCircle, label: "Posted" },
   called: { color: "bg-green-500", icon: CheckCircle, label: "Called" },
+  generated: { color: "bg-green-500", icon: CheckCircle, label: "Generated" },
+  pending_review: { color: "bg-yellow-500", icon: Clock, label: "Pending Review" },
   failed: { color: "bg-red-500", icon: XCircle, label: "Failed" },
   dead: { color: "bg-red-800", icon: XCircle, label: "Dead" },
   partial: { color: "bg-orange-500", icon: AlertCircle, label: "Partial" },
@@ -104,6 +108,7 @@ export function CampaignRunDetailsDrawer({
   const [loading, setLoading] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [runningNow, setRunningNow] = useState(false);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [runs, setRuns] = useState<CampaignRun[]>([]);
   const [jobs, setJobs] = useState<JobQueueItem[]>([]);
   const [outbox, setOutbox] = useState<ChannelOutboxItem[]>([]);
@@ -163,6 +168,15 @@ export function CampaignRunDetailsDrawer({
       setLoading(false);
     }
   };
+
+  // Check platform admin status
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const { data } = await supabase.rpc("is_platform_admin");
+      setIsPlatformAdmin(!!data);
+    };
+    checkAdmin();
+  }, []);
 
   // Fetch on open and poll every 5 seconds while drawer is open
   useEffect(() => {
@@ -307,19 +321,21 @@ export function CampaignRunDetailsDrawer({
                     {deadJobs.length > 0 && ` (${deadJobs.length} dead)`}
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRunNow}
-                  disabled={runningNow}
-                >
-                  {runningNow ? (
-                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  ) : (
-                    <Play className="h-4 w-4 mr-1" />
-                  )}
-                  Run Now (Admin)
-                </Button>
+                {isPlatformAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRunNow}
+                    disabled={runningNow}
+                  >
+                    {runningNow ? (
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    ) : (
+                      <Play className="h-4 w-4 mr-1" />
+                    )}
+                    Run Now (Admin)
+                  </Button>
+                )}
               </div>
 
               {/* Campaign Runs */}
@@ -439,6 +455,11 @@ export function CampaignRunDetailsDrawer({
                                 {item.provider}
                               </Badge>
                               <StatusBadge status={item.status} />
+                              {item.skipped && (
+                                <Badge variant="secondary" className="text-xs bg-muted">
+                                  Skipped
+                                </Badge>
+                              )}
                             </div>
                             <span className="text-muted-foreground">
                               {formatDate(item.created_at)}
@@ -450,6 +471,11 @@ export function CampaignRunDetailsDrawer({
                           {item.provider_message_id && (
                             <div className="text-muted-foreground truncate">
                               ID: {item.provider_message_id}
+                            </div>
+                          )}
+                          {item.skip_reason && (
+                            <div className="text-muted-foreground text-xs">
+                              Skip reason: {item.skip_reason}
                             </div>
                           )}
                           {item.error && (
