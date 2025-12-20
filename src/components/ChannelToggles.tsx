@@ -7,9 +7,10 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Mail, Share2, Phone, Video, Layout } from "lucide-react";
+import { Loader2, Mail, Share2, Phone, Video, Layout, Construction } from "lucide-react";
 import { getWorkspaceId } from "@/hooks/useWorkspace";
 
 interface ChannelPreferences {
@@ -32,6 +33,7 @@ const CHANNEL_CONFIG = [
     label: "Social Media",
     description: "Publish content to Instagram, LinkedIn, Facebook, and TikTok",
     icon: Share2,
+    comingSoon: true,
   },
   {
     key: "voice_enabled" as keyof ChannelPreferences,
@@ -160,30 +162,38 @@ export function ChannelToggles() {
         {CHANNEL_CONFIG.map((channel) => {
           const Icon = channel.icon;
           const isEnabled = preferences[channel.key];
+          const isComingSoon = 'comingSoon' in channel && channel.comingSoon;
 
           return (
             <div
               key={channel.key}
-              className="flex items-center justify-between rounded-lg border border-border p-4"
+              className={`flex items-center justify-between rounded-lg border border-border p-4 ${isComingSoon ? 'opacity-60' : ''}`}
             >
               <div className="flex items-start gap-4">
                 <div className="rounded-md bg-primary/10 p-2">
                   <Icon className="h-5 w-5 text-primary" />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor={channel.key} className="font-medium">
+                  <Label htmlFor={channel.key} className="font-medium flex items-center gap-2">
                     {channel.label}
+                    {isComingSoon && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Construction className="h-3 w-3 mr-1" />
+                        Coming Soon
+                      </Badge>
+                    )}
                   </Label>
                   <p className="text-sm text-muted-foreground">
                     {channel.description}
+                    {isComingSoon && " (E2E provider integration in progress)"}
                   </p>
                 </div>
               </div>
               <Switch
                 id={channel.key}
-                checked={isEnabled}
+                checked={isComingSoon ? false : isEnabled}
                 onCheckedChange={(checked) => handleToggle(channel.key, checked)}
-                disabled={saving}
+                disabled={saving || isComingSoon}
               />
             </div>
           );

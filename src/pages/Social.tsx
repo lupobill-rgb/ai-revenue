@@ -12,9 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Share2, Heart, MessageCircle, Repeat2, Eye, TrendingUp, Database, Instagram, Linkedin, Facebook } from "lucide-react";
+import { Loader2, Share2, Heart, MessageCircle, Repeat2, Eye, TrendingUp, Database, Instagram, Linkedin, Facebook, Construction } from "lucide-react";
 import AIAssistant from "@/components/AIAssistant";
 import AIPromptCard from "@/components/AIPromptCard";
+
+// Social channel is blocked as "Coming Soon" until full E2E provider integration is complete
+const SOCIAL_COMING_SOON = true;
 
 const SAMPLE_POSTS = [
   {
@@ -215,25 +218,66 @@ const Social = () => {
                 <h1 className="text-4xl font-bold mb-2 flex items-center gap-2">
                   <Share2 className="h-8 w-8" />
                   Social Media Studio
+                  {SOCIAL_COMING_SOON && (
+                    <Badge variant="secondary" className="ml-2 text-xs">
+                      <Construction className="h-3 w-3 mr-1" />
+                      Coming Soon
+                    </Badge>
+                  )}
                 </h1>
                 <p className="text-muted-foreground">
                   AI-powered social media content for multiple platforms
                 </p>
               </div>
-              <div className="flex items-center gap-3 bg-muted/50 px-4 py-2 rounded-lg border border-border">
-                <Database className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="sample-data-social" className="text-sm font-medium cursor-pointer">
-                  Demo Data
-                </Label>
-                <Switch
-                  id="sample-data-social"
-                  checked={showSampleData}
-                  onCheckedChange={setShowSampleData}
-                />
-              </div>
+              {!SOCIAL_COMING_SOON && (
+                <div className="flex items-center gap-3 bg-muted/50 px-4 py-2 rounded-lg border border-border">
+                  <Database className="h-4 w-4 text-muted-foreground" />
+                  <Label htmlFor="sample-data-social" className="text-sm font-medium cursor-pointer">
+                    Demo Data
+                  </Label>
+                  <Switch
+                    id="sample-data-social"
+                    checked={showSampleData}
+                    onCheckedChange={setShowSampleData}
+                  />
+                </div>
+              )}
             </div>
 
-            {showSampleData && (
+            {/* Coming Soon Banner */}
+            {SOCIAL_COMING_SOON && (
+              <Card className="mb-8 border-2 border-dashed border-primary/30 bg-primary/5">
+                <CardContent className="pt-6">
+                  <div className="flex flex-col items-center text-center py-8">
+                    <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                      <Construction className="h-8 w-8 text-primary" />
+                    </div>
+                    <h2 className="text-2xl font-bold mb-2">Social Media Deployment Coming Soon</h2>
+                    <p className="text-muted-foreground max-w-md mb-4">
+                      We're building full end-to-end social media integration with provider tracking, 
+                      idempotency, and analytics—just like our Email and Voice channels.
+                    </p>
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      <Badge variant="outline" className="flex items-center gap-1">
+                        <Instagram className="h-3 w-3" /> Instagram
+                      </Badge>
+                      <Badge variant="outline" className="flex items-center gap-1">
+                        <Linkedin className="h-3 w-3" /> LinkedIn
+                      </Badge>
+                      <Badge variant="outline" className="flex items-center gap-1">
+                        <Facebook className="h-3 w-3" /> Facebook
+                      </Badge>
+                      <Badge variant="outline">TikTok</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-4">
+                      Email and Voice channels are fully operational with E2E provider verification.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {!SOCIAL_COMING_SOON && showSampleData && (
               <div className="mb-6 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary flex items-center gap-2">
                 <Database className="h-4 w-4" />
                 Showing sample demo data. Toggle off to view real posts only.
@@ -280,6 +324,7 @@ const Social = () => {
               </Card>
             </div>
 
+            {!SOCIAL_COMING_SOON && (
             <div className="grid gap-8 lg:grid-cols-3">
               {/* Create New Post */}
               <div className="lg:col-span-1 space-y-6">
@@ -404,6 +449,7 @@ const Social = () => {
                 </div>
               </div>
           </div>
+            )}
         </main>
         <Footer />
       </div>
