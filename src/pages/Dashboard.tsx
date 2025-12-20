@@ -53,6 +53,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [hasIntegrations, setHasIntegrations] = useState(false);
   const [hasRealData, setHasRealData] = useState(false);
+  const [metricsMode, setMetricsMode] = useState<'real' | 'demo'>('real');
   const [showDemoData, setShowDemoData] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -117,6 +118,7 @@ const Dashboard = () => {
 
     if (!wsId) return;
 
+    // Check for active integrations
     const { data } = await supabase
       .from("social_integrations")
       .select("id")
@@ -125,6 +127,24 @@ const Dashboard = () => {
       .limit(1);
 
     setHasIntegrations((data?.length || 0) > 0);
+
+    // Check tenant metrics_mode
+    const { data: userTenant } = await supabase
+      .from("user_tenants")
+      .select("tenant_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (userTenant?.tenant_id) {
+      const { data: tenant } = await supabase
+        .from("tenants")
+        .select("metrics_mode")
+        .eq("id", userTenant.tenant_id)
+        .single();
+
+      setMetricsMode((tenant?.metrics_mode as 'real' | 'demo') || 'real');
+    }
   };
 
   const fetchDashboardMetrics = async () => {
@@ -296,8 +316,8 @@ const Dashboard = () => {
             </div>
           ) : (
             <>
-              {/* DEMO MODE WARNING - Metrics are simulated, not from real providers */}
-              {campaigns.length > 0 && (
+              {/* DEMO MODE - Show warning when in demo mode */}
+              {metricsMode === 'demo' && campaigns.length > 0 && (
                 <Card className="mb-8 border-amber-500/50 bg-amber-500/10">
                   <CardHeader>
                     <div className="flex items-start gap-4">
@@ -310,20 +330,44 @@ const Dashboard = () => {
                           Simulated Metrics
                         </CardTitle>
                         <CardDescription className="text-foreground/80 mb-4">
-                          These metrics are <strong>simulated for demonstration purposes</strong>. 
-                          Real tracking requires integration with analytics providers (Google Analytics, Meta Ads, etc.).
-                          Connect integrations in Settings to see real performance data.
+                          Demo mode is enabled. These metrics are <strong>simulated for demonstration</strong>. 
+                          Switch to real mode in Settings to use actual analytics data.
                         </CardDescription>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={() => navigate("/settings/integrations")}
-                            className="border-amber-500 text-amber-600 hover:bg-amber-500/10"
-                          >
-                            <Settings className="mr-2 h-4 w-4" />
-                            Connect Integrations
-                          </Button>
-                        </div>
+                        <Button
+                          variant="outline"
+                          onClick={() => navigate("/settings/integrations")}
+                          className="border-amber-500 text-amber-600 hover:bg-amber-500/10"
+                        >
+                          <Settings className="mr-2 h-4 w-4" />
+                          Configure Settings
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+              )}
+
+              {/* REAL MODE with no integrations - Show empty state + CTA */}
+              {metricsMode === 'real' && campaigns.length > 0 && !hasIntegrations && (
+                <Card className="mb-8 border-blue-500/50 bg-blue-500/10">
+                  <CardHeader>
+                    <div className="flex items-start gap-4">
+                      <BarChart3 className="h-6 w-6 text-blue-500 flex-shrink-0 mt-1" />
+                      <div className="flex-1">
+                        <CardTitle className="text-foreground text-xl mb-2">
+                          Connect Analytics Providers
+                        </CardTitle>
+                        <CardDescription className="text-foreground/80 mb-4">
+                          Real mode is active. To see actual campaign performance data, connect your analytics providers 
+                          (Google Analytics, Meta Ads, LinkedIn Ads, etc.) in Settings.
+                        </CardDescription>
+                        <Button
+                          onClick={() => navigate("/settings/integrations")}
+                          className="bg-blue-500 hover:bg-blue-600 text-white"
+                        >
+                          <Settings className="mr-2 h-4 w-4" />
+                          Connect Integrations
+                        </Button>
                       </div>
                     </div>
                   </CardHeader>
