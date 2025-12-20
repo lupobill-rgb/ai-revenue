@@ -296,51 +296,34 @@ const Dashboard = () => {
             </div>
           ) : (
             <>
-              {/* Metrics Simulation Info */}
-              {!hasIntegrations && campaigns.length > 0 && (
-                <Card className="mb-8 border-blue-500/50 bg-blue-500/10">
+              {/* DEMO MODE WARNING - Metrics are simulated, not from real providers */}
+              {campaigns.length > 0 && (
+                <Card className="mb-8 border-amber-500/50 bg-amber-500/10">
                   <CardHeader>
                     <div className="flex items-start gap-4">
-                      <AlertCircle className="h-6 w-6 text-blue-500 flex-shrink-0 mt-1" />
+                      <AlertCircle className="h-6 w-6 text-amber-500 flex-shrink-0 mt-1" />
                       <div className="flex-1">
-                        <CardTitle className="text-foreground text-xl mb-2">
-                          Live Campaign Tracking
+                        <CardTitle className="text-foreground text-xl mb-2 flex items-center gap-2">
+                          <Badge variant="outline" className="border-amber-500 text-amber-500 bg-amber-500/10">
+                            DEMO DATA
+                          </Badge>
+                          Simulated Metrics
                         </CardTitle>
                         <CardDescription className="text-foreground/80 mb-4">
-                          Metrics update automatically every 30 seconds. Click below to manually refresh performance data.
+                          These metrics are <strong>simulated for demonstration purposes</strong>. 
+                          Real tracking requires integration with analytics providers (Google Analytics, Meta Ads, etc.).
+                          Connect integrations in Settings to see real performance data.
                         </CardDescription>
-                        <Button
-                          onClick={async () => {
-                            try {
-                              const { data: { session } } = await supabase.auth.getSession();
-                              if (!session) {
-                                toast({
-                                  variant: "destructive",
-                                  title: "Not authenticated",
-                                  description: "Please log in to refresh metrics",
-                                });
-                                return;
-                              }
-                              const { error } = await supabase.functions.invoke("sync-campaign-metrics");
-                              if (error) throw error;
-                              toast({
-                                title: "Metrics Updated",
-                                description: "Campaign performance data has been refreshed.",
-                              });
-                              fetchDashboardMetrics();
-                            } catch (error) {
-                              toast({
-                                variant: "destructive",
-                                title: "Error",
-                                description: "Failed to sync metrics",
-                              });
-                            }
-                          }}
-                          className="bg-blue-500 hover:bg-blue-600 text-white"
-                        >
-                          <TrendingUp className="mr-2 h-4 w-4" />
-                          Refresh Metrics Now
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => navigate("/settings/integrations")}
+                            className="border-amber-500 text-amber-600 hover:bg-amber-500/10"
+                          >
+                            <Settings className="mr-2 h-4 w-4" />
+                            Connect Integrations
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </CardHeader>

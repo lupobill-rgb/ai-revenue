@@ -464,9 +464,9 @@ const Approvals = () => {
           })
           .eq("id", campaign.id);
 
-        // Create a campaign_run record
+        // Create a campaign_run record to track execution
         if (tenantId) {
-          const { data: campaignRun } = await supabase
+          const { data: campaignRun, error: runError } = await supabase
             .from("campaign_runs")
             .insert({
               tenant_id: tenantId,
@@ -479,7 +479,13 @@ const Approvals = () => {
             .select()
             .single();
 
-          console.log("Created campaign run:", campaignRun);
+          if (runError) {
+            console.error("Failed to create campaign_run:", runError);
+          } else {
+            console.log("Created campaign run:", campaignRun?.id);
+          }
+        } else {
+          console.warn("No tenant_id found - cannot create campaign_run record");
         }
 
         // Create campaign metrics with zero values (real tracking starts now)

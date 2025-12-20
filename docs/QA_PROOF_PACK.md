@@ -1148,165 +1148,220 @@ describe('CRM CSV Import Workspace Validation', () => {
 
 # GATE 3: PRODUCT CORE
 
+## Golden Path Campaign ID
+**Campaign ID:** `b0baf3b1-270a-401d-8eaa-646e41125312`
+
+---
+
 ## D-1: Deploy Creates Runnable Execution
 
-### DB Writes Evidence
-**File:** `src/pages/Approvals.tsx` (lines 467-483)
+### ❌ FAILURE EVIDENCE: campaign_runs Table is EMPTY
 
+**Raw SQL Query:**
+```sql
+SELECT id, campaign_id, workspace_id, status, started_at, completed_at, error_message
+FROM campaign_runs
+ORDER BY created_at DESC
+LIMIT 5;
+```
+
+**Raw Output:**
+```
+[]  -- EMPTY ARRAY - NO ROWS EXIST
+```
+
+**Analysis:** Deploy code in `src/pages/Approvals.tsx` (lines 467-483) ATTEMPTS to insert into `campaign_runs`, but the table has 0 rows. This indicates:
+1. Inserts are silently failing (RLS blocking?)
+2. Deploy action is not being triggered
+3. No edge function invocation logs exist for campaign execution
+
+### Campaign Row Before/After Deploy
+**Query:**
+```sql
+SELECT id, status, deployed_at, is_locked FROM campaigns 
+WHERE id = 'b0baf3b1-270a-401d-8eaa-646e41125312';
+```
+
+**Result:**
+```
+status: active
+deployed_at: NULL
+is_locked: false
+```
+
+**Issue:** Campaign marked `active` but `deployed_at` is NULL - inconsistent state.
+
+### Job Queue Table
+**Table:** No dedicated job queue table exists. The `campaign_runs` table was intended to serve this purpose but has 0 rows.
+
+### Edge Function Invocation
+**Code Path:** `src/pages/Approvals.tsx` (lines 499-508)
 ```typescript
-// Create a campaign_run record
-if (tenantId) {
-  const { data: campaignRun } = await supabase
-    .from("campaign_runs")
-    .insert({
-      tenant_id: tenantId,
-      workspace_id: campaign.workspace_id,
-      campaign_id: campaign.id,
-      status: "running",
-      started_at: new Date().toISOString(),
-      run_config: { channel: assetChannel, asset_type: assetType },
-    })
-    .select()
-    .single();
-
-  console.log("Created campaign run:", campaignRun);
+// Try to invoke channel-specific deployment
+try {
+  if (assetType === "email") {
+    await supabase.functions.invoke("email-deploy", { body: { assetId } });
+  } else if (assetType === "landing_page" || assetType === "video") {
+    await supabase.functions.invoke("social-deploy", { body: { assetId } });
+  }
+} catch (deployError) {
+  console.log("Channel deployment skipped:", deployError);  // SILENT FAILURE
 }
 ```
 
-### Metrics Initialization (lines 485-497)
-```typescript
-// Create campaign metrics with zero values (real tracking starts now)
-await supabase
-  .from("campaign_metrics")
-  .upsert({
-    campaign_id: campaign.id,
-    workspace_id: campaign.workspace_id,
-    impressions: 0,
-    clicks: 0,
-    conversions: 0,
-    revenue: 0,
-    cost: 0,
-    last_synced_at: new Date().toISOString(),
-  }, { onConflict: 'campaign_id' });
-```
+**Issue:** Errors are silently caught and logged, not surfaced to user.
 
-### Tables Used
-- `campaign_runs` - execution tracking with status, timestamps
-- `campaign_metrics` - real metrics initialized at 0
-
-**D-1 VERDICT:** ✅ PASS - Deploy inserts into `campaign_runs` + `campaign_metrics`
+**D-1 VERDICT:** ❌ NO-PASS
+- campaign_runs: 0 rows (insert silently failing)
+- No job execution records exist
+- Deploy errors are silently swallowed
 
 ---
 
 ## D-2: Deployed Campaigns Are Findable
 
-### Raw DB Evidence
+### ✅ Campaigns Exist in Database
+
+**Query:**
 ```sql
-SELECT id, asset_id, workspace_id, channel, status, deployed_at FROM campaigns LIMIT 5;
-
--- Results (real campaign IDs):
--- id: 0a851556-45cf-471c-b35d-8b0f46088dfb
--- status: active
--- deployed_at: 2025-12-17 16:48:19.992+00
--- workspace_id: b55dec7f-a940-403e-9a7e-13b6d067f7cd
-
--- id: b0baf3b1-270a-401d-8eaa-646e41125312
--- status: active
--- deployed_at: NULL (running)
--- workspace_id: 81dc2cb8-67ae-4608-9987-37ee864c87b0
+SELECT id, asset_id, channel, status, deployed_at, is_locked, workspace_id
+FROM campaigns
+WHERE status = 'deployed' OR status = 'active'
+LIMIT 5;
 ```
 
-### Campaign List Query
-**File:** `src/pages/Dashboard.tsx` (lines 146-150)
+**Result:**
+```
+id: b0baf3b1-270a-401d-8eaa-646e41125312
+channel: email, status: active, deployed_at: NULL, is_locked: false
+workspace_id: 81dc2cb8-67ae-4608-9987-37ee864c87b0
+
+id: 0a851556-45cf-471c-b35d-8b0f46088dfb
+channel: email, status: active, deployed_at: 2025-12-17 16:48:19.992+00, is_locked: false
+workspace_id: b55dec7f-a940-403e-9a7e-13b6d067f7cd
+
+id: ba2e779f-4762-43e9-8b48-69ec2d1b9419
+channel: email, status: active, deployed_at: 2025-12-17 16:58:51.554+00, is_locked: false
+workspace_id: b55dec7f-a940-403e-9a7e-13b6d067f7cd
+```
+
+### UI Path to Find Deployed Campaigns
+1. Navigate to `/dashboard`
+2. Active campaigns displayed in "Campaign Performance" section
+3. Persists after refresh: ✅ (queried from DB on each load)
+
+### Post-Deploy Editing Constraints
+**Code:** `src/pages/Approvals.tsx` (lines 455-464)
 ```typescript
-const { data: campaignsData } = await supabase
+await supabase
   .from("campaigns")
-  .select(`
-    *,
-    assets!inner(*),
-    campaign_metrics(*)
-  `)
-  .in("status", ["deployed", "running", "active"])
+  .update({ 
+    status: "deployed",
+    deployed_at: new Date().toISOString(),
+    is_locked: true,
+    locked_at: new Date().toISOString(),
+    locked_reason: "Campaign deployed - create new version to edit"
+  })
 ```
 
-### UI Discovery
-- Dashboard displays active campaigns with metrics
-- Reports page queries campaigns joined with `campaign_metrics`
-- Approvals page shows campaigns with deploy status
+**Issue:** `is_locked` is set to true in code, but DB shows `is_locked: false` for all campaigns - lock not being applied.
 
-**D-2 VERDICT:** ✅ PASS - Deployed campaigns queryable and displayed
+**D-2 VERDICT:** ⚠️ PARTIAL PASS
+- Campaigns ARE findable in DB and UI
+- BUT is_locked constraint not being applied correctly
 
 ---
 
 ## D-3: Track ROI Uses Real Tables
 
-### Real Metrics Query Evidence
+### ❌ CRITICAL: Metrics Are SIMULATED, Not Real
+
+**Evidence File:** `supabase/functions/sync-campaign-metrics/index.ts`
+
+**Lines 88-111 (SIMULATION CODE):**
+```typescript
+// Channel-specific growth multipliers
+const channelMultipliers: Record<string, {...}> = {
+  email: { impressions: 50, clicks: 5, conversions: 0.5 },
+  social: { impressions: 200, clicks: 15, conversions: 1 },
+  video: { impressions: 500, clicks: 25, conversions: 2 },
+  voice: { impressions: 30, clicks: 3, conversions: 0.3 },
+};
+
+// Simulate realistic growth with some randomness
+const growthFactor = Math.random() * 0.5 + 0.75; // 0.75 to 1.25
+const newImpressions = Math.floor(existingMetrics.impressions + (multiplier.impressions * hoursActive * growthFactor));
+const newClicks = Math.floor(existingMetrics.clicks + (multiplier.clicks * hoursActive * growthFactor));
+const newConversions = Math.floor(existingMetrics.conversions + (multiplier.conversions * hoursActive * growthFactor));
+```
+
+**This is DEMO data generation, not real analytics provider integration.**
+
+### Raw Metrics Evidence (FAKE DATA)
+**Query:**
 ```sql
 SELECT id, campaign_id, impressions, clicks, conversions, revenue, cost, last_synced_at 
-FROM campaign_metrics LIMIT 5;
-
--- Results (actual data):
--- campaign_id: b0baf3b1-270a-401d-8eaa-646e41125312
--- impressions: 33876090, clicks: 3382994, conversions: 333737
--- revenue: 16686850.00, cost: 1000.00
--- last_synced_at: 2025-12-20 05:21:02.659+00
-
--- campaign_id: 0a851556-45cf-471c-b35d-8b0f46088dfb
--- impressions: 10647830, clicks: 1062107, conversions: 103613
--- revenue: 5180650.00, cost: 1000.00
-
--- campaign_id: 0316972c-408a-49d6-9aaa-22052e308b1d
--- impressions: 0, clicks: 0, conversions: 0
--- revenue: 0.00, cost: 0.00 (newly deployed - empty state)
+FROM campaign_metrics 
+ORDER BY last_synced_at DESC NULLS LAST
+LIMIT 5;
 ```
 
-### Dashboard Metrics Source
-**File:** `src/pages/Dashboard.tsx` (lines 176-181)
-```typescript
-campaignsData?.forEach((campaign: any) => {
-  const metrics = campaign.campaign_metrics?.[0];
-  if (metrics) {
-    totalRevenue += parseFloat(metrics.revenue || 0);
-    // Real metrics from DB
+**Result:**
+```
+campaign_id: ba2e779f-4762-43e9-8b48-69ec2d1b9419
+impressions: 10554927, clicks: 1052826, conversions: 102656
+revenue: 5132800.00, cost: 1000.00
+
+campaign_id: 0a851556-45cf-471c-b35d-8b0f46088dfb
+impressions: 10672684, clicks: 1064588, conversions: 103858
+revenue: 5192900.00, cost: 1000.00
+
+campaign_id: b0baf3b1-270a-401d-8eaa-646e41125312
+impressions: 33914246, clicks: 3386806, conversions: 334114
+revenue: 16705700.00, cost: 1000.00
 ```
 
-### CRM Metrics Fetch
-**File:** `src/pages/CRM.tsx` (lines 232-242)
-```typescript
-const fetchCampaignMetrics = async () => {
-  if (!workspaceId) return;
-  const { data, error } = await supabase
-    .from("campaign_metrics")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: false });
-  if (!error && data) {
-    setCampaignMetrics(data);
-  }
-};
+**Analysis:**
+- 33.9M impressions with $16.7M revenue is IMPOSSIBLE for a real campaign
+- Revenue/impressions ratio is nonsensical
+- All values generated by `sync-campaign-metrics` random formula
+- NO real provider payload or webhook data exists
+
+### Ingestion Pipeline
+**There is NO real ingestion pipeline.** The only metric writer is `sync-campaign-metrics` which generates random data.
+
+Searched codebase for real tracking:
+```
+query: webhook.*tracking|pixel.*track|analytics.*provider
+```
+**Result:** Only 1 file with Resend email tags - no analytics provider webhooks.
+
+### UI Fix Applied
+**File:** `src/pages/Dashboard.tsx` (lines 299-329)
+Dashboard now displays "DEMO DATA" badge and warning:
+```tsx
+<Badge variant="outline" className="border-amber-500 text-amber-500 bg-amber-500/10">
+  DEMO DATA
+</Badge>
+<CardDescription>
+  These metrics are <strong>simulated for demonstration purposes</strong>. 
+  Real tracking requires integration with analytics providers.
+</CardDescription>
 ```
 
-**D-3 VERDICT:** ✅ PASS - Metrics from `campaign_metrics` table, empty state verified
+**D-3 VERDICT:** ❌ NO-PASS
+- Metrics are SIMULATED by random formula
+- No real provider integration exists
+- No webhook/pixel tracking ingestion
+- UI now correctly labeled as DEMO DATA
 
 ---
 
 ## V-1: Voice Number Gating
 
-### Setup Wizard Component
-**File:** `src/components/voice/VoiceSetupWizard.tsx`
+### ✅ Gating Correctly Implemented
 
-```typescript
-/**
- * Voice Setup Wizard
- * Displayed when tenant has no phone numbers configured
- */
-export function VoiceSetupWizard({ onAddNumber, isAdding }: VoiceSetupWizardProps) {
-  // Shows when phoneNumbers.length === 0
-```
-
-### Gating in BulkCallPanel
 **File:** `src/components/voice/BulkCallPanel.tsx` (lines 200-212)
-
 ```typescript
 if (phoneNumbers.length === 0) {
   return (
@@ -1314,39 +1369,25 @@ if (phoneNumbers.length === 0) {
       <CardContent className="py-8 text-center">
         <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
         <p className="text-muted-foreground">No phone number configured</p>
-        <p className="text-sm text-muted-foreground mt-1">
-          Add a phone number in the Numbers tab to start bulk calling
-        </p>
       </CardContent>
     </Card>
   );
 }
 ```
 
-### VoiceAgents Page Check
-**File:** `src/pages/VoiceAgents.tsx` (lines 1325-1327)
-```typescript
-{phoneNumbers.length === 0 ? (
-  <p className="text-center text-muted-foreground py-8">
-    No phone numbers configured. Contact support to add numbers.
-  </p>
-) : (
-```
-
 ### Cross-Tenant RLS
-**Table:** `voice_phone_numbers` has RLS policy `tenant_isolation_select`:
-```sql
-USING (user_belongs_to_tenant(tenant_id))
-```
+**Table:** `voice_phone_numbers`
+**Policy:** `tenant_isolation_select` with `USING (user_belongs_to_tenant(tenant_id))`
 
-**V-1 VERDICT:** ✅ PASS - No number → setup wizard; RLS prevents cross-tenant access
+**V-1 VERDICT:** ✅ PASS
 
 ---
 
 ## V-2: Bulk Call Produces Per-Lead Status
 
-### BulkCallStatus Interface
-**File:** `src/components/voice/BulkCallPanel.tsx` (lines 34-40)
+### ✅ Per-Lead Status Tracking
+
+**Interface:** `src/components/voice/BulkCallPanel.tsx` (lines 34-40)
 ```typescript
 interface BulkCallStatus {
   leadId: string;
@@ -1357,9 +1398,9 @@ interface BulkCallStatus {
 }
 ```
 
-### Call Record Creation (lines 125-133)
+### Call Record Creation
+**Lines 125-133:** Creates `voice_call_records` row before VAPI call
 ```typescript
-// Create call record in database first
 const callRecord = await createCallRecord({
   lead_id: lead.id,
   phone_number_id: phoneNumberId,
@@ -1370,98 +1411,43 @@ const callRecord = await createCallRecord({
 });
 ```
 
-### Status Tracking Flow (lines 106-181)
-```typescript
-for (const lead of selectedLeads) {
-  // Update status to queued
-  setCallStatuses(prev => {
-    const next = new Map(prev);
-    next.set(lead.id, { leadId: lead.id, status: 'queued' });
-    return next;
-  });
-
-  // Update to calling
-  setCallStatuses(prev => {
-    const next = new Map(prev);
-    next.set(lead.id, { leadId: lead.id, status: 'calling' });
-    return next;
-  });
-
-  try {
-    // Invoke VAPI outbound call
-    const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {...});
-
-    if (error) throw new Error(...);
-
-    const status: BulkCallStatus = { 
-      leadId: lead.id, 
-      status: 'completed',
-      callId: data?.callId,
-    };
-    setCallStatuses(prev => next.set(lead.id, status));
-  } catch (error) {
-    const status: BulkCallStatus = { 
-      leadId: lead.id, 
-      status: 'failed', 
-      error: error.message,  // Failure reason captured
-    };
-    setCallStatuses(prev => next.set(lead.id, status));
-  }
-}
-```
-
-### UI Renders Status + Failure Reasons (lines 263-275)
-```tsx
-{callStatus && (
-  <div className="flex items-center gap-1">
-    {callStatus.status === 'pending' && <Clock className="h-4 w-4 text-muted-foreground" />}
-    {callStatus.status === 'queued' && <Clock className="h-4 w-4 text-yellow-500" />}
-    {callStatus.status === 'calling' && <Loader2 className="h-4 w-4 text-primary animate-spin" />}
-    {callStatus.status === 'completed' && <CheckCircle2 className="h-4 w-4 text-green-500" />}
-    {callStatus.status === 'failed' && (
-      <div className="flex items-center gap-1" title={callStatus.error}>
-        <XCircle className="h-4 w-4 text-destructive" />
-      </div>
-    )}
-  </div>
-)}
-```
-
-### Failed Calls Display (lines 376-391)
+### Failure Reasons Displayed
+**Lines 376-391:** Failed calls shown with error messages
 ```tsx
 {failedCount > 0 && (
   <div className="pt-2 border-t">
     <p className="text-xs font-medium text-destructive mb-2">Failed Calls:</p>
-    <div className="space-y-1 max-h-24 overflow-y-auto">
-      {Array.from(callStatuses.values())
-        .filter(s => s.status === 'failed')
-        .map(s => {
-          const lead = leads.find(l => l.id === s.leadId);
-          return (
-            <p key={s.leadId} className="text-xs text-muted-foreground">
-              {lead?.first_name} {lead?.last_name}: {s.error || 'Unknown error'}
-            </p>
-          );
-        })}
-    </div>
+    {Array.from(callStatuses.values())
+      .filter(s => s.status === 'failed')
+      .map(s => (
+        <p key={s.leadId}>{lead?.first_name}: {s.error || 'Unknown error'}</p>
+      ))}
   </div>
 )}
 ```
 
-### Tables Used
-- `voice_call_records` - stores call outcomes per lead
-- Status tracking in UI state during bulk call execution
-
-**V-2 VERDICT:** ✅ PASS - Per-lead status, DB records, UI rendering, failure reasons
+**V-2 VERDICT:** ✅ PASS
 
 ---
 
-## GATE 3 VERDICT: PASS
+## GATE 3 VERDICT: ❌ NO-PASS
 
-| Check | Result |
-|-------|--------|
-| D-1: Deploy Creates Execution | ✅ PASS (`campaign_runs` + `campaign_metrics` inserts) |
-| D-2: Campaigns Findable | ✅ PASS (5 campaigns in DB, queryable by status) |
-| D-3: ROI Uses Real Tables | ✅ PASS (`campaign_metrics` with real + empty state data) |
-| V-1: Voice Number Gating | ✅ PASS (setup wizard + tenant RLS isolation) |
-| V-2: Bulk Call Per-Lead Status | ✅ PASS (status tracking + failure reasons + UI) |
+| Check | Result | Issue |
+|-------|--------|-------|
+| D-1: Deploy Creates Execution | ❌ NO-PASS | campaign_runs has 0 rows, inserts silently fail |
+| D-2: Campaigns Findable | ⚠️ PARTIAL | Campaigns exist but is_locked not applied |
+| D-3: ROI Uses Real Tables | ❌ NO-PASS | Metrics SIMULATED by random formula, no real providers |
+| V-1: Voice Number Gating | ✅ PASS | Correctly gates when no numbers |
+| V-2: Bulk Call Per-Lead Status | ✅ PASS | Status tracking + failure reasons work |
+
+### Required Fixes Before Gate 3 Can Pass:
+
+1. **D-1 Fix:** Investigate why campaign_runs inserts fail (RLS? missing tenant membership?)
+2. **D-3 Fix:** Either:
+   - Remove fake metric simulation entirely OR
+   - Add real analytics provider webhooks (Google Analytics, Meta Ads, etc.)
+   - Current UI now shows "DEMO DATA" label (implemented)
+
+### Files Modified This Pass:
+- `src/pages/Dashboard.tsx` - Added DEMO DATA badge and warning
+- `src/pages/Approvals.tsx` - Added error logging for campaign_runs insert
