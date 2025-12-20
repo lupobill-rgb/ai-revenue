@@ -95,6 +95,26 @@ serve(async (req) => {
 
     // Process calls sequentially with delay to avoid rate limits
     for (const lead of targetLeads) {
+      // Generate idempotency key for this call
+      const idempotencyKey = `voice_${assetId}_${lead.id}_${new Date().toISOString().slice(0, 10)}`;
+
+      // Check if already sent via channel_outbox
+      const { data: existingOutbox } = await serviceClient
+        .from('channel_outbox')
+        .select('id, status, provider_message_id')
+        .eq('idempotency_key', idempotencyKey)
+        .in('status', ['called', 'pending', 'queued'])
+        .maybeSingle();
+
+      if (existingOutbox) {
+        console.log(`[execute-voice-campaign] Skipping duplicate call for lead ${lead.id}, existing status: ${existingOutbox.status}`);
+        if (existingOutbox.status === 'called') {
+          results.push({ leadId: lead.id, success: true, callId: existingOutbox.provider_message_id || undefined });
+          successCount++;
+        }
+        continue;
+      }
+
       try {
         const callPayload: any = {
           assistantId,
@@ -123,6 +143,29 @@ serve(async (req) => {
           const callData = JSON.parse(responseText);
           results.push({ leadId: lead.id, success: true, callId: callData.id });
           successCount++;
+
+          // Insert into channel_outbox with provider response
+          const { error: outboxError } = await serviceClient
+            .from('channel_outbox')
+            .insert({
+              tenant_id: effectiveTenantId,
+              workspace_id: asset.workspace_id,
+              channel: 'voice',
+              provider: 'vapi',
+              idempotency_key: idempotencyKey,
+              recipient_id: lead.id,
+              recipient_phone: lead.phone,
+              payload: callPayload,
+              status: 'called',
+              provider_message_id: callData.id,
+              provider_response: callData,
+            });
+
+          if (outboxError) {
+            console.error("[execute-voice-campaign] Failed to log to channel_outbox:", outboxError);
+          } else {
+            console.log(`[execute-voice-campaign] Logged call to channel_outbox: ${callData.id}`);
+          }
 
           // Log activity to crm_activities (unified CRM spine)
           const { error: activityError } = await serviceClient
@@ -167,6 +210,22 @@ serve(async (req) => {
           }
           results.push({ leadId: lead.id, success: false, error: errorMessage });
           failCount++;
+
+          // Log failed call to channel_outbox
+          await serviceClient
+            .from('channel_outbox')
+            .insert({
+              tenant_id: effectiveTenantId,
+              workspace_id: asset.workspace_id,
+              channel: 'voice',
+              provider: 'vapi',
+              idempotency_key: idempotencyKey,
+              recipient_id: lead.id,
+              recipient_phone: lead.phone,
+              payload: callPayload,
+              status: 'failed',
+              error: errorMessage,
+            });
         }
 
         // Add delay between calls to avoid rate limiting
@@ -178,6 +237,22 @@ serve(async (req) => {
           error: error instanceof Error ? error.message : 'Unknown error' 
         });
         failCount++;
+
+        // Log error to channel_outbox
+        await serviceClient
+          .from('channel_outbox')
+          .insert({
+            tenant_id: effectiveTenantId,
+            workspace_id: asset.workspace_id,
+            channel: 'voice',
+            provider: 'vapi',
+            idempotency_key: idempotencyKey,
+            recipient_id: lead.id,
+            recipient_phone: lead.phone,
+            payload: {},
+            status: 'failed',
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
       }
     }
 
