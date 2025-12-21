@@ -993,6 +993,13 @@ Deno.serve(async (req) => {
         testEvidence.run_error = failedRun?.error_message;
         testEvidence.run_status = failedRun?.status;
 
+        // Collect outbox evidence for the global evidence object
+        for (const row of allOutboxRows || []) {
+          output.evidence.outbox_row_ids.push(row.id);
+          output.evidence.outbox_final_statuses[row.id] = row.status;
+          // No provider IDs in failure test (it fails before provider call)
+        }
+
         // ================================================================
         // ZERO-TOLERANCE SILENT FAILURE DETECTION
         // These checks run ALWAYS, regardless of run status
@@ -1337,16 +1344,26 @@ Deno.serve(async (req) => {
           output.evidence.jobs_transitioned_count = queueDelta;
           output.evidence.final_queue_depth = t60Snapshot.queued_count;
 
-          // Check for duplicates in outbox
+          // Check for duplicates in outbox and collect evidence
           const { data: outboxData } = await supabase
             .from('channel_outbox')
-            .select('idempotency_key')
+            .select('id, idempotency_key, status, provider_message_id')
             .eq('run_id', run!.id);
+
+          // Collect outbox evidence
+          for (const row of outboxData || []) {
+            output.evidence.outbox_row_ids.push(row.id);
+            output.evidence.outbox_final_statuses[row.id] = row.status;
+            if (row.provider_message_id) {
+              output.evidence.provider_ids.push(row.provider_message_id);
+            }
+          }
 
           const keys = (outboxData || []).map((r: { idempotency_key: string }) => r.idempotency_key);
           const uniqueKeys = new Set(keys);
           const duplicateCount = keys.length - uniqueKeys.size;
           testEvidence.duplicate_count = duplicateCount;
+          testEvidence.outbox_count = outboxData?.length || 0;
 
           // Clean up test jobs
           await supabase
