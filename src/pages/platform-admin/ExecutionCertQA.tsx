@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { 
   Shield, CheckCircle2, XCircle, Play, Download, Loader2, 
-  Clock, AlertTriangle, Database, Zap
+  Clock, AlertTriangle, Database, Zap, Users, Activity
 } from 'lucide-react';
 
 interface TestResult {
@@ -39,6 +39,30 @@ interface SLAResult {
   oldestQueuedAgeSeconds: number;
   oldestJobId: string | null;
   slaThresholdSeconds: number;
+}
+
+interface HorizontalScalingMetrics {
+  workers: Array<{
+    worker_id: string;
+    jobs_claimed: number;
+    jobs_succeeded: number;
+    jobs_failed: number;
+    avg_tick_duration_ms: number;
+    last_tick_at: string;
+  }>;
+  queue_stats: {
+    queued: number;
+    locked: number;
+    completed: number;
+    failed: number;
+  };
+  oldest_queued_age_seconds: number;
+  duplicate_count: number;
+  pass_criteria: {
+    HS1_workers_active: boolean;
+    HS2_duplicates_zero: boolean;
+    HS3_oldest_under_180s: boolean;
+  };
 }
 
 interface OutboxRow {
@@ -75,6 +99,8 @@ export default function ExecutionCertQA() {
   const [concurrencyResults, setConcurrencyResults] = useState<TestResult[]>([]);
   const [slaResult, setSLAResult] = useState<{ passed: boolean; data: SLAResult } | null>(null);
   const [outboxRows, setOutboxRows] = useState<OutboxRow[]>([]);
+  const [hsMetrics, setHsMetrics] = useState<HorizontalScalingMetrics | null>(null);
+  const [loadingHsMetrics, setLoadingHsMetrics] = useState(false);
 
   useEffect(() => {
     checkPlatformAdmin();
@@ -192,6 +218,120 @@ export default function ExecutionCertQA() {
     }
   };
 
+  const fetchHorizontalScalingMetrics = async () => {
+    setLoadingHsMetrics(true);
+    try {
+      // Get worker metrics from last 5 minutes
+      const { data: workerData, error: workerError } = await supabase
+        .from('worker_tick_metrics')
+        .select('*')
+        .gte('tick_started_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+        .order('tick_started_at', { ascending: false });
+
+      if (workerError) throw workerError;
+
+      // Get queue stats
+      const { data: queueData, error: queueError } = await supabase
+        .from('job_queue')
+        .select('status, created_at');
+
+      if (queueError) throw queueError;
+
+      // Calculate queue stats
+      const queueStats = {
+        queued: 0,
+        locked: 0,
+        completed: 0,
+        failed: 0,
+      };
+      let oldestQueuedAge = 0;
+
+      for (const job of queueData || []) {
+        const status = job.status as string;
+        if (status === 'queued') {
+          queueStats.queued++;
+          const age = (Date.now() - new Date(job.created_at).getTime()) / 1000;
+          if (age > oldestQueuedAge) oldestQueuedAge = age;
+        } else if (status === 'locked') queueStats.locked++;
+        else if (status === 'completed') queueStats.completed++;
+        else if (status === 'failed') queueStats.failed++;
+      }
+
+      // Check for duplicates
+      const { data: dupData, error: dupError } = await supabase
+        .from('channel_outbox')
+        .select('idempotency_key')
+        .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString());
+
+      if (dupError) throw dupError;
+
+      const keyCounts = new Map<string, number>();
+      for (const row of dupData || []) {
+        const key = row.idempotency_key;
+        keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
+      }
+      const duplicateCount = Array.from(keyCounts.values()).filter(c => c > 1).length;
+
+      // Aggregate worker metrics
+      const workerMap = new Map<string, {
+        worker_id: string;
+        jobs_claimed: number;
+        jobs_succeeded: number;
+        jobs_failed: number;
+        tick_durations: number[];
+        last_tick_at: string;
+      }>();
+
+      for (const tick of workerData || []) {
+        const existing = workerMap.get(tick.worker_id);
+        if (existing) {
+          existing.jobs_claimed += tick.jobs_claimed || 0;
+          existing.jobs_succeeded += tick.jobs_succeeded || 0;
+          existing.jobs_failed += tick.jobs_failed || 0;
+          existing.tick_durations.push(tick.tick_duration_ms || 0);
+          if (tick.tick_started_at > existing.last_tick_at) {
+            existing.last_tick_at = tick.tick_started_at;
+          }
+        } else {
+          workerMap.set(tick.worker_id, {
+            worker_id: tick.worker_id,
+            jobs_claimed: tick.jobs_claimed || 0,
+            jobs_succeeded: tick.jobs_succeeded || 0,
+            jobs_failed: tick.jobs_failed || 0,
+            tick_durations: [tick.tick_duration_ms || 0],
+            last_tick_at: tick.tick_started_at,
+          });
+        }
+      }
+
+      const workers = Array.from(workerMap.values()).map(w => ({
+        ...w,
+        avg_tick_duration_ms: w.tick_durations.length > 0 
+          ? w.tick_durations.reduce((a, b) => a + b, 0) / w.tick_durations.length 
+          : 0,
+      }));
+
+      setHsMetrics({
+        workers,
+        queue_stats: queueStats,
+        oldest_queued_age_seconds: Math.floor(oldestQueuedAge),
+        duplicate_count: duplicateCount,
+        pass_criteria: {
+          HS1_workers_active: workers.length >= 2,
+          HS2_duplicates_zero: duplicateCount === 0,
+          HS3_oldest_under_180s: oldestQueuedAge < 180,
+        },
+      });
+
+      toast.success('Horizontal scaling metrics loaded');
+    } catch (error) {
+      console.error('HS metrics error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load metrics');
+    } finally {
+      setLoadingHsMetrics(false);
+    }
+  };
+
   const exportEvidence = async () => {
     setExporting(true);
     try {
@@ -221,13 +361,18 @@ export default function ExecutionCertQA() {
   };
 
   const getOverallStatus = () => {
-    const hasResults = concurrencyResults.length > 0 || slaResult !== null;
+    const hasResults = concurrencyResults.length > 0 || slaResult !== null || hsMetrics !== null;
     if (!hasResults) return 'pending';
     
     const concurrencyPassed = concurrencyResults.length === 0 || concurrencyResults.every(r => r.passed);
     const slaPassed = slaResult === null || slaResult.passed;
+    const hsPassed = hsMetrics === null || (
+      hsMetrics.pass_criteria.HS1_workers_active &&
+      hsMetrics.pass_criteria.HS2_duplicates_zero &&
+      hsMetrics.pass_criteria.HS3_oldest_under_180s
+    );
     
-    return concurrencyPassed && slaPassed ? 'pass' : 'fail';
+    return concurrencyPassed && slaPassed && hsPassed ? 'pass' : 'fail';
   };
 
   if (loading) {
@@ -477,12 +622,141 @@ export default function ExecutionCertQA() {
         </CardContent>
       </Card>
 
-      {/* Section 4: Evidence Export */}
+      {/* Section 4: Horizontal Scaling Metrics */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            4. Horizontal Scaling (Multi-Worker)
+          </CardTitle>
+          <CardDescription>
+            Monitor worker performance, fairness, and duplicate prevention
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button onClick={fetchHorizontalScalingMetrics} disabled={loadingHsMetrics}>
+            {loadingHsMetrics ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Activity className="h-4 w-4 mr-2" />}
+            Refresh Metrics
+          </Button>
+
+          {hsMetrics && (
+            <>
+              {/* Pass Criteria */}
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className={`p-3 rounded-lg border ${hsMetrics.pass_criteria.HS1_workers_active ? 'border-green-500/50 bg-green-500/10' : 'border-yellow-500/50 bg-yellow-500/10'}`}>
+                  <div className="flex items-center gap-2">
+                    {hsMetrics.pass_criteria.HS1_workers_active ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                    )}
+                    <span className="font-medium text-sm">HS1: Workers Active</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-1">{hsMetrics.workers.length}</p>
+                  <p className="text-xs text-muted-foreground">Target: ≥2</p>
+                </div>
+
+                <div className={`p-3 rounded-lg border ${hsMetrics.pass_criteria.HS2_duplicates_zero ? 'border-green-500/50 bg-green-500/10' : 'border-red-500/50 bg-red-500/10'}`}>
+                  <div className="flex items-center gap-2">
+                    {hsMetrics.pass_criteria.HS2_duplicates_zero ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-red-600" />
+                    )}
+                    <span className="font-medium text-sm">HS2: Duplicates</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-1">{hsMetrics.duplicate_count}</p>
+                  <p className="text-xs text-muted-foreground">Must be 0</p>
+                </div>
+
+                <div className={`p-3 rounded-lg border ${hsMetrics.pass_criteria.HS3_oldest_under_180s ? 'border-green-500/50 bg-green-500/10' : 'border-red-500/50 bg-red-500/10'}`}>
+                  <div className="flex items-center gap-2">
+                    {hsMetrics.pass_criteria.HS3_oldest_under_180s ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-red-600" />
+                    )}
+                    <span className="font-medium text-sm">HS3: Queue Age</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-1">{hsMetrics.oldest_queued_age_seconds}s</p>
+                  <p className="text-xs text-muted-foreground">Threshold: &lt;180s</p>
+                </div>
+              </div>
+
+              {/* Queue Stats */}
+              <div className="p-4 rounded-lg border bg-muted/50">
+                <h4 className="font-medium mb-3">Queue Status</h4>
+                <div className="grid gap-4 md:grid-cols-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Queued:</span>
+                    <span className="ml-2 font-medium">{hsMetrics.queue_stats.queued}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Locked:</span>
+                    <span className="ml-2 font-medium">{hsMetrics.queue_stats.locked}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Completed:</span>
+                    <span className="ml-2 font-medium">{hsMetrics.queue_stats.completed}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Failed:</span>
+                    <span className="ml-2 font-medium">{hsMetrics.queue_stats.failed}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Worker Table */}
+              {hsMetrics.workers.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-medium">Worker Activity (Last 5 min)</h4>
+                  <div className="rounded-md border overflow-auto max-h-64">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Worker ID</TableHead>
+                          <TableHead className="text-right">Claimed</TableHead>
+                          <TableHead className="text-right">Succeeded</TableHead>
+                          <TableHead className="text-right">Failed</TableHead>
+                          <TableHead className="text-right">Avg Duration</TableHead>
+                          <TableHead>Last Tick</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {hsMetrics.workers.map((worker) => (
+                          <TableRow key={worker.worker_id}>
+                            <TableCell className="font-mono text-xs">{worker.worker_id.slice(0, 20)}...</TableCell>
+                            <TableCell className="text-right">{worker.jobs_claimed}</TableCell>
+                            <TableCell className="text-right text-green-600">{worker.jobs_succeeded}</TableCell>
+                            <TableCell className="text-right text-red-600">{worker.jobs_failed}</TableCell>
+                            <TableCell className="text-right">{worker.avg_tick_duration_ms.toFixed(0)}ms</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {new Date(worker.last_tick_at).toLocaleTimeString()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              {hsMetrics.workers.length === 0 && (
+                <div className="p-4 rounded-lg border bg-muted/50 text-center">
+                  <p className="text-muted-foreground">No worker activity in the last 5 minutes</p>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Section 5: Evidence Export */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
-            4. Evidence Export
+            5. Evidence Export
           </CardTitle>
           <CardDescription>
             Export JSON report with run IDs, job IDs, outbox entries, statuses, and timings
