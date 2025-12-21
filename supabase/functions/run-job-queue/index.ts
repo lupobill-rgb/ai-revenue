@@ -2,9 +2,19 @@
  * Run Job Queue Edge Function
  * Processes queued jobs for campaign execution (email, voice, social)
  * Called by cron every minute or manually
+ * 
+ * @see /docs/EXECUTION_CONTRACT.md for architectural invariants
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  generateIdempotencyKey,
+  beginOutboxItem,
+  finalizeOutboxSuccess,
+  finalizeOutboxFailure,
+  type Channel,
+  type Provider,
+} from "../_shared/outbox-contract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,36 +98,8 @@ function calculateBackoff(attempts: number): number {
   return Math.floor(exponentialDelay + jitter);
 }
 
-// Generate idempotency key using SHA-256
-async function generateIdempotencyKey(parts: string[]): Promise<string> {
-  const data = parts.filter(Boolean).join("|");
-  const encoder = new TextEncoder();
-  const dataBuffer = encoder.encode(data);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-// Check if action already processed (idempotency check)
-async function checkIdempotency(
-  supabase: any,
-  tenantId: string,
-  workspaceId: string,
-  idempotencyKey: string
-): Promise<{ exists: boolean; status?: string }> {
-  const { data } = await supabase
-    .from("channel_outbox")
-    .select("id, status")
-    .eq("tenant_id", tenantId)
-    .eq("workspace_id", workspaceId)
-    .eq("idempotency_key", idempotencyKey)
-    .maybeSingle();
-  
-  if (data) {
-    return { exists: true, status: data.status };
-  }
-  return { exists: false };
-}
+// Note: generateIdempotencyKey is now imported from outbox-contract.ts
+// Note: checkIdempotency is replaced by beginOutboxItem from outbox-contract.ts
 
 // Terminal statuses that indicate action was completed (skip on retry)
 const TERMINAL_STATUSES = ["sent", "called", "posted", "generated", "pending_review"];
@@ -323,6 +305,7 @@ async function processEmailBatch(
     if (!lead.email) continue;
     
     // Generate idempotency key: sha256(run_id + lead_id + asset_id + scheduled_for)
+    // @see /docs/EXECUTION_CONTRACT.md - Invariant 2
     const idempotencyKey = await generateIdempotencyKey([
       job.run_id,
       lead.id,
@@ -330,48 +313,36 @@ async function processEmailBatch(
       scheduledFor,
     ]);
     
-    // IDEMPOTENCY: Insert outbox entry BEFORE provider call with status 'queued'
-    // If insert conflicts (duplicate key), skip the provider call entirely
-    const { data: insertedOutbox, error: insertError } = await supabase
-      .from("channel_outbox")
-      .insert({
-        tenant_id: job.tenant_id,
-        workspace_id: job.workspace_id,
-        run_id: job.run_id,
-        job_id: job.id,
-        channel: "email",
-        provider: selectedProvider,
-        recipient_id: lead.id,
-        recipient_email: lead.email,
-        payload: { subject, campaign_id: campaignId },
-        status: "queued",
-        idempotency_key: idempotencyKey,
-        skipped: false,
-      } as never)
-      .select("id")
-      .single();
+    // EXECUTION CONTRACT: beginOutboxItem BEFORE provider call
+    // This creates a "reservation" that prevents duplicate sends on retry
+    const outboxResult = await beginOutboxItem({
+      supabase,
+      tenantId: job.tenant_id,
+      workspaceId: job.workspace_id,
+      runId: job.run_id,
+      jobId: job.id,
+      channel: "email" as Channel,
+      provider: selectedProvider as Provider,
+      recipientId: lead.id,
+      recipientEmail: lead.email,
+      payload: { subject, campaign_id: campaignId },
+      idempotencyKey,
+    });
     
-    // If insert failed due to unique constraint (idempotent replay), skip
-    if (insertError) {
-      if (insertError.code === "23505") { // Unique violation
-        console.log(`[email] Idempotent skip for lead ${lead.id} - already in outbox`);
-        // Update the existing entry to mark as skipped replay
-        await supabase
-          .from("channel_outbox")
-          .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
-          .eq("tenant_id", job.tenant_id)
-          .eq("workspace_id", job.workspace_id)
-          .eq("idempotency_key", idempotencyKey);
-        skipped++;
-        continue;
-      }
-      // Other insert error - log and continue
-      console.error(`[email] Failed to insert outbox for lead ${lead.id}:`, insertError);
+    // If skipped (idempotent replay), continue to next lead
+    if (outboxResult.skipped) {
+      skipped++;
+      continue;
+    }
+    
+    // If outbox insert failed for other reasons
+    if (!outboxResult.outboxId) {
+      console.error(`[email] Failed to begin outbox for lead ${lead.id}:`, outboxResult.error);
       failed++;
       continue;
     }
     
-    const outboxId = insertedOutbox?.id;
+    const outboxId = outboxResult.outboxId;
     
     // Personalize content
     const personalizedBody = body
@@ -380,26 +351,10 @@ async function processEmailBatch(
 
     let result: { success: boolean; messageId?: string; error?: string };
 
-    // Use the selected provider
+    // Use the selected provider (only call after outboxId is obtained)
     switch (selectedProvider) {
       case "resend":
-        result = await sendEmail(
-          resendApiKey,
-          `${emailSettings.sender_name || "Team"} <${emailSettings.from_address}>`,
-          lead.email,
-          subject,
-          personalizedBody
-        );
-        break;
       case "gmail":
-        result = await sendEmail(
-          resendApiKey,
-          `${emailSettings.sender_name || "Team"} <${emailSettings.from_address}>`,
-          lead.email,
-          subject,
-          personalizedBody
-        );
-        break;
       case "smtp":
         result = await sendEmail(
           resendApiKey,
@@ -413,19 +368,12 @@ async function processEmailBatch(
         result = { success: false, error: `Unknown provider: ${selectedProvider}` };
     }
 
-    // Update outbox with provider response
-    await supabase
-      .from("channel_outbox")
-      .update({
-        status: result.success ? "sent" : "failed",
-        provider_message_id: result.messageId,
-        error: result.error,
-      } as never)
-      .eq("id", outboxId);
-
+    // EXECUTION CONTRACT: Finalize outbox with provider response
     if (result.success) {
+      await finalizeOutboxSuccess(supabase, outboxId, result.messageId || null, result, "sent");
       sent++;
     } else {
+      await finalizeOutboxFailure(supabase, outboxId, result.error || "Unknown error");
       failed++;
     }
   }
@@ -513,6 +461,7 @@ async function processVoiceBatch(
       if (!lead.phone) continue;
       
       // Generate idempotency key: sha256(run_id + lead_id + script_version + scheduled_for)
+      // @see /docs/EXECUTION_CONTRACT.md - Invariant 2
       const idempotencyKey = await generateIdempotencyKey([
         job.run_id,
         lead.id,
@@ -520,46 +469,37 @@ async function processVoiceBatch(
         scheduledFor,
       ]);
       
-      // IDEMPOTENCY: Insert outbox entry BEFORE provider call with status 'queued'
-      const { data: insertedOutbox, error: insertError } = await supabase
-        .from("channel_outbox")
-        .insert({
-          tenant_id: job.tenant_id,
-          workspace_id: job.workspace_id,
-          run_id: job.run_id,
-          job_id: job.id,
-          channel: "voice",
-          provider: "vapi",
-          recipient_id: lead.id,
-          recipient_phone: lead.phone,
-          payload: { campaign_id: campaignId, assistant_id: voiceSettings.default_vapi_assistant_id },
-          status: "queued",
-          idempotency_key: idempotencyKey,
-          skipped: false,
-        } as never)
-        .select("id")
-        .single();
+      // EXECUTION CONTRACT: beginOutboxItem BEFORE provider call
+      const outboxResult = await beginOutboxItem({
+        supabase,
+        tenantId: job.tenant_id,
+        workspaceId: job.workspace_id,
+        runId: job.run_id,
+        jobId: job.id,
+        channel: "voice" as Channel,
+        provider: "vapi" as Provider,
+        recipientId: lead.id,
+        recipientPhone: lead.phone,
+        payload: { campaign_id: campaignId, assistant_id: voiceSettings.default_vapi_assistant_id },
+        idempotencyKey,
+      });
       
-      // If insert failed due to unique constraint (idempotent replay), skip
-      if (insertError) {
-        if (insertError.code === "23505") { // Unique violation
-          console.log(`[voice] Idempotent skip for lead ${lead.id} - already in outbox`);
-          await supabase
-            .from("channel_outbox")
-            .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
-            .eq("tenant_id", job.tenant_id)
-            .eq("workspace_id", job.workspace_id)
-            .eq("idempotency_key", idempotencyKey);
-          skipped++;
-          continue;
-        }
-        console.error(`[voice] Failed to insert outbox for lead ${lead.id}:`, insertError);
+      // If skipped (idempotent replay), continue to next lead
+      if (outboxResult.skipped) {
+        skipped++;
+        continue;
+      }
+      
+      // If outbox insert failed for other reasons
+      if (!outboxResult.outboxId) {
+        console.error(`[voice] Failed to begin outbox for lead ${lead.id}:`, outboxResult.error);
         failed++;
         continue;
       }
       
-      const outboxId = insertedOutbox?.id;
+      const outboxId = outboxResult.outboxId;
       
+      // Call provider (only after outboxId is obtained)
       const result = await initiateVapiCall(
         vapiPrivateKey,
         voiceSettings.default_vapi_assistant_id,
@@ -568,17 +508,9 @@ async function processVoiceBatch(
         `${lead.first_name || ""} ${lead.last_name || ""}`.trim()
       );
 
-      // Update outbox with provider response
-      await supabase
-        .from("channel_outbox")
-        .update({
-          status: result.success ? "called" : "failed",
-          provider_message_id: result.callId,
-          error: result.error,
-        } as never)
-        .eq("id", outboxId);
-
+      // EXECUTION CONTRACT: Finalize outbox with provider response
       if (result.success) {
+        await finalizeOutboxSuccess(supabase, outboxId, result.callId || null, result, "called");
         called++;
         await supabase.from("voice_call_records").insert({
           tenant_id: job.tenant_id,
@@ -592,6 +524,7 @@ async function processVoiceBatch(
           customer_name: `${lead.first_name || ""} ${lead.last_name || ""}`.trim(),
         } as never);
       } else {
+        await finalizeOutboxFailure(supabase, outboxId, result.error || "Unknown error");
         failed++;
       }
     }
