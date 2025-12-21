@@ -4950,6 +4950,137 @@ export type Database = {
           },
         ]
       }
+      rollout_gate_checks: {
+        Row: {
+          check_query: string | null
+          check_result: Json | null
+          created_at: string
+          description: string | null
+          gate_name: string
+          gate_type: string
+          id: string
+          is_passed: boolean | null
+          last_checked_at: string | null
+          phase_id: string
+          required: boolean | null
+        }
+        Insert: {
+          check_query?: string | null
+          check_result?: Json | null
+          created_at?: string
+          description?: string | null
+          gate_name: string
+          gate_type: string
+          id?: string
+          is_passed?: boolean | null
+          last_checked_at?: string | null
+          phase_id: string
+          required?: boolean | null
+        }
+        Update: {
+          check_query?: string | null
+          check_result?: Json | null
+          created_at?: string
+          description?: string | null
+          gate_name?: string
+          gate_type?: string
+          id?: string
+          is_passed?: boolean | null
+          last_checked_at?: string | null
+          phase_id?: string
+          required?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rollout_gate_checks_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "rollout_phases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rollout_phases: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          description: string | null
+          id: string
+          phase_name: string
+          phase_number: number
+          required_duration_hours: number | null
+          started_at: string | null
+          status: string
+          tenant_filter: Json | null
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          phase_name: string
+          phase_number: number
+          required_duration_hours?: number | null
+          started_at?: string | null
+          status?: string
+          tenant_filter?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          phase_name?: string
+          phase_number?: number
+          required_duration_hours?: number | null
+          started_at?: string | null
+          status?: string
+          tenant_filter?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      rollout_tenant_assignments: {
+        Row: {
+          assigned_at: string
+          id: string
+          phase_id: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          id?: string
+          phase_id: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          assigned_at?: string
+          id?: string
+          phase_id?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rollout_tenant_assignments_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "rollout_phases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rollout_tenant_assignments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       segments: {
         Row: {
           created_at: string
@@ -6269,6 +6400,7 @@ export type Database = {
         Args: { _email: string; _user_id: string }
         Returns: Json
       }
+      advance_rollout_phase: { Args: { p_phase_id: string }; Returns: Json }
       asset_approval_workspace_access: {
         Args: { approval_asset_id: string }
         Returns: boolean
@@ -6299,6 +6431,7 @@ export type Database = {
         Args: { p_campaign_id: string; p_tenant_id: string }
         Returns: Json
       }
+      check_rollout_gate: { Args: { p_gate_id: string }; Returns: Json }
       check_tenant_rate_limit: {
         Args: { p_amount?: number; p_channel: string; p_tenant_id: string }
         Returns: Json
@@ -6456,9 +6589,7 @@ export type Database = {
         Args: { p_campaign_id: string; p_workspace_id: string }
         Returns: undefined
       }
-      is_platform_admin:
-        | { Args: never; Returns: boolean }
-        | { Args: { _user_id?: string }; Returns: boolean }
+      is_platform_admin: { Args: never; Returns: boolean }
       is_workspace_member: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean

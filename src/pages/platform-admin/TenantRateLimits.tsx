@@ -88,7 +88,7 @@ export default function TenantRateLimits() {
 
     // Use the proper is_platform_admin RPC function
     const { data: isPlatformAdminResult, error } = await supabase
-      .rpc("is_platform_admin", { _user_id: user.id });
+      .rpc("is_platform_admin");
     
     if (error) {
       console.error("Error checking platform admin:", error);

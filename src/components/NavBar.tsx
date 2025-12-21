@@ -26,7 +26,7 @@ const NavBar = () => {
 
   useEffect(() => {
     if (user) {
-      supabase.rpc('is_platform_admin', { _user_id: user.id })
+      supabase.rpc('is_platform_admin')
         .then(({ data }) => setIsPlatformAdmin(!!data));
     }
   }, [user]);

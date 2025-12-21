@@ -77,7 +77,7 @@ export default function TenantIsolationQA() {
       return;
     }
 
-    const { data, error } = await supabase.rpc('is_platform_admin', { _user_id: user.id });
+    const { data, error } = await supabase.rpc('is_platform_admin');
     
     if (error) {
       console.error('Error checking platform admin:', error);

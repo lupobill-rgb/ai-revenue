@@ -79,7 +79,7 @@ export function ModuleToggles() {
       return;
     }
 
-    const { data } = await supabase.rpc("is_platform_admin", { _user_id: user.id });
+    const { data } = await supabase.rpc("is_platform_admin");
     setIsPlatformAdmin(!!data);
     setCheckingAdmin(false);
   };
