@@ -757,6 +757,12 @@ Deno.serve(async (req) => {
       const testStart = Date.now();
       const testEvidence: Record<string, unknown> = { mode };
       
+      // Scale safety constants
+      const REQUIRED_WORKERS = 4;
+      const MAX_OLDEST_QUEUED_SECONDS = 180;
+      const WORKER_WAIT_TIMEOUT_MS = 60000; // 60 seconds to wait for workers
+      const POLL_INTERVAL_MS = 2000; // Check every 2 seconds
+      
       try {
         // Create 50 jobs to flood the queue
         const { data: campaign } = await supabase
@@ -808,76 +814,142 @@ Deno.serve(async (req) => {
 
         if (jobsErr) throw new Error(`Job queue flood failed: ${jobsErr.message}`);
         testEvidence.jobs_created = jobs?.length || 0;
+        testEvidence.job_ids = jobs?.map(j => j.id) || [];
 
-        if (mode === 'live') {
-          // Wait a bit for workers to start processing
-          await new Promise(r => setTimeout(r, 5000));
+        if (mode === 'simulation') {
+          // SIMULATION: Verify schema correctness only
+          testEvidence.simulated = true;
+          
+          // Check SLA metrics function exists
+          let hsData: Record<string, unknown> | null = null;
+          try {
+            const result = await supabase.rpc('get_hs_metrics');
+            hsData = result.data;
+          } catch {
+            hsData = null;
+          }
+          testEvidence.hs_metrics = hsData;
+
+          // Clean up immediately in simulation
+          await supabase
+            .from('job_queue')
+            .update({ status: 'completed', completed_at: new Date().toISOString() })
+            .eq('run_id', run!.id);
+
+          await supabase
+            .from('campaign_runs')
+            .update({ status: 'completed', completed_at: new Date().toISOString() })
+            .eq('id', run!.id);
+
+          output.tests.scale_safety = {
+            status: 'PASS',
+            duration_ms: Date.now() - testStart,
+            evidence: testEvidence,
+          };
+
+        } else {
+          // LIVE: Wait for workers to claim jobs and verify horizontal scaling
+          console.log(`[ITR Scale Safety LIVE] Waiting for ≥${REQUIRED_WORKERS} workers to claim jobs...`);
+          
+          const waitStart = Date.now();
+          let uniqueWorkers: string[] = [];
+          let oldestQueuedSeconds = 0;
+          let pollCount = 0;
+          
+          // Poll until we see enough unique workers or timeout
+          while (Date.now() - waitStart < WORKER_WAIT_TIMEOUT_MS) {
+            pollCount++;
+            
+            // Get unique locked_by values from our test jobs
+            const { data: claimedJobs } = await supabase
+              .from('job_queue')
+              .select('locked_by, status')
+              .eq('run_id', run!.id)
+              .not('locked_by', 'is', null);
+
+            uniqueWorkers = [...new Set(
+              (claimedJobs || [])
+                .map((j: { locked_by: string | null }) => j.locked_by)
+                .filter(Boolean)
+            )] as string[];
+
+            // Get current HS metrics for oldest_queued_seconds
+            try {
+              const { data: hsData } = await supabase.rpc('get_hs_metrics');
+              oldestQueuedSeconds = (hsData as Record<string, number>)?.oldest_queued_seconds || 0;
+            } catch {
+              oldestQueuedSeconds = 0;
+            }
+
+            console.log(`[ITR Scale Safety] Poll ${pollCount}: ${uniqueWorkers.length} workers, ${oldestQueuedSeconds}s oldest queued`);
+
+            // Check if we've met the worker requirement
+            if (uniqueWorkers.length >= REQUIRED_WORKERS) {
+              console.log(`[ITR Scale Safety] Worker requirement met: ${uniqueWorkers.length} ≥ ${REQUIRED_WORKERS}`);
+              break;
+            }
+
+            // Wait before next poll
+            await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+          }
+
+          testEvidence.poll_count = pollCount;
+          testEvidence.wait_duration_ms = Date.now() - waitStart;
+          testEvidence.unique_workers = uniqueWorkers.length;
+          testEvidence.worker_ids = uniqueWorkers;
+          testEvidence.oldest_queued_seconds = oldestQueuedSeconds;
+          output.evidence.worker_ids = uniqueWorkers;
+
+          // Check for duplicates in outbox
+          const { data: outboxData } = await supabase
+            .from('channel_outbox')
+            .select('idempotency_key')
+            .eq('run_id', run!.id);
+
+          const keys = (outboxData || []).map((r: { idempotency_key: string }) => r.idempotency_key);
+          const uniqueKeys = new Set(keys);
+          const duplicateCount = keys.length - uniqueKeys.size;
+          testEvidence.duplicate_count = duplicateCount;
+
+          // Clean up test jobs
+          await supabase
+            .from('job_queue')
+            .update({ status: 'completed', completed_at: new Date().toISOString() })
+            .eq('run_id', run!.id);
+
+          await supabase
+            .from('campaign_runs')
+            .update({ status: 'completed', completed_at: new Date().toISOString() })
+            .eq('id', run!.id);
+
+          // ASSERTIONS - All must pass for live certification
+          const failures: string[] = [];
+
+          // 1. Workers must show up
+          if (uniqueWorkers.length < REQUIRED_WORKERS) {
+            failures.push(`Workers: ${uniqueWorkers.length} < ${REQUIRED_WORKERS} required (horizontal scaling not proven)`);
+          }
+
+          // 2. Oldest queued must be under SLA
+          if (oldestQueuedSeconds > MAX_OLDEST_QUEUED_SECONDS) {
+            failures.push(`Oldest queued: ${oldestQueuedSeconds}s > ${MAX_OLDEST_QUEUED_SECONDS}s SLA`);
+          }
+
+          // 3. No duplicates
+          if (duplicateCount > 0) {
+            failures.push(`Duplicates: ${duplicateCount} duplicate entries found`);
+          }
+
+          if (failures.length > 0) {
+            throw new Error(failures.join('; '));
+          }
+
+          output.tests.scale_safety = {
+            status: 'PASS',
+            duration_ms: Date.now() - testStart,
+            evidence: testEvidence,
+          };
         }
-
-        // Check SLA metrics
-        let hsData: Record<string, unknown> | null = null;
-        try {
-          const result = await supabase.rpc('get_hs_metrics');
-          hsData = result.data;
-        } catch {
-          hsData = null;
-        }
-        
-        testEvidence.hs_metrics = hsData;
-        const oldestQueuedSeconds = (hsData as Record<string, number>)?.oldest_queued_seconds || 0;
-        const activeWorkers = (hsData as Record<string, number>)?.active_workers || 0;
-
-        // Check for duplicates in outbox
-        const { data: outboxData } = await supabase
-          .from('channel_outbox')
-          .select('idempotency_key')
-          .eq('run_id', run!.id);
-
-        const keys = (outboxData || []).map((r: { idempotency_key: string }) => r.idempotency_key);
-        const uniqueKeys = new Set(keys);
-        const duplicateCount = keys.length - uniqueKeys.size;
-
-        testEvidence.duplicate_count = duplicateCount;
-        testEvidence.oldest_queued_seconds = oldestQueuedSeconds;
-        testEvidence.active_workers = activeWorkers;
-
-        // Get unique worker IDs from recent job processing
-        const { data: recentJobs } = await supabase
-          .from('job_queue')
-          .select('locked_by')
-          .eq('run_id', run!.id)
-          .not('locked_by', 'is', null);
-
-        const workerIds = [...new Set(recentJobs?.map((j: { locked_by: string | null }) => j.locked_by).filter(Boolean) || [])];
-        output.evidence.worker_ids = workerIds as string[];
-        testEvidence.unique_workers = workerIds.length;
-
-        // Clean up test jobs (mark as completed)
-        await supabase
-          .from('job_queue')
-          .update({ status: 'completed', completed_at: new Date().toISOString() })
-          .eq('run_id', run!.id);
-
-        await supabase
-          .from('campaign_runs')
-          .update({ status: 'completed', completed_at: new Date().toISOString() })
-          .eq('id', run!.id);
-
-        // Assertions
-        if (duplicateCount > 0) {
-          throw new Error(`Found ${duplicateCount} duplicate entries`);
-        }
-
-        // In live mode, we also check worker activity
-        if (mode === 'live' && workerIds.length === 0) {
-          testEvidence.warning = 'No workers claimed jobs during test window';
-        }
-
-        output.tests.scale_safety = {
-          status: 'PASS',
-          duration_ms: Date.now() - testStart,
-          evidence: testEvidence,
-        };
 
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
