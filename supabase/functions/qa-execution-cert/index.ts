@@ -1522,6 +1522,36 @@ async function deployL3ScaleTest(
 
     if (runError || !run) throw new Error("Run not found");
 
+    // Check if already deployed (outbox entries exist)
+    const { data: existingOutbox } = await supabase
+      .from("channel_outbox")
+      .select("id")
+      .eq("run_id", config.runId)
+      .limit(1);
+
+    if (existingOutbox && existingOutbox.length > 0) {
+      // Already deployed - return success with existing count
+      const { count } = await supabase
+        .from("channel_outbox")
+        .select("id", { count: "exact", head: true })
+        .eq("run_id", config.runId);
+
+      console.log(`L3 Scale test already deployed: ${count || 0} outbox entries exist`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            runId: config.runId,
+            outboxCreated: count || 0,
+            jobsCreated: 0,
+            alreadyDeployed: true,
+          },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Update run to started
     await supabase
       .from("campaign_runs")
