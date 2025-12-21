@@ -6594,6 +6594,10 @@ export type Database = {
       }
       gc_rate_limit_counters: { Args: never; Returns: undefined }
       get_load_test_metrics: { Args: never; Returns: Json }
+      get_outbox_duplicate_groups: {
+        Args: { p_window_hours?: number }
+        Returns: number
+      }
       get_tenant_metrics_mode: {
         Args: { p_tenant_id: string }
         Returns: string

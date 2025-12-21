@@ -257,20 +257,13 @@ export default function ExecutionCertQA() {
         else if (status === 'failed') queueStats.failed++;
       }
 
-      // Check for duplicates
-      const { data: dupData, error: dupError } = await supabase
-        .from('channel_outbox')
-        .select('idempotency_key')
-        .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString());
+      // Check for duplicates using SQL aggregate (tenant_id, workspace_id, idempotency_key uniqueness)
+      const { data: dupCountData, error: dupError } = await supabase
+        .rpc('get_outbox_duplicate_groups', { p_window_hours: 1 });
 
       if (dupError) throw dupError;
 
-      const keyCounts = new Map<string, number>();
-      for (const row of dupData || []) {
-        const key = row.idempotency_key;
-        keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
-      }
-      const duplicateCount = Array.from(keyCounts.values()).filter(c => c > 1).length;
+      const duplicateCount = dupCountData ?? 0;
 
       // Aggregate worker metrics
       const workerMap = new Map<string, {
