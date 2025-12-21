@@ -74,6 +74,8 @@ serve(async (req) => {
       return await deployLaunchTest(supabase, testConfig);
     case "get_launch_status":
       return await getLaunchStatus(supabase, testConfig);
+    case "check_provider_status":
+      return await checkProviderStatus(supabase, testConfig);
     default:
       return new Response(JSON.stringify({ error: "Unknown action" }), {
         status: 400,
@@ -674,8 +676,11 @@ async function createLaunchTestCampaign(
 
 async function deployLaunchTest(
   supabase: AnySupabaseClient,
-  config: { campaignId: string; runId: string }
+  config: { campaignId: string; runId: string; liveMode?: boolean }
 ) {
+  const isLiveMode = config.liveMode === true;
+  console.log(`Deploy launch test: runId=${config.runId}, liveMode=${isLiveMode}`);
+
   try {
     // Update campaign status to active
     await supabase
@@ -710,11 +715,34 @@ async function deployLaunchTest(
       .eq("source", "qa_launch_test")
       .limit(10);
 
+    // Determine provider based on channel and live mode
+    let provider = "sandbox";
+    if (isLiveMode) {
+      if (run.channel === "email") {
+        const { data: emailSettings } = await supabase
+          .from("ai_settings_email")
+          .select("email_provider")
+          .eq("tenant_id", run.tenant_id)
+          .eq("is_connected", true)
+          .single();
+        provider = emailSettings?.email_provider || "resend";
+      } else if (run.channel === "voice") {
+        const { data: voiceSettings } = await supabase
+          .from("ai_settings_voice")
+          .select("voice_provider")
+          .eq("tenant_id", run.tenant_id)
+          .eq("is_connected", true)
+          .single();
+        provider = voiceSettings?.voice_provider || "vapi";
+      }
+    }
+
     // Create job_queue entries for each lead
     const jobs = (leads || []).map((lead: { id: string; email: string; phone: string }) => ({
       tenant_id: run.tenant_id,
       workspace_id: run.workspace_id,
-      job_type: run.channel,
+      run_id: config.runId,
+      job_type: run.channel === "email" ? "email_send_batch" : "voice_call_batch",
       status: "queued",
       payload: {
         run_id: config.runId,
@@ -724,9 +752,10 @@ async function deployLaunchTest(
         recipient_phone: lead.phone,
         subject: `Launch Test - ${run.channel}`,
         body: `This is a launch validation test for ${run.channel}`,
-        test_mode: true,
+        test_mode: !isLiveMode, // false for live mode = real dispatch
+        provider,
       },
-      priority: 5,
+      priority: 10, // High priority for tests
       run_at: new Date().toISOString(),
     }));
 
@@ -738,17 +767,18 @@ async function deployLaunchTest(
       if (jobError) throw jobError;
     }
 
-    // Also create outbox entries directly for immediate processing
+    // Create outbox entries
     const outboxEntries = (leads || []).map((lead: { id: string; email: string; phone: string }) => ({
       tenant_id: run.tenant_id,
       workspace_id: run.workspace_id,
       run_id: config.runId,
       channel: run.channel,
-      provider: "sandbox",
+      provider,
       payload: {
         lead_id: lead.id,
         subject: `Launch Test - ${run.channel}`,
         body: `Launch validation test`,
+        test_mode: !isLiveMode,
       },
       idempotency_key: `${config.runId}:${run.channel}:${lead.email || lead.phone}`,
       status: "pending",
@@ -764,27 +794,54 @@ async function deployLaunchTest(
 
       if (outboxError) throw outboxError;
 
-      // Simulate provider calls (sandbox mode)
-      for (const row of (outbox || [])) {
+      if (isLiveMode) {
+        // LIVE MODE: Trigger the job queue worker to process jobs
+        // The worker will call real providers and update outbox status
+        console.log("Live mode: Jobs queued for real provider dispatch via run-job-queue");
+        
+        // Optionally trigger the job queue immediately
+        try {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const internalSecret = Deno.env.get("INTERNAL_FUNCTION_SECRET");
+          
+          if (internalSecret) {
+            // Fire and forget - trigger job queue worker
+            fetch(`${supabaseUrl}/functions/v1/run-job-queue`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-internal-secret": internalSecret,
+              },
+              body: JSON.stringify({ cron: false, priority_only: true }),
+            }).catch(err => console.error("Failed to trigger job queue:", err));
+          }
+        } catch (triggerErr) {
+          console.error("Error triggering job queue:", triggerErr);
+        }
+      } else {
+        // SANDBOX MODE: Simulate provider calls immediately
+        console.log("Sandbox mode: Simulating provider responses");
+        for (const row of (outbox || [])) {
+          await supabase
+            .from("channel_outbox")
+            .update({
+              status: run.channel === "voice" ? "called" : "sent",
+              provider_message_id: `sandbox-${Date.now()}-${row.id.slice(0, 8)}`,
+              provider_response: { sandbox: true, timestamp: new Date().toISOString() },
+            })
+            .eq("id", row.id);
+        }
+
+        // Mark run as completed for sandbox mode
         await supabase
-          .from("channel_outbox")
+          .from("campaign_runs")
           .update({
-            status: run.channel === "voice" ? "called" : "sent",
-            provider_message_id: `sandbox-${Date.now()}-${row.id.slice(0, 8)}`,
-            provider_response: { sandbox: true, timestamp: new Date().toISOString() },
+            status: "completed",
+            completed_at: new Date().toISOString(),
           })
-          .eq("id", row.id);
+          .eq("id", config.runId);
       }
     }
-
-    // Mark run as completed
-    await supabase
-      .from("campaign_runs")
-      .update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", config.runId);
 
     return new Response(
       JSON.stringify({
@@ -793,6 +850,8 @@ async function deployLaunchTest(
           runId: config.runId,
           jobsCreated: jobs.length,
           outboxCreated: outboxEntries.length,
+          liveMode: isLiveMode,
+          provider,
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -863,6 +922,80 @@ async function getLaunchStatus(
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Failed to get status" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
+
+async function checkProviderStatus(
+  supabase: AnySupabaseClient,
+  config: { channel: string }
+) {
+  try {
+    // Get any workspace with connected provider for the channel
+    if (config.channel === 'email') {
+      const { data: emailSettings } = await supabase
+        .from("ai_settings_email")
+        .select("tenant_id, email_provider, is_connected, from_address")
+        .eq("is_connected", true)
+        .not("from_address", "eq", "")
+        .limit(1)
+        .single();
+
+      if (emailSettings) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              connected: true,
+              provider: emailSettings.email_provider || 'resend',
+              tenantId: emailSettings.tenant_id,
+            },
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } else if (config.channel === 'voice') {
+      const { data: voiceSettings } = await supabase
+        .from("ai_settings_voice")
+        .select("tenant_id, voice_provider, is_connected, default_vapi_assistant_id")
+        .eq("is_connected", true)
+        .not("default_vapi_assistant_id", "is", null)
+        .limit(1)
+        .single();
+
+      if (voiceSettings) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              connected: true,
+              provider: voiceSettings.voice_provider || 'vapi',
+              tenantId: voiceSettings.tenant_id,
+            },
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          connected: false,
+          provider: null,
+        },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("Check provider status error:", error);
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: { connected: false, provider: null },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 }
