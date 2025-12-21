@@ -355,9 +355,13 @@ export default function ExecutionCertQA() {
   const fetchHorizontalScalingMetrics = async () => {
     setLoadingHsMetrics(true);
     try {
-      // Call the service_role-only RPC via edge function
+      // Call the service_role-only RPC via backend function.
+      // This function requires Authorization (platform admin check).
       const { data: response, error } = await supabase.functions.invoke('hs-metrics', {
         body: { window_minutes: 5 },
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
       });
 
       if (error) throw error;
