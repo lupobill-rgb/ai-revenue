@@ -209,6 +209,7 @@ async function setupTestCampaign(
       jobs.push({
         tenant_id: testTenantId,
         workspace_id: testWorkspaceId,
+        run_id: run.id,
         job_type: config.channel,
         status: "queued",
         payload: {
@@ -220,8 +221,7 @@ async function setupTestCampaign(
           body: `Test body ${i}`,
           test_mode: true,
         },
-        priority: 5,
-        run_at: new Date().toISOString(),
+        scheduled_for: new Date().toISOString(),
       });
     }
 
@@ -402,9 +402,9 @@ async function checkSchedulerSLA(supabase: AnySupabaseClient) {
     // Get queued jobs count and oldest age
     const { data: queueStats, error } = await supabase
       .from("job_queue")
-      .select("id, created_at, run_at")
+      .select("id, created_at, scheduled_for")
       .eq("status", "queued")
-      .order("run_at", { ascending: true });
+      .order("scheduled_for", { ascending: true });
 
     if (error) throw error;
 
@@ -415,7 +415,7 @@ async function checkSchedulerSLA(supabase: AnySupabaseClient) {
 
     if (queueStats && queueStats.length > 0) {
       const oldest = queueStats[0];
-      oldestAge = (now.getTime() - new Date(oldest.run_at || oldest.created_at).getTime()) / 1000;
+      oldestAge = (now.getTime() - new Date(oldest.scheduled_for || oldest.created_at).getTime()) / 1000;
       oldestJobId = oldest.id;
     }
 

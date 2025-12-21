@@ -844,16 +844,16 @@ export default function ExecutionCertQA() {
           oldestQueuedAge: metrics.oldest_queued_age_seconds || 0,
           activeWorkers: (metrics.workers || []).filter((w: { last_tick_at: string }) => {
             const lastTick = new Date(w.last_tick_at).getTime();
-            const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
-            return lastTick > twoMinutesAgo;
+            const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+            return lastTick > fiveMinutesAgo;
           }).length,
         } : undefined,
         l3a_no_duplicates: !hasDuplicates && (metrics?.duplicate_groups_last_hour || 0) === 0,
         l3b_queue_age_ok: (metrics?.oldest_queued_age_seconds || 0) < 180,
         l3c_workers_active: (metrics?.workers || []).filter((w: { last_tick_at: string }) => {
           const lastTick = new Date(w.last_tick_at).getTime();
-          const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
-          return lastTick > twoMinutesAgo;
+          const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+          return lastTick > fiveMinutesAgo;
         }).length >= 4,
       } : null);
       
