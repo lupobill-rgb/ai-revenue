@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import { 
   Shield, CheckCircle2, XCircle, Play, Download, Loader2, 
   Clock, AlertTriangle, Database, Zap, Users, Activity,
-  Rocket, Mail, Phone, RefreshCw
+  Rocket, Mail, Phone, RefreshCw, Globe
 } from 'lucide-react';
 
 interface TestResult {
@@ -70,7 +70,7 @@ interface HorizontalScalingMetrics {
 interface LaunchValidationResult {
   campaignId: string;
   runId: string;
-  channel: 'email' | 'voice';
+  channel: 'email' | 'voice' | 'social';
   status: 'pending' | 'running' | 'completed' | 'failed';
   campaignRun: {
     id: string;
@@ -112,6 +112,7 @@ interface LaunchValidationResult {
     L2_failure_visible: boolean;
     L3_no_duplicates: boolean;
     L1B_voice_call_records?: boolean; // Voice-specific: records exist with correct tenant
+    L1C_social_posted?: boolean; // Social-specific: outbox status = posted with provider_post_id
   };
 }
 
@@ -153,7 +154,7 @@ export default function ExecutionCertQA() {
   const [loadingHsMetrics, setLoadingHsMetrics] = useState(false);
   
   // Launch Validation
-  const [launchChannel, setLaunchChannel] = useState<'email' | 'voice'>('email');
+  const [launchChannel, setLaunchChannel] = useState<'email' | 'voice' | 'social'>('email');
   const [liveMode, setLiveMode] = useState(false); // Live mode uses real providers
   const [creatingLaunchTest, setCreatingLaunchTest] = useState(false);
   const [deployingLaunchTest, setDeployingLaunchTest] = useState(false);
@@ -398,6 +399,7 @@ export default function ExecutionCertQA() {
             L1_provider_ids: false,
             L2_failure_visible: true,
             L3_no_duplicates: true,
+            L1C_social_posted: launchChannel === 'social' ? false : undefined,
           },
         });
         toast.success(`Test campaign created with 3 leads for ${launchChannel}${liveMode ? ' (LIVE MODE)' : ' (Sandbox)'}`);
@@ -463,6 +465,12 @@ export default function ExecutionCertQA() {
         const hasVoiceCallRecords = voiceCallRecords.length > 0;
         const voiceRecordsHaveProviderIds = voiceCallRecords.some((r: { provider_call_id: string | null }) => r.provider_call_id);
         
+        // Social-specific: check for posted status with provider_post_id
+        const outboxPosted = data.outboxRows.filter((r: { status: string }) => r.status === 'posted');
+        const outboxWithPostIds = data.outboxRows.filter((r: { provider_message_id: string | null; status: string }) => 
+          r.status === 'posted' && r.provider_message_id
+        );
+        
         setLaunchResult(prev => prev ? {
           ...prev,
           status: data.campaignRun?.status === 'completed' ? 'completed' : 
@@ -472,12 +480,16 @@ export default function ExecutionCertQA() {
           outboxRows: data.outboxRows,
           voiceCallRecords: voiceCallRecords,
           passCriteria: {
-            L1_provider_ids: outboxWithProviderIds.length > 0 || data.outboxRows.some((r: { status: string }) => r.status === 'sent' || r.status === 'called'),
+            L1_provider_ids: outboxWithProviderIds.length > 0 || data.outboxRows.some((r: { status: string }) => r.status === 'sent' || r.status === 'called' || r.status === 'posted'),
             L2_failure_visible: outboxWithErrors.length === 0 || outboxWithErrors.every((r: { error: string | null }) => r.error !== null),
             L3_no_duplicates: duplicateKeys.size === data.outboxRows.length,
             // Voice-specific: L1B pass if voice_call_records exist with correct tenant/workspace and provider_call_id
             L1B_voice_call_records: prev.channel === 'voice' 
               ? (hasVoiceCallRecords && (voiceRecordsHaveProviderIds || voiceCallRecords.some((r: { status: string }) => r.status === 'completed' || r.status === 'in-progress')))
+              : undefined,
+            // Social-specific: L1C pass if outbox has status = posted with provider_post_id
+            L1C_social_posted: prev.channel === 'social'
+              ? (outboxPosted.length > 0 && outboxWithPostIds.length > 0)
               : undefined,
           },
         } : null);
@@ -943,7 +955,7 @@ export default function ExecutionCertQA() {
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label>Channel</Label>
-              <Select value={launchChannel} onValueChange={(v) => setLaunchChannel(v as 'email' | 'voice')}>
+              <Select value={launchChannel} onValueChange={(v) => setLaunchChannel(v as 'email' | 'voice' | 'social')}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -951,13 +963,19 @@ export default function ExecutionCertQA() {
                   <SelectItem value="email">
                     <div className="flex items-center gap-2">
                       <Mail className="h-4 w-4" />
-                      Email
+                      Email (L1A)
                     </div>
                   </SelectItem>
                   <SelectItem value="voice">
                     <div className="flex items-center gap-2">
                       <Phone className="h-4 w-4" />
-                      Voice
+                      Voice (L1B)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="social">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      Social (L1C)
                     </div>
                   </SelectItem>
                 </SelectContent>
@@ -1031,7 +1049,9 @@ export default function ExecutionCertQA() {
                     <span className="font-medium text-sm">L1: Provider IDs</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {launchResult.channel === 'voice' ? 'channel_outbox.status = called, provider_call_id stored' : 'Outbox rows have provider_message_id'}
+                    {launchResult.channel === 'voice' ? 'channel_outbox.status = called, provider_call_id stored' : 
+                     launchResult.channel === 'social' ? 'channel_outbox.status = posted, provider_post_id stored' :
+                     'Outbox rows have provider_message_id'}
                   </p>
                 </div>
 
@@ -1074,6 +1094,25 @@ export default function ExecutionCertQA() {
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       voice_call_records has row(s) tied to correct tenant/workspace with provider_call_id
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* L1C Social-Specific Criteria */}
+              {launchResult.channel === 'social' && (
+                <div className="grid gap-3 md:grid-cols-1">
+                  <div className={`p-3 rounded-lg border ${launchResult.passCriteria.L1C_social_posted ? 'border-green-500/50 bg-green-500/10' : 'border-yellow-500/50 bg-yellow-500/10'}`}>
+                    <div className="flex items-center gap-2">
+                      {launchResult.passCriteria.L1C_social_posted ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                      )}
+                      <span className="font-medium text-sm">L1C: Social Posted</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      channel_outbox.status = posted with provider_post_id stored
                     </p>
                   </div>
                 </div>
@@ -1162,7 +1201,7 @@ export default function ExecutionCertQA() {
                         {launchResult.outboxRows.map((row) => (
                           <TableRow key={row.id}>
                             <TableCell>
-                              <Badge variant={row.status === 'sent' || row.status === 'called' ? 'default' : row.status === 'failed' ? 'destructive' : 'secondary'}>
+                              <Badge variant={row.status === 'sent' || row.status === 'called' || row.status === 'posted' ? 'default' : row.status === 'failed' ? 'destructive' : 'secondary'}>
                                 {row.status}
                               </Badge>
                             </TableCell>

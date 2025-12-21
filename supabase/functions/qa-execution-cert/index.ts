@@ -734,6 +734,14 @@ async function deployLaunchTest(
           .eq("is_connected", true)
           .single();
         provider = voiceSettings?.voice_provider || "vapi";
+      } else if (run.channel === "social") {
+        const { data: socialSettings } = await supabase
+          .from("ai_settings_social")
+          .select("social_provider")
+          .eq("tenant_id", run.tenant_id)
+          .eq("is_connected", true)
+          .single();
+        provider = socialSettings?.social_provider || "instagram";
       }
     }
 
@@ -742,7 +750,8 @@ async function deployLaunchTest(
       tenant_id: run.tenant_id,
       workspace_id: run.workspace_id,
       run_id: config.runId,
-      job_type: run.channel === "email" ? "email_send_batch" : "voice_call_batch",
+      job_type: run.channel === "email" ? "email_send_batch" : 
+                run.channel === "voice" ? "voice_call_batch" : "social_post_batch",
       status: "queued",
       payload: {
         run_id: config.runId,
@@ -822,10 +831,12 @@ async function deployLaunchTest(
         // SANDBOX MODE: Simulate provider calls immediately
         console.log("Sandbox mode: Simulating provider responses");
         for (const row of (outbox || [])) {
+          const sandboxStatus = run.channel === "voice" ? "called" : 
+                                run.channel === "social" ? "posted" : "sent";
           await supabase
             .from("channel_outbox")
             .update({
-              status: run.channel === "voice" ? "called" : "sent",
+              status: sandboxStatus,
               provider_message_id: `sandbox-${Date.now()}-${row.id.slice(0, 8)}`,
               provider_response: { sandbox: true, timestamp: new Date().toISOString() },
             })
@@ -997,6 +1008,28 @@ async function checkProviderStatus(
               connected: true,
               provider: voiceSettings.voice_provider || 'vapi',
               tenantId: voiceSettings.tenant_id,
+            },
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } else if (config.channel === 'social') {
+      const { data: socialSettings } = await supabase
+        .from("ai_settings_social")
+        .select("tenant_id, social_provider, is_connected, account_url")
+        .eq("is_connected", true)
+        .not("account_url", "is", null)
+        .limit(1)
+        .single();
+
+      if (socialSettings) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              connected: true,
+              provider: socialSettings.social_provider || 'instagram',
+              tenantId: socialSettings.tenant_id,
             },
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
