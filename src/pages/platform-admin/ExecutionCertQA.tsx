@@ -207,15 +207,19 @@ export default function ExecutionCertQA() {
 
   // ITR (Infrastructure Test Runner) state
   const [itrRunning, setItrRunning] = useState(false);
+  const [itrMode, setItrMode] = useState<'simulation' | 'live'>('simulation');
   const [itrResult, setItrResult] = useState<{
     overall: 'PASS' | 'FAIL';
+    mode: 'simulation' | 'live';
+    certified: boolean;
+    disclaimer: string;
     timestamp: string;
     duration_ms: number;
     tests: {
-      email_e2e: { status: 'PASS' | 'FAIL' | 'SKIPPED'; reason?: string; duration_ms: number; evidence: Record<string, unknown> };
-      voice_e2e: { status: 'PASS' | 'FAIL' | 'SKIPPED'; reason?: string; duration_ms: number; evidence: Record<string, unknown> };
-      failure_transparency: { status: 'PASS' | 'FAIL' | 'SKIPPED'; reason?: string; duration_ms: number; evidence: Record<string, unknown> };
-      scale_safety: { status: 'PASS' | 'FAIL' | 'SKIPPED'; reason?: string; duration_ms: number; evidence: Record<string, unknown> };
+      email_e2e: { status: 'PASS' | 'FAIL' | 'SKIPPED' | 'TIMEOUT'; reason?: string; duration_ms: number; evidence: Record<string, unknown> };
+      voice_e2e: { status: 'PASS' | 'FAIL' | 'SKIPPED' | 'TIMEOUT'; reason?: string; duration_ms: number; evidence: Record<string, unknown> };
+      failure_transparency: { status: 'PASS' | 'FAIL' | 'SKIPPED' | 'TIMEOUT'; reason?: string; duration_ms: number; evidence: Record<string, unknown> };
+      scale_safety: { status: 'PASS' | 'FAIL' | 'SKIPPED' | 'TIMEOUT'; reason?: string; duration_ms: number; evidence: Record<string, unknown> };
     };
     evidence: {
       campaign_run_ids: string[];
@@ -1004,38 +1008,49 @@ export default function ExecutionCertQA() {
   };
 
   // Infrastructure Test Runner
-  const runInfrastructureTestRunner = async () => {
+  const runInfrastructureTestRunner = async (mode: 'simulation' | 'live') => {
     setItrRunning(true);
     setItrResult(null);
+    setItrMode(mode);
     
     try {
       // Get current user's tenant and workspace
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error('Not authenticated');
       
-      const { data: tenantData } = await supabase
-        .from('user_tenants')
-        .select('tenant_id')
-        .eq('user_id', userData.user.id)
-        .limit(1)
-        .single();
-      
-      if (!tenantData) throw new Error('No tenant found');
+      // Try user_tenants first, fall back to workspaces if RLS issue
+      let tenantId: string | null = null;
+      try {
+        const { data: tenantData } = await supabase
+          .from('user_tenants')
+          .select('tenant_id')
+          .eq('user_id', userData.user.id)
+          .limit(1)
+          .single();
+        tenantId = tenantData?.tenant_id || null;
+      } catch {
+        // Fallback: use workspace owner's ID as tenant
+      }
       
       const { data: workspaceData } = await supabase
         .from('workspaces')
         .select('id')
-        .or(`owner_id.eq.${userData.user.id}`)
+        .eq('owner_id', userData.user.id)
         .limit(1)
         .single();
       
       if (!workspaceData) throw new Error('No workspace found');
       
+      // Use workspace ID as tenant if not found
+      if (!tenantId) tenantId = workspaceData.id;
+      
       const response = await supabase.functions.invoke('infrastructure-test-runner', {
         body: {
-          tenant_id: tenantData.tenant_id,
+          tenant_id: tenantId,
           workspace_id: workspaceData.id,
+          mode: mode,
           tests: ['email_e2e', 'voice_e2e', 'failure_transparency', 'scale_safety'],
+          timeout_ms: mode === 'live' ? 90000 : 30000,
         },
       });
       
@@ -1043,10 +1058,12 @@ export default function ExecutionCertQA() {
       
       setItrResult(response.data);
       
-      if (response.data.overall === 'PASS') {
-        toast.success('Infrastructure Test Runner: ALL TESTS PASSED');
+      if (response.data.certified) {
+        toast.success('🎉 PRODUCTION CERTIFIED: All live tests passed!');
+      } else if (response.data.overall === 'PASS') {
+        toast.success(`${mode === 'simulation' ? '⚠️ Simulation' : '✅ Tests'} PASSED (${mode} mode)`);
       } else {
-        toast.error('Infrastructure Test Runner: SOME TESTS FAILED');
+        toast.error(`Infrastructure Test Runner: SOME TESTS FAILED (${mode} mode)`);
       }
     } catch (error) {
       console.error('ITR error:', error);
@@ -2416,26 +2433,50 @@ export default function ExecutionCertQA() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex items-center gap-4">
-            <Button 
-              onClick={runInfrastructureTestRunner} 
-              disabled={itrRunning} 
-              size="lg"
-              className="px-8"
-            >
-              {itrRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-              Run Full Certification
-            </Button>
+          {/* Mode Selection */}
+          <div className="p-4 rounded-lg border bg-muted/50">
+            <div className="flex items-center gap-4 flex-wrap">
+              <Button 
+                onClick={() => runInfrastructureTestRunner('simulation')} 
+                disabled={itrRunning} 
+                variant="outline"
+                size="lg"
+              >
+                {itrRunning && itrMode === 'simulation' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+                Run Simulation
+              </Button>
+              <Button 
+                onClick={() => runInfrastructureTestRunner('live')} 
+                disabled={itrRunning} 
+                size="lg"
+                className="px-8"
+              >
+                {itrRunning && itrMode === 'live' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Rocket className="h-4 w-4 mr-2" />}
+                Run Live Certification
+              </Button>
+              <div className="text-sm text-muted-foreground">
+                <span className="font-medium">Simulation:</span> Fast schema tests | 
+                <span className="font-medium ml-2">Live:</span> Real worker execution
+              </div>
+            </div>
+          </div>
+
+          {/* Warning Banner */}
+          <div className="p-3 rounded-lg border border-yellow-500/50 bg-yellow-500/10 text-sm">
+            <AlertTriangle className="h-4 w-4 inline mr-2 text-yellow-600" />
+            <span className="font-medium">Important:</span> Simulation PASS ≠ Production Certified. Only Live mode with all tests passing certifies production readiness.
+          </div>
             
-            {itrResult && (
+          {itrResult && (
+            <div className="flex items-center gap-4">
               <Badge 
-                variant={itrResult.overall === 'PASS' ? 'default' : 'destructive'}
+                variant={itrResult.certified ? 'default' : itrResult.overall === 'PASS' ? 'secondary' : 'destructive'}
                 className="text-lg px-4 py-2"
               >
-                {itrResult.overall}
+                {itrResult.certified ? '🔒 CERTIFIED' : itrResult.overall} ({itrResult.mode})
               </Badge>
-            )}
-          </div>
+            </div>
+          )}
 
           {itrResult && (
             <>
