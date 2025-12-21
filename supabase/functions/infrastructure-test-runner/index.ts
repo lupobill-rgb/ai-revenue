@@ -489,7 +489,7 @@ Deno.serve(async (req) => {
             recipient_id: lead.id,
             recipient_email: lead.email,
             idempotency_key: `itr-sim-email-${itrRunId}-${lead.id}`, // Use itr_run_id for uniqueness
-            status: 'reserved',
+            status: 'queued',
             payload: { 
               subject: 'ITR Simulation Test', 
               body: 'Test email',
@@ -571,7 +571,7 @@ Deno.serve(async (req) => {
             recipient_id: lead.id,
             recipient_email: lead.email,
             idempotency_key: `itr-live-email-${itrRunId}-${lead.id}`,
-            status: 'reserved',
+            status: 'queued',
             payload: { 
               subject: 'ITR Live Test', 
               body: 'Test email - live mode',
@@ -790,7 +790,7 @@ Deno.serve(async (req) => {
               recipient_id: lead.id,
               recipient_phone: lead.phone,
               idempotency_key: `itr-sim-voice-${itrRunId}-${lead.id}`,
-              status: 'reserved',
+              status: 'queued',
               payload: { 
                 assistant_id: voiceSettings.default_vapi_assistant_id,
                 itr_run_id: itrRunId
@@ -870,7 +870,7 @@ Deno.serve(async (req) => {
               recipient_id: lead.id,
               recipient_phone: lead.phone,
               idempotency_key: `itr-live-voice-${itrRunId}-${lead.id}`,
-              status: 'reserved',
+              status: 'queued',
               payload: { 
                 assistant_id: voiceSettings.default_vapi_assistant_id,
                 itr_run_id: itrRunId
@@ -1029,7 +1029,7 @@ Deno.serve(async (req) => {
             provider: 'resend',
             recipient_email: 'fail-test@test.invalid',
             idempotency_key: `itr-fail-${itrRunId}`,
-            status: 'reserved',
+            status: 'queued',
             payload: { 
               subject: 'Fail Test',
               itr_run_id: itrRunId
