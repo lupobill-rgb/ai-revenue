@@ -1043,14 +1043,41 @@ Deno.serve(async (req) => {
         }
 
         // Simulate failure with readable error (both modes do this directly for failure test)
-        const errorMessage = 'Provider rejected: Invalid recipient domain (test.invalid is not deliverable)';
-        await supabase
+        const errorMessage = 'ITR forced failure: simulated provider rejection (test.invalid is not deliverable)';
+        const { error: updateErr } = await supabase
           .from('channel_outbox')
           .update({ 
             status: 'failed', 
             error: errorMessage,
           })
           .eq('id', outbox.id);
+
+        if (updateErr) {
+          throw new Error(`Failure test outbox update failed: ${updateErr.message}`);
+        }
+
+        // CRITICAL: Verify the exact outbox row we created by ID (not broad filters)
+        const { data: verifiedRow, error: verifyErr } = await supabase
+          .from('channel_outbox')
+          .select('id, status, error')
+          .eq('id', outbox.id)
+          .single();
+
+        if (verifyErr || !verifiedRow) {
+          throw new Error(`Failure test verification failed: ${verifyErr?.message || 'row not found'}`);
+        }
+
+        if (verifiedRow.status !== 'failed') {
+          throw new Error(`Failure test did not produce failed row. status=${verifiedRow.status}, expected=failed`);
+        }
+
+        if (!verifiedRow.error || verifiedRow.error.trim().length < 10) {
+          throw new Error(`Failure test produced failed row but error is not readable: "${verifiedRow.error}"`);
+        }
+
+        testEvidence.verified_outbox_id = verifiedRow.id;
+        testEvidence.verified_outbox_status = verifiedRow.status;
+        testEvidence.verified_outbox_error = verifiedRow.error;
 
         // Mark run as failed
         await supabase
@@ -1062,7 +1089,7 @@ Deno.serve(async (req) => {
           })
           .eq('id', run.id);
 
-        // Verify error is readable - check ALL outbox rows for this run
+        // Get all outbox rows for this run (for additional evidence)
         const { data: allOutboxRows } = await supabase
           .from('channel_outbox')
           .select('*')
@@ -1082,7 +1109,6 @@ Deno.serve(async (req) => {
         for (const row of allOutboxRows || []) {
           output.evidence.outbox_row_ids.push(row.id);
           output.evidence.outbox_final_statuses[row.id] = row.status;
-          // No provider IDs in failure test (it fails before provider call)
         }
 
         // ================================================================
