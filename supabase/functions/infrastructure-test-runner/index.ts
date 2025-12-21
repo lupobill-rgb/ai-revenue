@@ -152,12 +152,12 @@ function validateProviderIdFormat(providerId: string, provider: string): { valid
   return { valid: true };
 }
 
-// Wait for outbox rows to reach terminal state (LIVE mode)
+// Wait for outbox rows to reach terminal state (LIVE mode) - reduced timeout for edge function limits
 async function waitForOutboxTerminal(
   supabase: any,
   runId: string,
   expectedCount: number,
-  timeoutMs: number = 60000
+  timeoutMs: number = 30000 // Reduced from 60s to 30s
 ): Promise<{ success: boolean; rows: Array<{ id: string; status: string; provider_message_id: string | null; error: string | null; provider_response: any }> }> {
   const terminalStatuses = ['sent', 'delivered', 'called', 'posted', 'failed', 'skipped'];
   const startTime = Date.now();
@@ -185,11 +185,11 @@ async function waitForOutboxTerminal(
   return { success: false, rows: rows || [] };
 }
 
-// Wait for campaign run to reach terminal state (LIVE mode)
+// Wait for campaign run to reach terminal state (LIVE mode) - reduced timeout for edge function limits
 async function waitForRunTerminal(
   supabase: any,
   runId: string,
-  timeoutMs: number = 60000
+  timeoutMs: number = 30000 // Reduced from 60s to 30s
 ): Promise<{ success: boolean; run: { id: string; status: string; error_message: string | null } | null }> {
   const terminalStatuses = ['completed', 'partial', 'failed'];
   const startTime = Date.now();
@@ -1181,10 +1181,10 @@ Deno.serve(async (req) => {
       const testStart = Date.now();
       const testEvidence: Record<string, unknown> = { mode, itr_run_id: itrRunId };
       
-      // Scale safety constants
+      // Scale safety constants - reduced timeouts for edge function limits
       const REQUIRED_WORKERS = 4;
       const MAX_OLDEST_QUEUED_SECONDS = 180; // SLA: queue age must stay under this
-      const WORKER_WAIT_TIMEOUT_MS = 60000; // 60 seconds observation window
+      const WORKER_WAIT_TIMEOUT_MS = 20000; // 20 seconds observation window (reduced from 60s)
       const POLL_INTERVAL_MS = 2000; // Check every 2 seconds
       
       // Progress requirements - must meet AT LEAST ONE:
