@@ -324,6 +324,7 @@ Deno.serve(async (req) => {
       
       try {
         // 1. Create test campaign (tagged with itr_run_id)
+        // NOTE: goal must be one of: 'leads', 'meetings', 'revenue', 'engagement'
         const { data: campaign, error: campaignErr } = await supabase
           .from('cmo_campaigns')
           .insert({
@@ -332,12 +333,14 @@ Deno.serve(async (req) => {
             campaign_name: `ITR-Email-${mode}-${Date.now()}`,
             campaign_type: 'email',
             status: 'draft',
-            goal: `ITR ${mode} certification test [${itrRunId}]`,
+            goal: 'leads', // Valid enum value; ITR context tracked via run_config.itr_run_id
           })
           .select()
           .single();
 
-        if (campaignErr) throw new Error(`Campaign creation failed: ${campaignErr.message}`);
+        if (campaignErr || !campaign) {
+          throw new Error(`Campaign creation failed: ${campaignErr?.message || 'no campaign returned'}`);
+        }
         testEvidence.campaign_id = campaign.id;
         
         // SAFETY CHECK 4: Verify tenant/workspace IDs in created row
@@ -628,6 +631,7 @@ Deno.serve(async (req) => {
           };
         } else {
           // Create voice campaign
+          // NOTE: goal must be one of: 'leads', 'meetings', 'revenue', 'engagement'
           const { data: campaign, error: campaignErr } = await supabase
             .from('cmo_campaigns')
             .insert({
@@ -636,12 +640,14 @@ Deno.serve(async (req) => {
               campaign_name: `ITR-Voice-${mode}-${Date.now()}`,
               campaign_type: 'voice',
               status: 'draft',
-              goal: `ITR voice ${mode} certification test [${itrRunId}]`,
+              goal: 'meetings', // Valid enum value for voice campaigns
             })
             .select()
             .single();
 
-          if (campaignErr) throw new Error(`Voice campaign creation failed: ${campaignErr.message}`);
+          if (campaignErr || !campaign) {
+            throw new Error(`Voice campaign creation failed: ${campaignErr?.message || 'no campaign returned'}`);
+          }
           testEvidence.campaign_id = campaign.id;
           
           // SAFETY CHECK 4: Verify tenant/workspace IDs
@@ -891,7 +897,8 @@ Deno.serve(async (req) => {
       
       try {
         // Create campaign that will fail
-        const { data: campaign } = await supabase
+        // NOTE: goal must be one of: 'leads', 'meetings', 'revenue', 'engagement'
+        const { data: campaign, error: campaignErr } = await supabase
           .from('cmo_campaigns')
           .insert({
             tenant_id: tenantId,
@@ -899,28 +906,30 @@ Deno.serve(async (req) => {
             campaign_name: `ITR-FailTest-${mode}-${Date.now()}`,
             campaign_type: 'email',
             status: 'draft',
-            goal: `ITR failure transparency ${mode} test [${itrRunId}]`,
+            goal: 'leads', // Valid enum value
           })
           .select()
           .single();
 
-        testEvidence.campaign_id = campaign?.id;
+        if (campaignErr || !campaign) {
+          throw new Error(`Failure test campaign creation failed: ${campaignErr?.message || 'no campaign returned'}`);
+        }
+
+        testEvidence.campaign_id = campaign.id;
         
         // SAFETY CHECK 4: Verify tenant/workspace IDs
-        if (campaign) {
-          const idCheck = validateIds(campaign, tenantId, workspaceId);
-          if (!idCheck.valid) {
-            throw new Error(`CRITICAL: ${idCheck.reason}`);
-          }
+        const idCheck = validateIds(campaign, tenantId, workspaceId);
+        if (!idCheck.valid) {
+          throw new Error(`CRITICAL: ${idCheck.reason}`);
         }
 
         // Create run
-        const { data: run } = await supabase
+        const { data: run, error: runErr } = await supabase
           .from('campaign_runs')
           .insert({
             tenant_id: tenantId,
             workspace_id: workspaceId,
-            campaign_id: campaign!.id,
+            campaign_id: campaign.id,
             channel: 'email',
             status: 'queued',
             run_config: { 
@@ -934,16 +943,20 @@ Deno.serve(async (req) => {
           .select()
           .single();
 
-        testEvidence.run_id = run?.id;
-        output.evidence.campaign_run_ids.push(run!.id);
+        if (runErr || !run) {
+          throw new Error(`Failure test run creation failed: ${runErr?.message || 'no run returned'}`);
+        }
+
+        testEvidence.run_id = run.id;
+        output.evidence.campaign_run_ids.push(run.id);
 
         // Create outbox entry that will fail
-        const { data: outbox } = await supabase
+        const { data: outbox, error: outboxErr } = await supabase
           .from('channel_outbox')
           .insert({
             tenant_id: tenantId,
             workspace_id: workspaceId,
-            run_id: run!.id,
+            run_id: run.id,
             channel: 'email',
             provider: 'resend',
             recipient_email: 'fail-test@test.invalid',
@@ -957,6 +970,10 @@ Deno.serve(async (req) => {
           .select()
           .single();
 
+        if (outboxErr || !outbox) {
+          throw new Error(`Failure test outbox creation failed: ${outboxErr?.message || 'no outbox returned'}`);
+        }
+
         // Simulate failure with readable error (both modes do this directly for failure test)
         const errorMessage = 'Provider rejected: Invalid recipient domain (test.invalid is not deliverable)';
         await supabase
@@ -965,7 +982,7 @@ Deno.serve(async (req) => {
             status: 'failed', 
             error: errorMessage,
           })
-          .eq('id', outbox!.id);
+          .eq('id', outbox.id);
 
         // Mark run as failed
         await supabase
@@ -975,18 +992,18 @@ Deno.serve(async (req) => {
             error_message: 'One or more deliveries failed',
             completed_at: new Date().toISOString() 
           })
-          .eq('id', run!.id);
+          .eq('id', run.id);
 
         // Verify error is readable - check ALL outbox rows for this run
         const { data: allOutboxRows } = await supabase
           .from('channel_outbox')
           .select('*')
-          .eq('run_id', run!.id);
+          .eq('run_id', run.id);
 
         const { data: failedRun } = await supabase
           .from('campaign_runs')
           .select('*')
-          .eq('id', run!.id)
+          .eq('id', run.id)
           .single();
 
         testEvidence.outbox_count = allOutboxRows?.length || 0;
@@ -1042,7 +1059,7 @@ Deno.serve(async (req) => {
           // Has failures - run cannot be "completed" 
           if (runIsCompleted) {
             throw new Error(
-              `RUN STATUS MISMATCH: Run ${run!.id} is "completed" but has ${failedOutboxRows.length} failed outbox row(s). ` +
+              `RUN STATUS MISMATCH: Run ${run.id} is "completed" but has ${failedOutboxRows.length} failed outbox row(s). ` +
               `Run must be "failed" or "partial" when failures exist.`
             );
           }
@@ -1050,7 +1067,7 @@ Deno.serve(async (req) => {
           // Run should be failed or partial
           if (!runIsFailed && !runIsPartial) {
             throw new Error(
-              `RUN STATUS MISMATCH: Run ${run!.id} has status "${runStatus}" but has ${failedOutboxRows.length} failed outbox row(s). ` +
+              `RUN STATUS MISMATCH: Run ${run.id} has status "${runStatus}" but has ${failedOutboxRows.length} failed outbox row(s). ` +
               `Expected "failed" or "partial".`
             );
           }
@@ -1059,7 +1076,7 @@ Deno.serve(async (req) => {
           const runErrorLength = (failedRun?.error_message?.trim() || '').length;
           if (runErrorLength < MIN_ERROR_LENGTH) {
             throw new Error(
-              `RUN ERROR MISSING: Run ${run!.id} has ${failedOutboxRows.length} failed outbox row(s) but ` +
+              `RUN ERROR MISSING: Run ${run.id} has ${failedOutboxRows.length} failed outbox row(s) but ` +
               `error_message is missing or too short (${runErrorLength} chars, min ${MIN_ERROR_LENGTH}).`
             );
           }
@@ -1162,7 +1179,8 @@ Deno.serve(async (req) => {
       
       try {
         // Create 50 jobs to flood the queue
-        const { data: campaign } = await supabase
+        // NOTE: goal must be one of: 'leads', 'meetings', 'revenue', 'engagement'
+        const { data: campaign, error: campaignErr } = await supabase
           .from('cmo_campaigns')
           .insert({
             tenant_id: tenantId,
@@ -1170,27 +1188,29 @@ Deno.serve(async (req) => {
             campaign_name: `ITR-Scale-${mode}-${Date.now()}`,
             campaign_type: 'email',
             status: 'draft',
-            goal: `ITR scale safety ${mode} test [${itrRunId}]`,
+            goal: 'engagement', // Valid enum value for scale test
           })
           .select()
           .single();
 
-        testEvidence.campaign_id = campaign?.id;
-        
-        // SAFETY CHECK 4: Verify tenant/workspace IDs
-        if (campaign) {
-          const idCheck = validateIds(campaign, tenantId, workspaceId);
-          if (!idCheck.valid) {
-            throw new Error(`CRITICAL: ${idCheck.reason}`);
-          }
+        if (campaignErr || !campaign) {
+          throw new Error(`Scale test campaign creation failed: ${campaignErr?.message || 'no campaign returned'}`);
         }
 
-        const { data: run } = await supabase
+        testEvidence.campaign_id = campaign.id;
+        
+        // SAFETY CHECK 4: Verify tenant/workspace IDs
+        const idCheck = validateIds(campaign, tenantId, workspaceId);
+        if (!idCheck.valid) {
+          throw new Error(`CRITICAL: ${idCheck.reason}`);
+        }
+
+        const { data: run, error: runErr } = await supabase
           .from('campaign_runs')
           .insert({
             tenant_id: tenantId,
             workspace_id: workspaceId,
-            campaign_id: campaign!.id,
+            campaign_id: campaign.id,
             channel: 'email',
             status: 'running',
             run_config: { 
@@ -1204,14 +1224,18 @@ Deno.serve(async (req) => {
           .select()
           .single();
 
-        testEvidence.run_id = run?.id;
-        output.evidence.campaign_run_ids.push(run!.id);
+        if (runErr || !run) {
+          throw new Error(`Scale test run creation failed: ${runErr?.message || 'no run returned'}`);
+        }
+
+        testEvidence.run_id = run.id;
+        output.evidence.campaign_run_ids.push(run.id);
 
         // Create 50 job queue entries
         const jobEntries = Array.from({ length: 50 }, (_, i) => ({
           tenant_id: tenantId,
           workspace_id: workspaceId,
-          run_id: run!.id,
+          run_id: run.id,
           job_type: 'email_send_batch',
           status: 'queued',
           scheduled_for: new Date().toISOString(),
@@ -1234,7 +1258,7 @@ Deno.serve(async (req) => {
         // ============================================================
         // T0 SNAPSHOT: Capture initial queue state
         // ============================================================
-        const t0Snapshot = await captureQueueSnapshot(run!.id);
+        const t0Snapshot = await captureQueueSnapshot(run.id);
         testEvidence.t0_snapshot = t0Snapshot;
         output.evidence.initial_queue_depth = t0Snapshot.queued_count;
 
@@ -1256,12 +1280,12 @@ Deno.serve(async (req) => {
           await supabase
             .from('job_queue')
             .update({ status: 'completed', completed_at: new Date().toISOString() })
-            .eq('run_id', run!.id);
+            .eq('run_id', run.id);
 
           await supabase
             .from('campaign_runs')
             .update({ status: 'completed', completed_at: new Date().toISOString() })
-            .eq('id', run!.id);
+            .eq('id', run.id);
 
           output.tests.scale_safety = {
             status: 'PASS',
@@ -1291,7 +1315,7 @@ Deno.serve(async (req) => {
             const { data: claimedJobs } = await supabase
               .from('job_queue')
               .select('locked_by, status')
-              .eq('run_id', run!.id)
+              .eq('run_id', run.id)
               .not('locked_by', 'is', null);
 
             // Track all workers seen during observation (not just current)
@@ -1302,7 +1326,7 @@ Deno.serve(async (req) => {
             uniqueWorkers = [...allWorkersSeen];
 
             // Capture current snapshot
-            currentSnapshot = await captureQueueSnapshot(run!.id);
+            currentSnapshot = await captureQueueSnapshot(run.id);
 
             // Get current HS metrics for oldest_queued_seconds
             try {
@@ -1324,7 +1348,7 @@ Deno.serve(async (req) => {
           // ============================================================
           // T+60s SNAPSHOT: Capture final queue state
           // ============================================================
-          const t60Snapshot = await captureQueueSnapshot(run!.id);
+          const t60Snapshot = await captureQueueSnapshot(run.id);
           testEvidence.t60_snapshot = t60Snapshot;
           
           // Calculate progress metrics
@@ -1348,7 +1372,7 @@ Deno.serve(async (req) => {
           const { data: outboxData } = await supabase
             .from('channel_outbox')
             .select('id, idempotency_key, status, provider_message_id')
-            .eq('run_id', run!.id);
+            .eq('run_id', run.id);
 
           // Collect outbox evidence
           for (const row of outboxData || []) {
@@ -1369,12 +1393,12 @@ Deno.serve(async (req) => {
           await supabase
             .from('job_queue')
             .update({ status: 'completed', completed_at: new Date().toISOString() })
-            .eq('run_id', run!.id);
+            .eq('run_id', run.id);
 
           await supabase
             .from('campaign_runs')
             .update({ status: 'completed', completed_at: new Date().toISOString() })
-            .eq('id', run!.id);
+            .eq('id', run.id);
 
           // ============================================================
           // ASSERTIONS - All must pass for live certification
