@@ -72,6 +72,7 @@ interface LaunchValidationResult {
   runId: string;
   channel: 'email' | 'voice' | 'social';
   status: 'pending' | 'running' | 'completed' | 'failed' | 'partial';
+  expectedCount: number; // Expected number of outbox rows
   campaignRun: {
     id: string;
     status: string;
@@ -110,8 +111,18 @@ interface LaunchValidationResult {
   // L2 Failure Test
   isFailureTest?: boolean;
   failureType?: 'smtp_host' | 'missing_voice' | 'invalid_token';
+  // L1 detailed metrics
+  l1Metrics?: {
+    terminalCount: number; // sent/called/posted + failed/skipped
+    successCount: number; // sent/called/posted
+    providerIdCount: number; // rows with provider_message_id
+    failedOrSkippedCount: number; // failed + skipped
+  };
   passCriteria: {
     L1_provider_ids: boolean;
+    L1_run_terminal: boolean; // campaign_runs.status in ('completed','partial')
+    L1_outbox_exists: boolean; // outbox rows exist for the run
+    L1_all_terminal: boolean; // all expected rows are terminal
     L2_failure_visible: boolean;
     L3_no_duplicates: boolean;
     L1B_voice_call_records?: boolean; // Voice-specific: records exist with correct tenant
@@ -423,11 +434,15 @@ export default function ExecutionCertQA() {
           runId: result.data.runId,
           channel: launchChannel,
           status: 'pending',
+          expectedCount: 3, // 3 leads
           campaignRun: null,
           jobQueue: [],
           outboxRows: [],
           passCriteria: {
             L1_provider_ids: false,
+            L1_run_terminal: false,
+            L1_outbox_exists: false,
+            L1_all_terminal: false,
             L2_failure_visible: true,
             L3_no_duplicates: true,
             L1C_social_posted: launchChannel === 'social' ? false : undefined,
@@ -485,10 +500,47 @@ export default function ExecutionCertQA() {
       
       if (result.success) {
         const data = result.data;
+        const runStatus = data.campaignRun?.status || '';
         
-        // Calculate pass criteria
-        const outboxWithProviderIds = data.outboxRows.filter((r: { provider_message_id: string | null }) => r.provider_message_id);
-        const outboxWithErrors = data.outboxRows.filter((r: { error: string | null }) => r.error);
+        // L1 Criterion 1: campaign_runs.status in ('completed','partial')
+        const isRunTerminal = runStatus === 'completed' || runStatus === 'partial';
+        
+        // L1 Criterion 2: outbox rows exist for the run
+        const outboxExists = data.outboxRows.length > 0;
+        
+        // L1 Criterion 3: All expected outbox rows have terminal status
+        // Terminal statuses: sent, called, posted (success) OR failed, skipped (explicit failure)
+        const terminalStatuses = ['sent', 'called', 'posted', 'failed', 'skipped'];
+        const successStatuses = ['sent', 'called', 'posted'];
+        
+        const terminalRows = data.outboxRows.filter((r: { status: string }) => 
+          terminalStatuses.includes(r.status)
+        );
+        const successRows = data.outboxRows.filter((r: { status: string }) => 
+          successStatuses.includes(r.status)
+        );
+        const failedOrSkippedRows = data.outboxRows.filter((r: { status: string }) => 
+          r.status === 'failed' || r.status === 'skipped'
+        );
+        const rowsWithProviderIds = data.outboxRows.filter((r: { provider_message_id: string | null }) => 
+          r.provider_message_id
+        );
+        
+        const expectedCount = launchResult.expectedCount;
+        const terminalCount = terminalRows.length;
+        const successCount = successRows.length;
+        const providerIdCount = rowsWithProviderIds.length;
+        const failedOrSkippedCount = failedOrSkippedRows.length;
+        
+        // L1 PASS when: 
+        // (sent/called/posted + failed/skipped) == expected_count 
+        // AND provider_id_count >= success_count
+        const allTerminal = terminalCount === expectedCount;
+        const providerIdsValid = providerIdCount >= successCount;
+        
+        // Overall L1 pass requires all three conditions
+        const l1Pass = isRunTerminal && outboxExists && allTerminal && providerIdsValid;
+        
         const duplicateKeys = new Set(data.outboxRows.map((r: { idempotency_key: string }) => r.idempotency_key));
         
         // Voice-specific: check voice_call_records
@@ -502,6 +554,8 @@ export default function ExecutionCertQA() {
           r.status === 'posted' && r.provider_message_id
         );
         
+        const outboxWithErrors = data.outboxRows.filter((r: { error: string | null }) => r.error);
+        
         setLaunchResult(prev => prev ? {
           ...prev,
           status: data.campaignRun?.status === 'completed' ? 'completed' : 
@@ -511,9 +565,18 @@ export default function ExecutionCertQA() {
           jobQueue: data.jobQueue,
           outboxRows: data.outboxRows,
           voiceCallRecords: voiceCallRecords,
+          l1Metrics: {
+            terminalCount,
+            successCount,
+            providerIdCount,
+            failedOrSkippedCount,
+          },
           passCriteria: {
             ...prev.passCriteria,
-            L1_provider_ids: outboxWithProviderIds.length > 0 || data.outboxRows.some((r: { status: string }) => r.status === 'sent' || r.status === 'called' || r.status === 'posted'),
+            L1_provider_ids: l1Pass,
+            L1_run_terminal: isRunTerminal,
+            L1_outbox_exists: outboxExists,
+            L1_all_terminal: allTerminal && providerIdsValid,
             L2_failure_visible: outboxWithErrors.length === 0 || outboxWithErrors.every((r: { error: string | null }) => r.error !== null),
             L3_no_duplicates: duplicateKeys.size === data.outboxRows.length,
             // Voice-specific: L1B pass if voice_call_records exist with correct tenant/workspace and provider_call_id
@@ -550,6 +613,7 @@ export default function ExecutionCertQA() {
           runId: result.data.runId,
           channel: launchChannel,
           status: 'pending',
+          expectedCount: 1, // L2 tests have 1 lead
           campaignRun: null,
           jobQueue: [],
           outboxRows: [],
@@ -557,6 +621,9 @@ export default function ExecutionCertQA() {
           failureType,
           passCriteria: {
             L1_provider_ids: false,
+            L1_run_terminal: false,
+            L1_outbox_exists: false,
+            L1_all_terminal: false,
             L2_failure_visible: false,
             L3_no_duplicates: true,
             L2_run_status_failed: false,
@@ -759,8 +826,23 @@ export default function ExecutionCertQA() {
   // Gate status helper functions
   const getL1Status = (): 'pass' | 'pending' | 'fail' => {
     if (!launchResult) return 'pending';
-    if (launchResult.passCriteria.L1_provider_ids) return 'pass';
-    if (launchResult.status === 'failed') return 'fail';
+    
+    // L1 requires ALL three conditions:
+    // 1. campaign_runs.status in ('completed','partial')
+    // 2. outbox rows exist for the run  
+    // 3. For the selected channel, all expected outbox rows have provider ids OR explicit terminal failure
+    const { L1_run_terminal, L1_outbox_exists, L1_all_terminal, L1_provider_ids } = launchResult.passCriteria;
+    
+    if (L1_run_terminal && L1_outbox_exists && L1_all_terminal && L1_provider_ids) {
+      return 'pass';
+    }
+    
+    // If run is terminal but conditions not met, it's a fail
+    if (L1_run_terminal && (!L1_outbox_exists || !L1_all_terminal || !L1_provider_ids)) {
+      return 'fail';
+    }
+    
+    // Still running
     return 'pending';
   };
 
