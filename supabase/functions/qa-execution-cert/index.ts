@@ -118,7 +118,9 @@ serve(async (req) => {
     case "get_l3_outbox":
       return await getL3Outbox(supabase, testConfig);
     case "get_hs_metrics":
-      return await getHsMetrics(supabaseAuthed, testConfig);
+      // HS metrics RPC is explicitly locked to service_role in the database.
+      // We already verified the caller is a platform admin above, so use the service client here.
+      return await getHsMetrics(supabase, testConfig);
     default:
       return new Response(JSON.stringify({ error: "Unknown action" }), {
         status: 400,
