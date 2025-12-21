@@ -96,10 +96,22 @@ interface LaunchValidationResult {
     recipient_phone: string | null;
     created_at: string;
   }>;
+  // Voice-specific: voice_call_records
+  voiceCallRecords?: Array<{
+    id: string;
+    tenant_id: string;
+    workspace_id: string;
+    provider_call_id: string | null;
+    status: string;
+    customer_number: string | null;
+    duration_seconds: number | null;
+    created_at: string;
+  }>;
   passCriteria: {
     L1_provider_ids: boolean;
     L2_failure_visible: boolean;
     L3_no_duplicates: boolean;
+    L1B_voice_call_records?: boolean; // Voice-specific: records exist with correct tenant
   };
 }
 
@@ -435,6 +447,7 @@ export default function ExecutionCertQA() {
     try {
       const result = await callQAFunction('get_launch_status', {
         runId: launchResult.runId,
+        channel: launchResult.channel,
       });
       
       if (result.success) {
@@ -445,6 +458,11 @@ export default function ExecutionCertQA() {
         const outboxWithErrors = data.outboxRows.filter((r: { error: string | null }) => r.error);
         const duplicateKeys = new Set(data.outboxRows.map((r: { idempotency_key: string }) => r.idempotency_key));
         
+        // Voice-specific: check voice_call_records
+        const voiceCallRecords = data.voiceCallRecords || [];
+        const hasVoiceCallRecords = voiceCallRecords.length > 0;
+        const voiceRecordsHaveProviderIds = voiceCallRecords.some((r: { provider_call_id: string | null }) => r.provider_call_id);
+        
         setLaunchResult(prev => prev ? {
           ...prev,
           status: data.campaignRun?.status === 'completed' ? 'completed' : 
@@ -452,10 +470,15 @@ export default function ExecutionCertQA() {
           campaignRun: data.campaignRun,
           jobQueue: data.jobQueue,
           outboxRows: data.outboxRows,
+          voiceCallRecords: voiceCallRecords,
           passCriteria: {
             L1_provider_ids: outboxWithProviderIds.length > 0 || data.outboxRows.some((r: { status: string }) => r.status === 'sent' || r.status === 'called'),
             L2_failure_visible: outboxWithErrors.length === 0 || outboxWithErrors.every((r: { error: string | null }) => r.error !== null),
             L3_no_duplicates: duplicateKeys.size === data.outboxRows.length,
+            // Voice-specific: L1B pass if voice_call_records exist with correct tenant/workspace and provider_call_id
+            L1B_voice_call_records: prev.channel === 'voice' 
+              ? (hasVoiceCallRecords && (voiceRecordsHaveProviderIds || voiceCallRecords.some((r: { status: string }) => r.status === 'completed' || r.status === 'in-progress')))
+              : undefined,
           },
         } : null);
       }
@@ -1007,7 +1030,9 @@ export default function ExecutionCertQA() {
                     )}
                     <span className="font-medium text-sm">L1: Provider IDs</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">Outbox rows have provider_message_id</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {launchResult.channel === 'voice' ? 'channel_outbox.status = called, provider_call_id stored' : 'Outbox rows have provider_message_id'}
+                  </p>
                 </div>
 
                 <div className={`p-3 rounded-lg border ${launchResult.passCriteria.L2_failure_visible ? 'border-green-500/50 bg-green-500/10' : 'border-red-500/50 bg-red-500/10'}`}>
@@ -1034,6 +1059,25 @@ export default function ExecutionCertQA() {
                   <p className="text-xs text-muted-foreground mt-1">Unique idempotency keys</p>
                 </div>
               </div>
+
+              {/* L1B Voice-Specific Criteria */}
+              {launchResult.channel === 'voice' && (
+                <div className="grid gap-3 md:grid-cols-1">
+                  <div className={`p-3 rounded-lg border ${launchResult.passCriteria.L1B_voice_call_records ? 'border-green-500/50 bg-green-500/10' : 'border-yellow-500/50 bg-yellow-500/10'}`}>
+                    <div className="flex items-center gap-2">
+                      {launchResult.passCriteria.L1B_voice_call_records ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                      )}
+                      <span className="font-medium text-sm">L1B: Voice Call Records</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      voice_call_records has row(s) tied to correct tenant/workspace with provider_call_id
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Campaign Run Details */}
               {launchResult.campaignRun && (
@@ -1126,6 +1170,48 @@ export default function ExecutionCertQA() {
                             <TableCell className="text-sm">{row.recipient_email || row.recipient_phone || '-'}</TableCell>
                             <TableCell className="text-xs text-red-600 max-w-[200px] truncate">{row.error || '-'}</TableCell>
                             <TableCell className="text-xs">{new Date(row.created_at).toLocaleTimeString()}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              {/* Voice Call Records (L1B) */}
+              {launchResult.channel === 'voice' && launchResult.voiceCallRecords && launchResult.voiceCallRecords.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Phone className="h-4 w-4" />
+                    Voice Call Records ({launchResult.voiceCallRecords.length})
+                  </h4>
+                  <div className="rounded-md border overflow-auto max-h-48">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Provider Call ID</TableHead>
+                          <TableHead>Customer Number</TableHead>
+                          <TableHead>Duration (s)</TableHead>
+                          <TableHead>Tenant/Workspace</TableHead>
+                          <TableHead>Created</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {launchResult.voiceCallRecords.map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell>
+                              <Badge variant={record.status === 'completed' ? 'default' : record.status === 'failed' ? 'destructive' : 'secondary'}>
+                                {record.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">{record.provider_call_id || '-'}</TableCell>
+                            <TableCell className="text-sm">{record.customer_number || '-'}</TableCell>
+                            <TableCell className="text-sm">{record.duration_seconds ?? '-'}</TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {record.tenant_id.slice(0, 8)}... / {record.workspace_id.slice(0, 8)}...
+                            </TableCell>
+                            <TableCell className="text-xs">{new Date(record.created_at).toLocaleTimeString()}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

@@ -867,7 +867,7 @@ async function deployLaunchTest(
 
 async function getLaunchStatus(
   supabase: AnySupabaseClient,
-  config: { runId: string }
+  config: { runId: string; channel?: string }
 ) {
   try {
     // Get campaign run
@@ -893,6 +893,31 @@ async function getLaunchStatus(
       .eq("run_id", config.runId)
       .order("created_at", { ascending: true });
 
+    // Voice-specific: Get voice_call_records for this tenant/workspace
+    let voiceCallRecords: Array<{
+      id: string;
+      tenant_id: string;
+      workspace_id: string;
+      provider_call_id: string | null;
+      status: string;
+      customer_number: string | null;
+      duration_seconds: number | null;
+      created_at: string;
+    }> = [];
+
+    if (campaignRun && (campaignRun.channel === 'voice' || config.channel === 'voice')) {
+      const { data: vcRecords } = await supabase
+        .from("voice_call_records")
+        .select("id, tenant_id, workspace_id, provider_call_id, status, customer_number, duration_seconds, created_at")
+        .eq("tenant_id", campaignRun.tenant_id)
+        .eq("workspace_id", campaignRun.workspace_id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      
+      voiceCallRecords = vcRecords || [];
+      console.log(`Voice call records found: ${voiceCallRecords.length} for tenant=${campaignRun.tenant_id}`);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -913,6 +938,7 @@ async function getLaunchStatus(
             error_message: j.error,
           })),
           outboxRows: outboxRows || [],
+          voiceCallRecords, // Voice-specific: L1B validation
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
