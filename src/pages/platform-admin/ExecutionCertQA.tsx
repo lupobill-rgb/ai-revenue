@@ -1018,13 +1018,21 @@ export default function ExecutionCertQA() {
     setItrRunning(true);
     setItrResult(null);
     setItrMode(mode);
-    
+
     try {
-      // Get current user's tenant and workspace
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error('Not authenticated');
-      
-      // Try user_tenants first, fall back to workspaces if RLS issue
+      // 1) Require an active session (this is the #1 cause of "failed to grab")
+      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+      if (sessionErr) throw new Error(`Auth session error: ${sessionErr.message}`);
+
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error('Not authenticated (no access token). Re-login and retry.');
+
+      // 2) Resolve tenant/workspace
+      const { data: userData, error: userErr } = await supabase.auth.getUser();
+      if (userErr) throw new Error(`Auth user error: ${userErr.message}`);
+      if (!userData.user) throw new Error('Not authenticated (no user).');
+
+      // Try user_tenants first, fall back to workspace ID
       let tenantId: string | null = null;
       try {
         const { data: tenantData } = await supabase
@@ -1035,56 +1043,56 @@ export default function ExecutionCertQA() {
           .single();
         tenantId = tenantData?.tenant_id || null;
       } catch {
-        // Fallback: use workspace owner's ID as tenant
+        // Fallback: use workspace ID as tenant
       }
-      
-      const { data: workspaceData } = await supabase
+
+      const { data: workspaceData, error: wsErr } = await supabase
         .from('workspaces')
         .select('id')
         .eq('owner_id', userData.user.id)
         .limit(1)
         .single();
-      
-      if (!workspaceData) throw new Error('No workspace found');
-      
+
+      if (wsErr) throw new Error(`Workspace lookup failed: ${wsErr.message}`);
+      if (!workspaceData?.id) throw new Error('Workspace lookup returned no id.');
+
       // Use workspace ID as tenant if not found
       if (!tenantId) tenantId = workspaceData.id;
-      
-      if (!session?.access_token) {
-        throw new Error('Not authenticated (missing session). Please log in again.');
-      }
 
-      const response = await supabase.functions.invoke('infrastructure-test-runner', {
+      // 3) Invoke Edge Function WITH explicit Authorization header
+      const { data, error } = await supabase.functions.invoke('infrastructure-test-runner', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: {
+          mode,
           tenant_id: tenantId,
           workspace_id: workspaceData.id,
-          mode: mode,
           tests: ['email_e2e', 'voice_e2e', 'failure_transparency', 'scale_safety'],
-          timeout_ms: mode === 'live' ? 90000 : 30000,
-        },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
         },
       });
 
-      if (response.error) {
-        const errAny = response.error as any;
-        const status = errAny?.status ? ` (status ${errAny.status})` : '';
-        throw new Error(`${response.error.message}${status}`);
+      // 4) Surface real status / details
+      if (error) {
+        const errAny = error as any;
+        const status = errAny?.context?.status ?? errAny?.status ?? 'unknown';
+        const body = errAny?.context?.body ?? errAny?.context ?? error.message;
+        throw new Error(`ITR invoke failed (status ${status}): ${typeof body === 'string' ? body : JSON.stringify(body)}`);
       }
-      
-      setItrResult(response.data);
-      
-      if (response.data.certified) {
+
+      setItrResult(data);
+
+      if (data?.certified) {
         toast.success('🎉 PRODUCTION CERTIFIED: All live tests passed!');
-      } else if (response.data.overall === 'PASS') {
+      } else if (data?.overall === 'PASS') {
         toast.success(`${mode === 'simulation' ? '⚠️ Simulation' : '✅ Tests'} PASSED (${mode} mode)`);
       } else {
-        toast.error(`Infrastructure Test Runner: SOME TESTS FAILED (${mode} mode)`);
+        toast.error(`ITR ${mode}: FAIL`);
       }
-    } catch (error) {
-      console.error('ITR error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to run ITR');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('ITR error:', e);
+      toast.error(msg);
     } finally {
       setItrRunning(false);
     }
