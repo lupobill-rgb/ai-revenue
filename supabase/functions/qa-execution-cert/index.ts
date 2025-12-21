@@ -52,9 +52,15 @@ serve(async (req) => {
 
   console.log("[qa-execution-cert] Authenticated user:", user.id);
 
-  // Check platform admin
-  const { data: isAdmin } = await supabase.rpc("is_platform_admin", { _user_id: user.id });
-  if (!isAdmin) {
+  // Check platform admin - the function uses auth.uid() internally, no parameter needed
+  // But we're using service role, so we need to check manually
+  const { data: adminData } = await supabase
+    .from("platform_admins")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  
+  if (!adminData) {
     console.error("[qa-execution-cert] User is not platform admin:", user.id);
     return new Response(JSON.stringify({ error: "Forbidden - Platform Admin only" }), {
       status: 403,
