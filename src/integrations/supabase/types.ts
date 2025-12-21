@@ -6593,6 +6593,10 @@ export type Database = {
         Returns: boolean
       }
       gc_rate_limit_counters: { Args: never; Returns: undefined }
+      get_horizontal_scaling_metrics: {
+        Args: { p_window_minutes?: number }
+        Returns: Json
+      }
       get_load_test_metrics: { Args: never; Returns: Json }
       get_outbox_duplicate_groups: {
         Args: { p_window_hours?: number }

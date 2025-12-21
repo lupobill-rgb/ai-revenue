@@ -57,7 +57,7 @@ interface HorizontalScalingMetrics {
     failed: number;
   };
   oldest_queued_age_seconds: number;
-  duplicate_count: number;
+  duplicate_groups_last_hour: number;
   pass_criteria: {
     HS1_workers_active: boolean;
     HS2_duplicates_zero: boolean;
@@ -221,98 +221,33 @@ export default function ExecutionCertQA() {
   const fetchHorizontalScalingMetrics = async () => {
     setLoadingHsMetrics(true);
     try {
-      // Get worker metrics from last 5 minutes
-      const { data: workerData, error: workerError } = await supabase
-        .from('worker_tick_metrics')
-        .select('*')
-        .gte('tick_started_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
-        .order('tick_started_at', { ascending: false });
+      // Call the service_role-only RPC via edge function
+      const { data: response, error } = await supabase.functions.invoke('hs-metrics', {
+        body: { window_minutes: 5 },
+      });
 
-      if (workerError) throw workerError;
+      if (error) throw error;
+      if (!response?.success) throw new Error(response?.error || 'Failed to fetch metrics');
 
-      // Get queue stats
-      const { data: queueData, error: queueError } = await supabase
-        .from('job_queue')
-        .select('status, created_at');
-
-      if (queueError) throw queueError;
-
-      // Calculate queue stats
-      const queueStats = {
-        queued: 0,
-        locked: 0,
-        completed: 0,
-        failed: 0,
-      };
-      let oldestQueuedAge = 0;
-
-      for (const job of queueData || []) {
-        const status = job.status as string;
-        if (status === 'queued') {
-          queueStats.queued++;
-          const age = (Date.now() - new Date(job.created_at).getTime()) / 1000;
-          if (age > oldestQueuedAge) oldestQueuedAge = age;
-        } else if (status === 'locked') queueStats.locked++;
-        else if (status === 'completed') queueStats.completed++;
-        else if (status === 'failed') queueStats.failed++;
-      }
-
-      // Check for duplicates using SQL aggregate (tenant_id, workspace_id, idempotency_key uniqueness)
-      const { data: dupCountData, error: dupError } = await supabase
-        .rpc('get_outbox_duplicate_groups', { p_window_hours: 1 });
-
-      if (dupError) throw dupError;
-
-      const duplicateCount = dupCountData ?? 0;
-
-      // Aggregate worker metrics
-      const workerMap = new Map<string, {
-        worker_id: string;
-        jobs_claimed: number;
-        jobs_succeeded: number;
-        jobs_failed: number;
-        tick_durations: number[];
-        last_tick_at: string;
-      }>();
-
-      for (const tick of workerData || []) {
-        const existing = workerMap.get(tick.worker_id);
-        if (existing) {
-          existing.jobs_claimed += tick.jobs_claimed || 0;
-          existing.jobs_succeeded += tick.jobs_succeeded || 0;
-          existing.jobs_failed += tick.jobs_failed || 0;
-          existing.tick_durations.push(tick.tick_duration_ms || 0);
-          if (tick.tick_started_at > existing.last_tick_at) {
-            existing.last_tick_at = tick.tick_started_at;
-          }
-        } else {
-          workerMap.set(tick.worker_id, {
-            worker_id: tick.worker_id,
-            jobs_claimed: tick.jobs_claimed || 0,
-            jobs_succeeded: tick.jobs_succeeded || 0,
-            jobs_failed: tick.jobs_failed || 0,
-            tick_durations: [tick.tick_duration_ms || 0],
-            last_tick_at: tick.tick_started_at,
-          });
-        }
-      }
-
-      const workers = Array.from(workerMap.values()).map(w => ({
-        ...w,
-        avg_tick_duration_ms: w.tick_durations.length > 0 
-          ? w.tick_durations.reduce((a, b) => a + b, 0) / w.tick_durations.length 
-          : 0,
-      }));
+      const metrics = response.data;
+      const workers = metrics.workers || [];
+      const now = Date.now();
+      
+      // Count workers with last_tick_at within 2 minutes
+      const activeWorkers = workers.filter((w: { last_tick_at: string }) => {
+        const lastTick = new Date(w.last_tick_at).getTime();
+        return (now - lastTick) < 2 * 60 * 1000; // 2 minutes
+      });
 
       setHsMetrics({
         workers,
-        queue_stats: queueStats,
-        oldest_queued_age_seconds: Math.floor(oldestQueuedAge),
-        duplicate_count: duplicateCount,
+        queue_stats: metrics.queue_stats || { queued: 0, locked: 0, completed: 0, failed: 0 },
+        oldest_queued_age_seconds: metrics.oldest_queued_age_seconds || 0,
+        duplicate_groups_last_hour: metrics.duplicate_groups_last_hour || 0,
         pass_criteria: {
-          HS1_workers_active: workers.length >= 2,
-          HS2_duplicates_zero: duplicateCount === 0,
-          HS3_oldest_under_180s: oldestQueuedAge < 180,
+          HS1_workers_active: activeWorkers.length >= 4, // 4 concurrent workers required
+          HS2_duplicates_zero: metrics.duplicate_groups_last_hour === 0,
+          HS3_oldest_under_180s: metrics.oldest_queued_age_seconds < 180,
         },
       });
 
@@ -658,7 +593,7 @@ export default function ExecutionCertQA() {
                     )}
                     <span className="font-medium text-sm">HS2: Duplicates</span>
                   </div>
-                  <p className="text-2xl font-bold mt-1">{hsMetrics.duplicate_count}</p>
+                  <p className="text-2xl font-bold mt-1">{hsMetrics.duplicate_groups_last_hour}</p>
                   <p className="text-xs text-muted-foreground">Must be 0</p>
                 </div>
 
