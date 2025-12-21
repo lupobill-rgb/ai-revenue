@@ -86,16 +86,31 @@ export default function TenantRateLimits() {
       return;
     }
 
-    const { data: userTenant } = await supabase
-      .from("user_tenants")
-      .select("role")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const isPlatformAdmin = userTenant?.role === "owner" || userTenant?.role === "admin";
+    // Use the proper is_platform_admin RPC function
+    const { data: isPlatformAdminResult, error } = await supabase
+      .rpc("is_platform_admin", { _user_id: user.id });
     
-    if (!isPlatformAdmin) {
-      toast.error("Access denied. Admin role required.");
+    if (error) {
+      console.error("Error checking platform admin:", error);
+      // Fallback: check user_tenants role
+      const { data: userTenant } = await supabase
+        .from("user_tenants")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      
+      const isAdmin = userTenant?.role === "owner" || userTenant?.role === "admin";
+      if (!isAdmin) {
+        toast.error("Access denied. Platform admin role required.");
+        navigate("/");
+        return;
+      }
+      setIsAdmin(true);
+      return;
+    }
+
+    if (!isPlatformAdminResult) {
+      toast.error("Access denied. Platform admin role required.");
       navigate("/");
       return;
     }
