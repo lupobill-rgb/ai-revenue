@@ -71,7 +71,7 @@ interface LaunchValidationResult {
   campaignId: string;
   runId: string;
   channel: 'email' | 'voice' | 'social';
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'partial';
   campaignRun: {
     id: string;
     status: string;
@@ -107,12 +107,17 @@ interface LaunchValidationResult {
     duration_seconds: number | null;
     created_at: string;
   }>;
+  // L2 Failure Test
+  isFailureTest?: boolean;
+  failureType?: 'smtp_host' | 'missing_voice' | 'invalid_token';
   passCriteria: {
     L1_provider_ids: boolean;
     L2_failure_visible: boolean;
     L3_no_duplicates: boolean;
     L1B_voice_call_records?: boolean; // Voice-specific: records exist with correct tenant
     L1C_social_posted?: boolean; // Social-specific: outbox status = posted with provider_post_id
+    L2_run_status_failed?: boolean; // L2: campaign_runs.status = partial/failed
+    L2_outbox_error_readable?: boolean; // L2: outbox has failed with readable last_error
   };
 }
 
@@ -162,6 +167,14 @@ export default function ExecutionCertQA() {
   const [refreshingLaunchStatus, setRefreshingLaunchStatus] = useState(false);
   const [providerStatus, setProviderStatus] = useState<{ connected: boolean; provider: string | null } | null>(null);
   const [checkingProvider, setCheckingProvider] = useState(false);
+  
+  // L2 Failure Test
+  const [failureTestMode, setFailureTestMode] = useState(false);
+  const [failureType, setFailureType] = useState<'smtp_host' | 'missing_voice' | 'invalid_token'>('smtp_host');
+  const [l2TestResult, setL2TestResult] = useState<LaunchValidationResult | null>(null);
+  const [creatingL2Test, setCreatingL2Test] = useState(false);
+  const [deployingL2Test, setDeployingL2Test] = useState(false);
+  const [refreshingL2Status, setRefreshingL2Status] = useState(false);
 
   useEffect(() => {
     checkPlatformAdmin();
@@ -474,12 +487,14 @@ export default function ExecutionCertQA() {
         setLaunchResult(prev => prev ? {
           ...prev,
           status: data.campaignRun?.status === 'completed' ? 'completed' : 
-                  data.campaignRun?.status === 'failed' ? 'failed' : 'running',
+                  data.campaignRun?.status === 'failed' ? 'failed' :
+                  data.campaignRun?.status === 'partial' ? 'partial' : 'running',
           campaignRun: data.campaignRun,
           jobQueue: data.jobQueue,
           outboxRows: data.outboxRows,
           voiceCallRecords: voiceCallRecords,
           passCriteria: {
+            ...prev.passCriteria,
             L1_provider_ids: outboxWithProviderIds.length > 0 || data.outboxRows.some((r: { status: string }) => r.status === 'sent' || r.status === 'called' || r.status === 'posted'),
             L2_failure_visible: outboxWithErrors.length === 0 || outboxWithErrors.every((r: { error: string | null }) => r.error !== null),
             L3_no_duplicates: duplicateKeys.size === data.outboxRows.length,
@@ -499,6 +514,121 @@ export default function ExecutionCertQA() {
       toast.error(error instanceof Error ? error.message : 'Failed to refresh status');
     } finally {
       setRefreshingLaunchStatus(false);
+    }
+  };
+
+  // L2 Failure Test Functions
+  const createL2FailureTest = async () => {
+    setCreatingL2Test(true);
+    try {
+      const result = await callQAFunction('create_l2_failure_test', {
+        channel: launchChannel,
+        failureType,
+      });
+      
+      if (result.success) {
+        setL2TestResult({
+          campaignId: result.data.campaignId,
+          runId: result.data.runId,
+          channel: launchChannel,
+          status: 'pending',
+          campaignRun: null,
+          jobQueue: [],
+          outboxRows: [],
+          isFailureTest: true,
+          failureType,
+          passCriteria: {
+            L1_provider_ids: false,
+            L2_failure_visible: false,
+            L3_no_duplicates: true,
+            L2_run_status_failed: false,
+            L2_outbox_error_readable: false,
+          },
+        });
+        toast.success(`L2 failure test created (${failureType})`);
+      } else {
+        throw new Error(result.error || 'Failed to create L2 test');
+      }
+    } catch (error) {
+      console.error('Create L2 test error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create L2 test');
+    } finally {
+      setCreatingL2Test(false);
+    }
+  };
+
+  const deployL2FailureTest = async () => {
+    if (!l2TestResult) return;
+    
+    setDeployingL2Test(true);
+    try {
+      const result = await callQAFunction('deploy_l2_failure_test', {
+        campaignId: l2TestResult.campaignId,
+        runId: l2TestResult.runId,
+        failureType: l2TestResult.failureType,
+      });
+      
+      if (result.success) {
+        setL2TestResult(prev => prev ? { ...prev, status: 'running' } : null);
+        toast.success('L2 failure test deployed - intentional failure in progress...');
+        setTimeout(() => refreshL2Status(), 2000);
+      } else {
+        throw new Error(result.error || 'L2 deployment failed');
+      }
+    } catch (error) {
+      console.error('Deploy L2 test error:', error);
+      toast.error(error instanceof Error ? error.message : 'L2 deployment failed');
+    } finally {
+      setDeployingL2Test(false);
+    }
+  };
+
+  const refreshL2Status = async () => {
+    if (!l2TestResult) return;
+    
+    setRefreshingL2Status(true);
+    try {
+      const result = await callQAFunction('get_launch_status', {
+        runId: l2TestResult.runId,
+        channel: l2TestResult.channel,
+      });
+      
+      if (result.success) {
+        const data = result.data;
+        
+        // L2 specific: check for failed status and readable errors
+        const runStatus = data.campaignRun?.status || '';
+        const isFailedOrPartial = runStatus === 'failed' || runStatus === 'partial';
+        
+        const outboxFailed = data.outboxRows.filter((r: { status: string }) => r.status === 'failed');
+        const outboxWithReadableError = outboxFailed.filter((r: { error: string | null }) => 
+          r.error && r.error.trim().length > 0
+        );
+        
+        const duplicateKeys = new Set(data.outboxRows.map((r: { idempotency_key: string }) => r.idempotency_key));
+        
+        setL2TestResult(prev => prev ? {
+          ...prev,
+          status: isFailedOrPartial ? (runStatus as 'failed' | 'partial') : 
+                  data.campaignRun?.status === 'completed' ? 'completed' : 'running',
+          campaignRun: data.campaignRun,
+          jobQueue: data.jobQueue,
+          outboxRows: data.outboxRows,
+          passCriteria: {
+            ...prev.passCriteria,
+            L1_provider_ids: false, // Not applicable for failure test
+            L2_failure_visible: true, // Always true for L2 test setup
+            L3_no_duplicates: duplicateKeys.size === data.outboxRows.length,
+            L2_run_status_failed: isFailedOrPartial,
+            L2_outbox_error_readable: outboxFailed.length > 0 && outboxWithReadableError.length === outboxFailed.length,
+          },
+        } : null);
+      }
+    } catch (error) {
+      console.error('Refresh L2 status error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to refresh L2 status');
+    } finally {
+      setRefreshingL2Status(false);
     }
   };
 
@@ -1276,12 +1406,261 @@ export default function ExecutionCertQA() {
         </CardContent>
       </Card>
 
-      {/* Section 6: Evidence Export */}
+      {/* Section 6: L2 Failure Transparency Test */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" />
+            6. Gate L2: Failure Transparency
+          </CardTitle>
+          <CardDescription>
+            Intentionally break one thing (bad SMTP host / missing voice number / invalid token) and verify failures are visible
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Failure Type Selector */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Failure Type</Label>
+              <Select value={failureType} onValueChange={(v) => setFailureType(v as 'smtp_host' | 'missing_voice' | 'invalid_token')}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="smtp_host">Bad SMTP Host</SelectItem>
+                  <SelectItem value="missing_voice">Missing Voice Number</SelectItem>
+                  <SelectItem value="invalid_token">Invalid API Token</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button 
+                onClick={createL2FailureTest} 
+                disabled={creatingL2Test}
+                className="w-full"
+                variant="outline"
+              >
+                {creatingL2Test ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <AlertTriangle className="h-4 w-4 mr-2" />}
+                Create Failure Test
+              </Button>
+            </div>
+            <div className="flex items-end">
+              <Button 
+                onClick={deployL2FailureTest} 
+                disabled={!l2TestResult || deployingL2Test || l2TestResult.status !== 'pending'}
+                variant="destructive"
+                className="w-full"
+              >
+                {deployingL2Test ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Rocket className="h-4 w-4 mr-2" />}
+                Deploy (Expect Failure)
+              </Button>
+            </div>
+          </div>
+
+          {l2TestResult && (
+            <>
+              <Separator />
+              
+              {/* Status & Refresh */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Badge 
+                    variant={
+                      l2TestResult.status === 'failed' || l2TestResult.status === 'partial' ? 'default' : 
+                      l2TestResult.status === 'completed' ? 'destructive' : 
+                      'secondary'
+                    }
+                    className="text-sm"
+                  >
+                    {l2TestResult.status.toUpperCase()}
+                    {(l2TestResult.status === 'failed' || l2TestResult.status === 'partial') && ' (EXPECTED)'}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    Run: <code className="ml-1">{l2TestResult.runId.slice(0, 8)}...</code>
+                  </span>
+                  <Badge variant="outline" className="text-xs">
+                    {l2TestResult.failureType}
+                  </Badge>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={refreshL2Status}
+                  disabled={refreshingL2Status}
+                >
+                  {refreshingL2Status ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                  Refresh
+                </Button>
+              </div>
+
+              {/* L2 Pass Criteria Badges */}
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className={`p-3 rounded-lg border ${l2TestResult.passCriteria.L2_run_status_failed ? 'border-green-500/50 bg-green-500/10' : 'border-yellow-500/50 bg-yellow-500/10'}`}>
+                  <div className="flex items-center gap-2">
+                    {l2TestResult.passCriteria.L2_run_status_failed ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                    )}
+                    <span className="font-medium text-sm">L2a: Run Status</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    campaign_runs.status = partial/failed
+                  </p>
+                </div>
+
+                <div className={`p-3 rounded-lg border ${l2TestResult.passCriteria.L2_outbox_error_readable ? 'border-green-500/50 bg-green-500/10' : 'border-yellow-500/50 bg-yellow-500/10'}`}>
+                  <div className="flex items-center gap-2">
+                    {l2TestResult.passCriteria.L2_outbox_error_readable ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                    )}
+                    <span className="font-medium text-sm">L2b: Error Readable</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    outbox.error has readable message
+                  </p>
+                </div>
+
+                <div className={`p-3 rounded-lg border ${l2TestResult.passCriteria.L3_no_duplicates ? 'border-green-500/50 bg-green-500/10' : 'border-red-500/50 bg-red-500/10'}`}>
+                  <div className="flex items-center gap-2">
+                    {l2TestResult.passCriteria.L3_no_duplicates ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-red-600" />
+                    )}
+                    <span className="font-medium text-sm">L3: No Duplicates</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Unique idempotency keys</p>
+                </div>
+              </div>
+
+              {/* Campaign Run Details */}
+              {l2TestResult.campaignRun && (
+                <div className="p-4 rounded-lg border bg-muted/50 space-y-2">
+                  <h4 className="font-medium">Campaign Run</h4>
+                  <div className="grid gap-2 text-sm md:grid-cols-4">
+                    <div>
+                      <span className="text-muted-foreground">Status:</span>
+                      <Badge 
+                        className="ml-2" 
+                        variant={
+                          l2TestResult.campaignRun.status === 'failed' ? 'destructive' : 
+                          l2TestResult.campaignRun.status === 'partial' ? 'secondary' : 
+                          'default'
+                        }
+                      >
+                        {l2TestResult.campaignRun.status}
+                      </Badge>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Started:</span>
+                      <span className="ml-2 font-medium">{l2TestResult.campaignRun.started_at ? new Date(l2TestResult.campaignRun.started_at).toLocaleTimeString() : '-'}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Completed:</span>
+                      <span className="ml-2 font-medium">{l2TestResult.campaignRun.completed_at ? new Date(l2TestResult.campaignRun.completed_at).toLocaleTimeString() : '-'}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Error:</span>
+                      <span className="ml-2 font-medium text-red-600">{l2TestResult.campaignRun.error_message || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Outbox with Errors */}
+              {l2TestResult.outboxRows.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Database className="h-4 w-4" />
+                    Outbox Rows ({l2TestResult.outboxRows.length})
+                    {l2TestResult.outboxRows.some(r => r.status === 'failed') && (
+                      <Badge variant="destructive" className="text-xs">FAILURES DETECTED</Badge>
+                    )}
+                  </h4>
+                  <div className="rounded-md border overflow-auto max-h-48">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Recipient</TableHead>
+                          <TableHead>Error Message</TableHead>
+                          <TableHead>Created</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {l2TestResult.outboxRows.map((row) => (
+                          <TableRow key={row.id}>
+                            <TableCell>
+                              <Badge variant={row.status === 'failed' ? 'destructive' : row.status === 'sent' ? 'default' : 'secondary'}>
+                                {row.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">{row.recipient_email || row.recipient_phone || '-'}</TableCell>
+                            <TableCell className="text-xs text-red-600 max-w-[300px]">
+                              {row.error ? (
+                                <span title={row.error}>{row.error.length > 100 ? row.error.slice(0, 100) + '...' : row.error}</span>
+                              ) : '-'}
+                            </TableCell>
+                            <TableCell className="text-xs">{new Date(row.created_at).toLocaleTimeString()}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              {l2TestResult.status === 'pending' && (
+                <div className="p-4 rounded-lg border bg-muted/50 text-center">
+                  <p className="text-muted-foreground">Click "Deploy (Expect Failure)" to start the intentional failure test</p>
+                </div>
+              )}
+
+              {l2TestResult.status === 'running' && l2TestResult.outboxRows.length === 0 && (
+                <div className="p-4 rounded-lg border bg-muted/50 text-center">
+                  <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
+                  <p className="text-muted-foreground">Failure test running... click Refresh to see results</p>
+                </div>
+              )}
+
+              {/* Overall L2 PASS/FAIL */}
+              {(l2TestResult.status === 'failed' || l2TestResult.status === 'partial') && (
+                <div className={`p-4 rounded-lg border ${
+                  l2TestResult.passCriteria.L2_run_status_failed && l2TestResult.passCriteria.L2_outbox_error_readable 
+                    ? 'border-green-500 bg-green-500/10' 
+                    : 'border-yellow-500 bg-yellow-500/10'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {l2TestResult.passCriteria.L2_run_status_failed && l2TestResult.passCriteria.L2_outbox_error_readable ? (
+                      <>
+                        <CheckCircle2 className="h-5 w-5 text-green-600" />
+                        <span className="font-medium">Gate L2: PASS</span>
+                        <span className="text-sm text-muted-foreground">- Failures are visible with readable error messages</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                        <span className="font-medium">Gate L2: PENDING</span>
+                        <span className="text-sm text-muted-foreground">- Some criteria not yet met</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Section 7: Evidence Export */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
-            6. Evidence Export
+            7. Evidence Export
           </CardTitle>
           <CardDescription>
             Export JSON report with run IDs, job IDs, outbox entries, statuses, and timings

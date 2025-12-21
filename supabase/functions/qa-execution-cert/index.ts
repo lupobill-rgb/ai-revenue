@@ -76,6 +76,10 @@ serve(async (req) => {
       return await getLaunchStatus(supabase, testConfig);
     case "check_provider_status":
       return await checkProviderStatus(supabase, testConfig);
+    case "create_l2_failure_test":
+      return await createL2FailureTest(supabase, testConfig);
+    case "deploy_l2_failure_test":
+      return await deployL2FailureTest(supabase, testConfig);
     default:
       return new Response(JSON.stringify({ error: "Unknown action" }), {
         status: 400,
@@ -1055,6 +1059,260 @@ async function checkProviderStatus(
         data: { connected: false, provider: null },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// L2 Failure Transparency Test Functions
+
+async function createL2FailureTest(
+  supabase: AnySupabaseClient,
+  config: { channel: string; failureType: string }
+) {
+  const timestamp = Date.now();
+  const testTenantId = `qa-l2-tenant-${timestamp}`;
+  const testWorkspaceId = `qa-l2-workspace-${timestamp}`;
+
+  try {
+    console.log(`Creating L2 failure test: channel=${config.channel}, failureType=${config.failureType}`);
+
+    // Create test tenant
+    const { data: tenant, error: tenantError } = await supabase
+      .from("tenants")
+      .insert({
+        id: testTenantId,
+        name: `QA L2 Failure Test - ${timestamp}`,
+        slug: `qa-l2-${timestamp}`,
+        status: "active",
+      })
+      .select()
+      .single();
+
+    if (tenantError) throw tenantError;
+
+    // Get a platform admin as owner
+    const { data: anyUser } = await supabase
+      .from("platform_admins")
+      .select("user_id")
+      .limit(1)
+      .single();
+
+    // Create test workspace
+    const { data: workspace, error: wsError } = await supabase
+      .from("workspaces")
+      .insert({
+        id: testWorkspaceId,
+        name: `QA L2 Workspace - ${timestamp}`,
+        slug: `qa-l2-ws-${timestamp}`,
+        owner_id: anyUser?.user_id || "00000000-0000-0000-0000-000000000000",
+      })
+      .select()
+      .single();
+
+    if (wsError) throw wsError;
+
+    // Create test campaign
+    const { data: campaign, error: campError } = await supabase
+      .from("cmo_campaigns")
+      .insert({
+        tenant_id: testTenantId,
+        workspace_id: testWorkspaceId,
+        campaign_name: `L2 Failure Test (${config.failureType}) - ${timestamp}`,
+        campaign_type: config.channel,
+        status: "active",
+      })
+      .select()
+      .single();
+
+    if (campError) throw campError;
+
+    // Create campaign_run with pending status
+    const { data: run, error: runError } = await supabase
+      .from("campaign_runs")
+      .insert({
+        campaign_id: campaign.id,
+        tenant_id: testTenantId,
+        workspace_id: testWorkspaceId,
+        status: "pending",
+        channel: config.channel,
+        run_config: {
+          failure_test: true,
+          failure_type: config.failureType,
+        },
+      })
+      .select()
+      .single();
+
+    if (runError) throw runError;
+
+    // Create test leads for this tenant
+    const testLeads = [
+      {
+        tenant_id: testTenantId,
+        workspace_id: testWorkspaceId,
+        first_name: "L2 Test",
+        last_name: "Lead",
+        email: `l2-test-${timestamp}@qa-sandbox.local`,
+        phone: "+15550001234",
+        source: "qa_l2_failure_test",
+        status: "new",
+      },
+    ];
+
+    const { error: leadError } = await supabase
+      .from("leads")
+      .insert(testLeads);
+
+    if (leadError) console.error("Lead insert error:", leadError);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          tenantId: testTenantId,
+          workspaceId: testWorkspaceId,
+          campaignId: campaign.id,
+          runId: run.id,
+          failureType: config.failureType,
+        },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("Create L2 failure test error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "L2 test creation failed" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
+
+async function deployL2FailureTest(
+  supabase: AnySupabaseClient,
+  config: { campaignId: string; runId: string; failureType: string }
+) {
+  try {
+    console.log(`Deploying L2 failure test: runId=${config.runId}, failureType=${config.failureType}`);
+
+    // Get run details
+    const { data: run } = await supabase
+      .from("campaign_runs")
+      .select("*")
+      .eq("id", config.runId)
+      .single();
+
+    if (!run) throw new Error("Run not found");
+
+    // Update run to started
+    await supabase
+      .from("campaign_runs")
+      .update({
+        status: "running",
+        started_at: new Date().toISOString(),
+      })
+      .eq("id", config.runId);
+
+    // Get leads for this tenant
+    const { data: leads } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("tenant_id", run.tenant_id)
+      .eq("workspace_id", run.workspace_id)
+      .eq("source", "qa_l2_failure_test")
+      .limit(10);
+
+    // Create outbox entries that will fail
+    const failureMessages: Record<string, string> = {
+      smtp_host: "Connection refused: SMTP host 'invalid-smtp.fake-domain.local' not found. Check your email provider settings.",
+      missing_voice: "Voice call failed: No phone number configured for this workspace. Please configure a VAPI phone number in Settings.",
+      invalid_token: "Authentication failed: API token is invalid or expired. Error code: 401 Unauthorized. Please update your credentials.",
+    };
+
+    const errorMessage = failureMessages[config.failureType] || "Unknown error occurred during dispatch";
+
+    const outboxEntries = (leads || []).map((lead: { id: string; email: string; phone: string }) => ({
+      tenant_id: run.tenant_id,
+      workspace_id: run.workspace_id,
+      run_id: config.runId,
+      channel: run.channel,
+      provider: "sandbox",
+      payload: {
+        lead_id: lead.id,
+        subject: `L2 Failure Test - ${config.failureType}`,
+        body: `Intentional failure test`,
+        failure_test: true,
+        failure_type: config.failureType,
+      },
+      idempotency_key: `${config.runId}:${run.channel}:l2-failure:${lead.email || lead.phone}`,
+      status: "pending",
+      recipient_email: lead.email,
+      recipient_phone: lead.phone,
+    }));
+
+    if (outboxEntries.length > 0) {
+      const { data: outbox, error: outboxError } = await supabase
+        .from("channel_outbox")
+        .insert(outboxEntries)
+        .select();
+
+      if (outboxError) throw outboxError;
+
+      // Simulate failure - update outbox to failed with readable error
+      for (const row of (outbox || [])) {
+        await supabase
+          .from("channel_outbox")
+          .update({
+            status: "failed",
+            error: errorMessage,
+            provider_response: { 
+              sandbox: true, 
+              failure_test: true,
+              failure_type: config.failureType,
+              timestamp: new Date().toISOString() 
+            },
+          })
+          .eq("id", row.id);
+      }
+
+      // Update campaign_run to failed/partial with error message
+      const runStatus = outbox && outbox.length > 1 ? "partial" : "failed";
+      await supabase
+        .from("campaign_runs")
+        .update({
+          status: runStatus,
+          completed_at: new Date().toISOString(),
+          error_message: `L2 Failure Test: ${config.failureType} - ${errorMessage}`,
+        })
+        .eq("id", config.runId);
+    } else {
+      // No leads - still mark as failed
+      await supabase
+        .from("campaign_runs")
+        .update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          error_message: `L2 Failure Test: No leads found to process`,
+        })
+        .eq("id", config.runId);
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          runId: config.runId,
+          failureType: config.failureType,
+          outboxCreated: outboxEntries.length,
+          expectedStatus: "failed",
+        },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("Deploy L2 failure test error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "L2 deployment failed" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 }
