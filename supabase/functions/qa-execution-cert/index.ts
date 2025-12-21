@@ -19,6 +19,8 @@ interface TestResult {
 type AnySupabaseClient = SupabaseClient<any, any, any>;
 
 serve(async (req) => {
+  console.log("[qa-execution-cert] Request received:", req.method);
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -30,7 +32,8 @@ serve(async (req) => {
   // Verify platform admin
   const authHeader = req.headers.get("authorization");
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    console.error("[qa-execution-cert] Missing authorization header");
+    return new Response(JSON.stringify({ code: 401, message: "Missing authorization header" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -40,22 +43,29 @@ serve(async (req) => {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token);
   
   if (authError || !user) {
+    console.error("[qa-execution-cert] Auth error:", authError?.message || "No user");
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
+  console.log("[qa-execution-cert] Authenticated user:", user.id);
+
   // Check platform admin
   const { data: isAdmin } = await supabase.rpc("is_platform_admin", { _user_id: user.id });
   if (!isAdmin) {
+    console.error("[qa-execution-cert] User is not platform admin:", user.id);
     return new Response(JSON.stringify({ error: "Forbidden - Platform Admin only" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
+  console.log("[qa-execution-cert] User is platform admin");
+
   const { action, testConfig } = await req.json();
+  console.log("[qa-execution-cert] Action:", action, "Config:", JSON.stringify(testConfig));
 
   switch (action) {
     case "setup_test_campaign":
