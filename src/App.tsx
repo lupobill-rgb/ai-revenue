@@ -11,6 +11,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import WelcomeModal from "./components/WelcomeModal";
 import SpotlightTour from "./components/SpotlightTour";
 import AIChatWidget from "./components/AIChatWidget";
+import ProtectedRoute from "./components/ProtectedRoute";
 import { supabase } from "./integrations/supabase/client";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -163,12 +164,57 @@ const AppContent = () => {
         <Route path="/settings/integrations" element={<SettingsIntegrations />} />
         <Route path="/landing-pages" element={<LandingPages />} />
         <Route path="/cmo/leads" element={<LeadsPage />} />
-        <Route path="/platform-admin" element={<PlatformAdmin />} />
-        <Route path="/platform-admin/qa/tenant-isolation" element={<TenantIsolationQA />} />
-        <Route path="/platform-admin/qa/execution-cert" element={<ExecutionCertQA />} />
-        <Route path="/platform-admin/slo" element={<SLODashboard />} />
-        <Route path="/platform-admin/rate-limits" element={<TenantRateLimits />} />
-        <Route path="/platform-admin/rollout" element={<RolloutPlan />} />
+
+        {/* Platform admin QA routes require auth (otherwise invoke has no JWT and looks like "failed to grab") */}
+        <Route
+          path="/platform-admin"
+          element={
+            <ProtectedRoute>
+              <PlatformAdmin />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/platform-admin/qa/tenant-isolation"
+          element={
+            <ProtectedRoute>
+              <TenantIsolationQA />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/platform-admin/qa/execution-cert"
+          element={
+            <ProtectedRoute>
+              <ExecutionCertQA />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/platform-admin/slo"
+          element={
+            <ProtectedRoute>
+              <SLODashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/platform-admin/rate-limits"
+          element={
+            <ProtectedRoute>
+              <TenantRateLimits />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/platform-admin/rollout"
+          element={
+            <ProtectedRoute>
+              <RolloutPlan />
+            </ProtectedRoute>
+          }
+        />
+
         <Route path="/profile" element={<Profile />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
