@@ -80,6 +80,10 @@ serve(async (req) => {
       return await createL2FailureTest(supabase, testConfig);
     case "deploy_l2_failure_test":
       return await deployL2FailureTest(supabase, testConfig);
+    case "create_l3_scale_test":
+      return await createL3ScaleTest(supabase, testConfig);
+    case "deploy_l3_scale_test":
+      return await deployL3ScaleTest(supabase, testConfig);
     default:
       return new Response(JSON.stringify({ error: "Unknown action" }), {
         status: 400,
@@ -1312,6 +1316,235 @@ async function deployL2FailureTest(
     console.error("Deploy L2 failure test error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "L2 deployment failed" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// L3: Scale-Safe Run (concurrency) - Create test
+async function createL3ScaleTest(
+  supabase: AnySupabaseClient,
+  config: { blastSize: number }
+) {
+  const timestamp = Date.now();
+  const testTenantId = `qa-l3-scale-tenant-${timestamp}`;
+  const testWorkspaceId = `qa-l3-scale-ws-${timestamp}`;
+
+  try {
+    // Create test tenant
+    const { error: tenantError } = await supabase
+      .from("tenants")
+      .insert({
+        id: testTenantId,
+        name: `L3 Scale Test - ${timestamp}`,
+        slug: `l3-scale-${timestamp}`,
+        status: "active",
+      });
+
+    if (tenantError) throw tenantError;
+
+    // Get a valid owner_id
+    const { data: anyUser } = await supabase
+      .from("platform_admins")
+      .select("user_id")
+      .limit(1)
+      .single();
+
+    // Create workspace
+    const { error: wsError } = await supabase
+      .from("workspaces")
+      .insert({
+        id: testWorkspaceId,
+        name: `L3 Scale Workspace - ${timestamp}`,
+        slug: `l3-ws-${timestamp}`,
+        owner_id: anyUser?.user_id || "00000000-0000-0000-0000-000000000000",
+      });
+
+    if (wsError) throw wsError;
+
+    // Create campaign
+    const { data: campaign, error: campError } = await supabase
+      .from("cmo_campaigns")
+      .insert({
+        tenant_id: testTenantId,
+        workspace_id: testWorkspaceId,
+        campaign_name: `L3 Scale-Safe Run Test - ${timestamp}`,
+        campaign_type: "email",
+        status: "active",
+      })
+      .select()
+      .single();
+
+    if (campError) throw campError;
+
+    // Create campaign_run
+    const { data: run, error: runError } = await supabase
+      .from("campaign_runs")
+      .insert({
+        campaign_id: campaign.id,
+        tenant_id: testTenantId,
+        workspace_id: testWorkspaceId,
+        status: "pending",
+        channel: "email",
+        run_config: {
+          l3_scale_test: true,
+          blast_size: config.blastSize,
+        },
+      })
+      .select()
+      .single();
+
+    if (runError) throw runError;
+
+    // Create leads for the test
+    const leads = [];
+    for (let i = 0; i < config.blastSize; i++) {
+      leads.push({
+        tenant_id: testTenantId,
+        workspace_id: testWorkspaceId,
+        email: `l3-test-${i}@qa-sandbox.local`,
+        first_name: `L3Test`,
+        last_name: `Lead${i}`,
+        source: "qa_l3_scale_test",
+        status: "new",
+      });
+    }
+
+    const { error: leadsError } = await supabase
+      .from("leads")
+      .insert(leads);
+
+    if (leadsError) throw leadsError;
+
+    console.log(`L3 Scale test created: runId=${run.id}, blastSize=${config.blastSize}`);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          tenantId: testTenantId,
+          workspaceId: testWorkspaceId,
+          campaignId: campaign.id,
+          runId: run.id,
+          blastSize: config.blastSize,
+        },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("Create L3 scale test error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "L3 setup failed" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// L3: Scale-Safe Run (concurrency) - Deploy blast
+async function deployL3ScaleTest(
+  supabase: AnySupabaseClient,
+  config: { runId: string; blastSize: number }
+) {
+  try {
+    // Get run details
+    const { data: run, error: runError } = await supabase
+      .from("campaign_runs")
+      .select("*")
+      .eq("id", config.runId)
+      .single();
+
+    if (runError || !run) throw new Error("Run not found");
+
+    // Update run to started
+    await supabase
+      .from("campaign_runs")
+      .update({
+        status: "running",
+        started_at: new Date().toISOString(),
+      })
+      .eq("id", config.runId);
+
+    // Get leads for this tenant
+    const { data: leads } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("tenant_id", run.tenant_id)
+      .eq("workspace_id", run.workspace_id)
+      .eq("source", "qa_l3_scale_test")
+      .limit(config.blastSize);
+
+    // Create outbox entries in bulk - simulating a small blast
+    const outboxEntries = (leads || []).map((lead: { id: string; email: string }, idx: number) => ({
+      tenant_id: run.tenant_id,
+      workspace_id: run.workspace_id,
+      run_id: config.runId,
+      channel: "email",
+      provider: "sandbox",
+      payload: {
+        lead_id: lead.id,
+        subject: `L3 Scale Test ${idx}`,
+        body: `Scale-safe run test email ${idx}`,
+        l3_scale_test: true,
+      },
+      idempotency_key: `${config.runId}:email:l3-scale:${lead.email}`,
+      status: "sent", // Simulate successful sends for L3 test
+      recipient_email: lead.email,
+      provider_message_id: `sandbox-l3-${config.runId}-${idx}`,
+    }));
+
+    const { data: outbox, error: outboxError } = await supabase
+      .from("channel_outbox")
+      .insert(outboxEntries)
+      .select();
+
+    if (outboxError) throw outboxError;
+
+    // Also create job_queue entries to test worker metrics
+    const jobs = (leads || []).slice(0, Math.min(10, leads?.length || 0)).map((lead: { email: string }, idx: number) => ({
+      tenant_id: run.tenant_id,
+      workspace_id: run.workspace_id,
+      job_type: "email",
+      status: "completed", // Mark as completed so they don't pile up
+      payload: {
+        run_id: config.runId,
+        lead_email: lead.email,
+        l3_scale_test: true,
+      },
+      priority: 5,
+      run_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+    }));
+
+    if (jobs.length > 0) {
+      await supabase.from("job_queue").insert(jobs);
+    }
+
+    // Update run to completed
+    await supabase
+      .from("campaign_runs")
+      .update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", config.runId);
+
+    console.log(`L3 Scale test deployed: ${outbox?.length || 0} outbox entries created`);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          runId: config.runId,
+          outboxCreated: outbox?.length || 0,
+          jobsCreated: jobs.length,
+        },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("Deploy L3 scale test error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "L3 deployment failed" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

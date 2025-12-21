@@ -176,6 +176,24 @@ export default function ExecutionCertQA() {
   const [deployingL2Test, setDeployingL2Test] = useState(false);
   const [refreshingL2Status, setRefreshingL2Status] = useState(false);
 
+  // L3 state
+  const [l3BlastSize, setL3BlastSize] = useState<number>(25);
+  const [l3TestResult, setL3TestResult] = useState<{
+    runId?: string;
+    outboxCount?: number;
+    hsMetrics?: {
+      duplicates: number;
+      oldestQueuedAge: number;
+      activeWorkers: number;
+    };
+    l3a_no_duplicates?: boolean;
+    l3b_queue_age_ok?: boolean;
+    l3c_workers_active?: boolean;
+  } | null>(null);
+  const [creatingL3Test, setCreatingL3Test] = useState(false);
+  const [deployingL3Test, setDeployingL3Test] = useState(false);
+  const [refreshingL3Metrics, setRefreshingL3Metrics] = useState(false);
+
   useEffect(() => {
     checkPlatformAdmin();
   }, [user]);
@@ -629,6 +647,112 @@ export default function ExecutionCertQA() {
       toast.error(error instanceof Error ? error.message : 'Failed to refresh L2 status');
     } finally {
       setRefreshingL2Status(false);
+    }
+  };
+
+  // L3 Scale-Safe Run functions
+  const createL3ScaleTest = async () => {
+    setCreatingL3Test(true);
+    try {
+      const result = await callQAFunction('create_l3_scale_test', {
+        blastSize: l3BlastSize,
+      });
+      
+      if (result.success) {
+        setL3TestResult({
+          runId: result.data.runId,
+          outboxCount: 0,
+          l3a_no_duplicates: undefined,
+          l3b_queue_age_ok: undefined,
+          l3c_workers_active: undefined,
+        });
+        toast.success(`L3 Scale test created with ${l3BlastSize} items`);
+      }
+    } catch (error) {
+      console.error('Create L3 scale test error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create L3 test');
+    } finally {
+      setCreatingL3Test(false);
+    }
+  };
+
+  const deployL3ScaleTest = async () => {
+    if (!l3TestResult?.runId) return;
+    
+    setDeployingL3Test(true);
+    try {
+      const result = await callQAFunction('deploy_l3_scale_test', {
+        runId: l3TestResult.runId,
+        blastSize: l3BlastSize,
+      });
+      
+      if (result.success) {
+        toast.success(`Deployed ${result.data.outboxCreated} outbox items - checking HS metrics...`);
+        // Refresh metrics immediately
+        await refreshL3Metrics();
+      }
+    } catch (error) {
+      console.error('Deploy L3 scale test error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to deploy L3 test');
+    } finally {
+      setDeployingL3Test(false);
+    }
+  };
+
+  const refreshL3Metrics = async () => {
+    if (!l3TestResult?.runId) return;
+    
+    setRefreshingL3Metrics(true);
+    try {
+      // Get outbox count for this run
+      const { data: outboxData, error: outboxError } = await supabase
+        .from('channel_outbox')
+        .select('id, idempotency_key')
+        .eq('run_id', l3TestResult.runId);
+      
+      if (outboxError) throw outboxError;
+
+      // Check for duplicates
+      const keys = (outboxData || []).map(r => r.idempotency_key);
+      const uniqueKeys = new Set(keys);
+      const hasDuplicates = keys.length !== uniqueKeys.size;
+
+      // Get HS metrics (same as section 4)
+      const { data: metricsData, error: metricsError } = await supabase.functions.invoke('hs-metrics', {
+        body: { window_minutes: 5 }
+      });
+
+      if (metricsError) throw metricsError;
+
+      const metrics = metricsData?.data;
+      
+      setL3TestResult(prev => prev ? {
+        ...prev,
+        outboxCount: outboxData?.length || 0,
+        hsMetrics: metrics ? {
+          duplicates: metrics.duplicate_groups_last_hour || 0,
+          oldestQueuedAge: metrics.oldest_queued_age_seconds || 0,
+          activeWorkers: (metrics.workers || []).filter((w: { last_tick_at: string }) => {
+            const lastTick = new Date(w.last_tick_at).getTime();
+            const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
+            return lastTick > twoMinutesAgo;
+          }).length,
+        } : undefined,
+        l3a_no_duplicates: !hasDuplicates && (metrics?.duplicate_groups_last_hour || 0) === 0,
+        l3b_queue_age_ok: (metrics?.oldest_queued_age_seconds || 0) < 180,
+        l3c_workers_active: (metrics?.workers || []).filter((w: { last_tick_at: string }) => {
+          const lastTick = new Date(w.last_tick_at).getTime();
+          const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
+          return lastTick > twoMinutesAgo;
+        }).length >= 4,
+      } : null);
+      
+      toast.success('L3 metrics refreshed');
+    } catch (error) {
+      console.error('Refresh L3 metrics error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to refresh L3 metrics');
+    } finally {
+      setRefreshingL3Metrics(false);
     }
   };
 
@@ -1655,12 +1779,166 @@ export default function ExecutionCertQA() {
         </CardContent>
       </Card>
 
-      {/* Section 7: Evidence Export */}
+      {/* Section 7: Gate L3 - Scale-Safe Run */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5" />
+            7. Gate L3: Scale-Safe Run (Concurrency)
+          </CardTitle>
+          <CardDescription>
+            Deploy 10-50 outbox items (small blast) and confirm no duplicates, queue age under SLA, and workers active
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Configuration */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="blastSize">Blast Size (10-50)</Label>
+              <Input
+                id="blastSize"
+                type="number"
+                min={10}
+                max={50}
+                value={l3BlastSize}
+                onChange={(e) => setL3BlastSize(Math.min(50, Math.max(10, parseInt(e.target.value) || 25)))}
+              />
+            </div>
+            <div className="flex items-end">
+              <Button onClick={createL3ScaleTest} disabled={creatingL3Test} className="w-full">
+                {creatingL3Test ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+                Create Scale Test
+              </Button>
+            </div>
+            <div className="flex items-end">
+              <Button 
+                onClick={deployL3ScaleTest} 
+                disabled={deployingL3Test || !l3TestResult?.runId} 
+                variant="default"
+                className="w-full"
+              >
+                {deployingL3Test ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Rocket className="h-4 w-4 mr-2" />}
+                Deploy Blast ({l3BlastSize} items)
+              </Button>
+            </div>
+          </div>
+
+          {l3TestResult && (
+            <>
+              <Separator />
+              
+              {/* Status Row */}
+              <div className="flex items-center gap-4">
+                <Button 
+                  onClick={refreshL3Metrics} 
+                  disabled={refreshingL3Metrics} 
+                  variant="outline" 
+                  size="sm"
+                >
+                  {refreshingL3Metrics ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                  Refresh HS Metrics
+                </Button>
+                {l3TestResult.outboxCount !== undefined && (
+                  <Badge variant="secondary">
+                    {l3TestResult.outboxCount} outbox items
+                  </Badge>
+                )}
+              </div>
+
+              {/* Pass Criteria Badges */}
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="p-4 rounded-lg border bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    {l3TestResult.l3a_no_duplicates === undefined ? (
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                    ) : l3TestResult.l3a_no_duplicates ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-red-600" />
+                    )}
+                    <span className="font-medium text-sm">L3a: No Duplicates</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {l3TestResult.hsMetrics ? `${l3TestResult.hsMetrics.duplicates} duplicate groups` : 'Pending...'}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    {l3TestResult.l3b_queue_age_ok === undefined ? (
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                    ) : l3TestResult.l3b_queue_age_ok ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-red-600" />
+                    )}
+                    <span className="font-medium text-sm">L3b: Queue Age &lt; 180s</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {l3TestResult.hsMetrics ? `${l3TestResult.hsMetrics.oldestQueuedAge}s oldest` : 'Pending...'}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    {l3TestResult.l3c_workers_active === undefined ? (
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                    ) : l3TestResult.l3c_workers_active ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-red-600" />
+                    )}
+                    <span className="font-medium text-sm">L3c: ≥4 Active Workers</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {l3TestResult.hsMetrics ? `${l3TestResult.hsMetrics.activeWorkers} active` : 'Pending...'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Overall L3 PASS/FAIL */}
+              {l3TestResult.l3a_no_duplicates !== undefined && (
+                <div className={`p-4 rounded-lg border ${
+                  l3TestResult.l3a_no_duplicates && l3TestResult.l3b_queue_age_ok && l3TestResult.l3c_workers_active
+                    ? 'border-green-500 bg-green-500/10' 
+                    : l3TestResult.l3a_no_duplicates && l3TestResult.l3b_queue_age_ok
+                    ? 'border-yellow-500 bg-yellow-500/10'
+                    : 'border-red-500 bg-red-500/10'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {l3TestResult.l3a_no_duplicates && l3TestResult.l3b_queue_age_ok && l3TestResult.l3c_workers_active ? (
+                      <>
+                        <CheckCircle2 className="h-5 w-5 text-green-600" />
+                        <span className="font-medium">Gate L3: PASS</span>
+                        <span className="text-sm text-muted-foreground">- Scale-safe run verified</span>
+                      </>
+                    ) : l3TestResult.l3a_no_duplicates && l3TestResult.l3b_queue_age_ok ? (
+                      <>
+                        <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                        <span className="font-medium">Gate L3: PARTIAL</span>
+                        <span className="text-sm text-muted-foreground">- No duplicates, but need more active workers</span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-5 w-5 text-red-600" />
+                        <span className="font-medium">Gate L3: FAIL</span>
+                        <span className="text-sm text-muted-foreground">- Scale-safe run criteria not met</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Section 8: Evidence Export */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
-            7. Evidence Export
+            8. Evidence Export
           </CardTitle>
           <CardDescription>
             Export JSON report with run IDs, job IDs, outbox entries, statuses, and timings
