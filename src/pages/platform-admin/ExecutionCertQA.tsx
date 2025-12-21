@@ -856,13 +856,13 @@ export default function ExecutionCertQA() {
       toast.success('L3 metrics refreshed');
     } catch (error) {
       console.error('Refresh L3 metrics error:', error);
-      const msg =
+      const raw =
         error instanceof Error
           ? error.message
           : typeof error === 'string'
             ? error
-            : 'Failed to refresh L3 metrics';
-      toast.error(msg);
+            : '';
+      toast.error(raw ? `Unable to refresh L3 metrics: ${raw}` : 'Unable to refresh L3 metrics');
     } finally {
       setRefreshingL3Metrics(false);
     }
