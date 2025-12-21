@@ -1050,6 +1050,10 @@ export default function ExecutionCertQA() {
       // Use workspace ID as tenant if not found
       if (!tenantId) tenantId = workspaceData.id;
       
+      if (!session?.access_token) {
+        throw new Error('Not authenticated (missing session). Please log in again.');
+      }
+
       const response = await supabase.functions.invoke('infrastructure-test-runner', {
         body: {
           tenant_id: tenantId,
@@ -1058,9 +1062,16 @@ export default function ExecutionCertQA() {
           tests: ['email_e2e', 'voice_e2e', 'failure_transparency', 'scale_safety'],
           timeout_ms: mode === 'live' ? 90000 : 30000,
         },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       });
-      
-      if (response.error) throw new Error(response.error.message);
+
+      if (response.error) {
+        const errAny = response.error as any;
+        const status = errAny?.status ? ` (status ${errAny.status})` : '';
+        throw new Error(`${response.error.message}${status}`);
+      }
       
       setItrResult(response.data);
       
