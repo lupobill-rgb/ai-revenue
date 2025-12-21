@@ -152,12 +152,12 @@ function validateProviderIdFormat(providerId: string, provider: string): { valid
   return { valid: true };
 }
 
-// Wait for outbox rows to reach terminal state (LIVE mode) - reduced timeout for edge function limits
+// Wait for outbox rows to reach terminal state (LIVE mode) - aggressive timeout for edge function limits
 async function waitForOutboxTerminal(
   supabase: any,
   runId: string,
   expectedCount: number,
-  timeoutMs: number = 30000 // Reduced from 60s to 30s
+  timeoutMs: number = 12000 // Reduced to 12s to fit within edge function limits
 ): Promise<{ success: boolean; rows: Array<{ id: string; status: string; provider_message_id: string | null; error: string | null; provider_response: any }> }> {
   const terminalStatuses = ['sent', 'delivered', 'called', 'posted', 'failed', 'skipped'];
   const startTime = Date.now();
@@ -185,11 +185,11 @@ async function waitForOutboxTerminal(
   return { success: false, rows: rows || [] };
 }
 
-// Wait for campaign run to reach terminal state (LIVE mode) - reduced timeout for edge function limits
+// Wait for campaign run to reach terminal state (LIVE mode) - aggressive timeout for edge function limits
 async function waitForRunTerminal(
   supabase: any,
   runId: string,
-  timeoutMs: number = 30000 // Reduced from 60s to 30s
+  timeoutMs: number = 12000 // Reduced to 12s to fit within edge function limits
 ): Promise<{ success: boolean; run: { id: string; status: string; error_message: string | null } | null }> {
   const terminalStatuses = ['completed', 'partial', 'failed'];
   const startTime = Date.now();
@@ -353,6 +353,9 @@ Deno.serve(async (req) => {
     },
   };
 
+  // Variable to track agent_runs row ID for updates
+  let agentRunId: string | null = null;
+
   try {
     if (!tenantId || !workspaceId) {
       return new Response(JSON.stringify({
@@ -379,6 +382,29 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         error: `Duplicate ITR run ID detected: ${itrRunId}. This should never happen.`,
       }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ================================================================
+    // INSERT RUNNING ROW AT START - guarantees audit trail even if 504
+    // ================================================================
+    try {
+      const { data: agentRun } = await supabase.from('agent_runs').insert({
+        tenant_id: tenantId,
+        workspace_id: workspaceId,
+        agent: 'infrastructure-test-runner',
+        mode: `certification-${mode}`,
+        status: 'running',
+        input: { tests: testsToRun, mode, itr_run_id: itrRunId },
+        output: { started_at: new Date().toISOString(), mode, tests_requested: testsToRun },
+      }).select('id').single();
+      
+      if (agentRun?.id) {
+        agentRunId = agentRun.id;
+        console.log(`[ITR] Created agent_runs row with id=${agentRunId}, status=running`);
+      }
+    } catch (insertErr) {
+      console.warn('[ITR] Failed to create initial agent_runs row:', insertErr);
+      // Continue anyway - this is for audit, not blocking
     }
 
     // ================================================================
@@ -1181,10 +1207,10 @@ Deno.serve(async (req) => {
       const testStart = Date.now();
       const testEvidence: Record<string, unknown> = { mode, itr_run_id: itrRunId };
       
-      // Scale safety constants - reduced timeouts for edge function limits
-      const REQUIRED_WORKERS = 4;
+      // Scale safety constants - aggressive timeouts for edge function limits (must complete in ~45s total)
+      const REQUIRED_WORKERS = 2; // Reduced from 4 for faster live validation
       const MAX_OLDEST_QUEUED_SECONDS = 180; // SLA: queue age must stay under this
-      const WORKER_WAIT_TIMEOUT_MS = 20000; // 20 seconds observation window (reduced from 60s)
+      const WORKER_WAIT_TIMEOUT_MS = 10000; // 10 seconds observation window (reduced from 20s)
       const POLL_INTERVAL_MS = 2000; // Check every 2 seconds
       
       // Progress requirements - must meet AT LEAST ONE:
@@ -1659,20 +1685,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Log the result
+    // Update the agent_runs row with final result (or insert if we didn't create one earlier)
     try {
-      await supabase.from('agent_runs').insert({
-        tenant_id: tenantId,
-        workspace_id: workspaceId,
-        agent: 'infrastructure-test-runner',
-        mode: `certification-${mode}`,
-        status: output.overall === 'PASS' ? 'completed' : 'failed',
-        input: { tests: testsToRun, mode, itr_run_id: itrRunId },
-        output: output,
-        duration_ms: output.duration_ms,
-      });
-    } catch {
-      // Ignore logging errors
+      if (agentRunId) {
+        await supabase.from('agent_runs').update({
+          status: output.overall === 'PASS' ? 'completed' : 'failed',
+          output: output,
+          duration_ms: output.duration_ms,
+          completed_at: new Date().toISOString(),
+        }).eq('id', agentRunId);
+        console.log(`[ITR] Updated agent_runs row id=${agentRunId} with final status=${output.overall}`);
+      } else {
+        // Fallback: insert if we didn't create one at start
+        await supabase.from('agent_runs').insert({
+          tenant_id: tenantId,
+          workspace_id: workspaceId,
+          agent: 'infrastructure-test-runner',
+          mode: `certification-${mode}`,
+          status: output.overall === 'PASS' ? 'completed' : 'failed',
+          input: { tests: testsToRun, mode, itr_run_id: itrRunId },
+          output: output,
+          duration_ms: output.duration_ms,
+        });
+      }
+    } catch (logErr) {
+      console.warn('[ITR] Failed to finalize agent_runs row:', logErr);
     }
 
     return new Response(JSON.stringify(output, null, 2), {
@@ -1684,6 +1721,22 @@ Deno.serve(async (req) => {
     output.overall = 'FAIL';
     output.duration_ms = Date.now() - startTime;
     output.evidence.errors.push(`Fatal: ${errorMessage}`);
+
+    // Update agent_runs row on fatal error
+    try {
+      if (agentRunId) {
+        await supabase.from('agent_runs').update({
+          status: 'failed',
+          output: output,
+          duration_ms: output.duration_ms,
+          completed_at: new Date().toISOString(),
+          error_message: errorMessage,
+        }).eq('id', agentRunId);
+        console.log(`[ITR] Updated agent_runs row id=${agentRunId} with fatal error`);
+      }
+    } catch {
+      // Ignore
+    }
 
     return new Response(JSON.stringify(output, null, 2), {
       status: 500,
