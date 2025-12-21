@@ -817,7 +817,11 @@ export default function ExecutionCertQA() {
 
       // Get HS metrics (same as section 4)
       const { data: metricsData, error: metricsError } = await supabase.functions.invoke('hs-metrics', {
-        body: { window_minutes: 5 }
+        body: { window_minutes: 5 },
+        // Be explicit: some environments don't auto-attach the session token to Functions calls
+        headers: session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : undefined,
       });
 
       if (metricsError) throw metricsError;
@@ -848,7 +852,13 @@ export default function ExecutionCertQA() {
       toast.success('L3 metrics refreshed');
     } catch (error) {
       console.error('Refresh L3 metrics error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to refresh L3 metrics');
+      const msg =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Failed to refresh L3 metrics';
+      toast.error(msg);
     } finally {
       setRefreshingL3Metrics(false);
     }
