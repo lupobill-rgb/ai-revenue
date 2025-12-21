@@ -1018,7 +1018,9 @@ Deno.serve(async (req) => {
         testEvidence.run_id = run.id;
         output.evidence.campaign_run_ids.push(run.id);
 
-        // Create outbox entry that will fail
+        // Create outbox entry directly as FAILED (not queued then update)
+        // This ensures atomicity - no intermediate state that could cause issues
+        const errorMessage = 'ITR forced failure: simulated provider rejection (test.invalid is not deliverable)';
         const { data: outbox, error: outboxErr } = await supabase
           .from('channel_outbox')
           .insert({
@@ -1029,55 +1031,41 @@ Deno.serve(async (req) => {
             provider: 'resend',
             recipient_email: 'fail-test@test.invalid',
             idempotency_key: `itr-fail-${itrRunId}`,
-            status: 'queued',
+            status: 'failed',              // <-- IMPORTANT: insert as terminal failed state
+            error: errorMessage,           // <-- readable error required
             payload: { 
               subject: 'Fail Test',
               itr_run_id: itrRunId
             },
           })
-          .select()
+          .select('id, status, error')
           .single();
 
         if (outboxErr || !outbox) {
+          // If outbox insert fails, immediately fail the run (don't leave queued forever)
+          await supabase
+            .from('campaign_runs')
+            .update({
+              status: 'failed',
+              error_message: `L2 outbox insert failed: ${outboxErr?.message || 'no row returned'}`,
+              completed_at: new Date().toISOString(),
+            })
+            .eq('id', run.id);
           throw new Error(`Failure test outbox creation failed: ${outboxErr?.message || 'no outbox returned'}`);
         }
 
-        // Simulate failure with readable error (both modes do this directly for failure test)
-        const errorMessage = 'ITR forced failure: simulated provider rejection (test.invalid is not deliverable)';
-        const { error: updateErr } = await supabase
-          .from('channel_outbox')
-          .update({ 
-            status: 'failed', 
-            error: errorMessage,
-          })
-          .eq('id', outbox.id);
-
-        if (updateErr) {
-          throw new Error(`Failure test outbox update failed: ${updateErr.message}`);
+        // Verify the outbox row was created correctly (we already have it from insert)
+        if (outbox.status !== 'failed') {
+          throw new Error(`Failure test did not produce failed row. status=${outbox.status}, expected=failed`);
         }
 
-        // CRITICAL: Verify the exact outbox row we created by ID (not broad filters)
-        const { data: verifiedRow, error: verifyErr } = await supabase
-          .from('channel_outbox')
-          .select('id, status, error')
-          .eq('id', outbox.id)
-          .single();
-
-        if (verifyErr || !verifiedRow) {
-          throw new Error(`Failure test verification failed: ${verifyErr?.message || 'row not found'}`);
+        if (!outbox.error || outbox.error.trim().length < 10) {
+          throw new Error(`Failure test produced failed row but error is not readable: "${outbox.error}"`);
         }
 
-        if (verifiedRow.status !== 'failed') {
-          throw new Error(`Failure test did not produce failed row. status=${verifiedRow.status}, expected=failed`);
-        }
-
-        if (!verifiedRow.error || verifiedRow.error.trim().length < 10) {
-          throw new Error(`Failure test produced failed row but error is not readable: "${verifiedRow.error}"`);
-        }
-
-        testEvidence.verified_outbox_id = verifiedRow.id;
-        testEvidence.verified_outbox_status = verifiedRow.status;
-        testEvidence.verified_outbox_error = verifiedRow.error;
+        testEvidence.verified_outbox_id = outbox.id;
+        testEvidence.verified_outbox_status = outbox.status;
+        testEvidence.verified_outbox_error = outbox.error;
 
         // Mark run as failed
         await supabase
