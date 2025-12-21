@@ -6535,6 +6535,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      clear_load_test_data: { Args: never; Returns: Json }
       complete_campaign_run: { Args: { p_run_id: string }; Returns: Json }
       complete_job: {
         Args: { p_error?: string; p_job_id: string; p_success: boolean }
@@ -6592,6 +6593,7 @@ export type Database = {
         Returns: boolean
       }
       gc_rate_limit_counters: { Args: never; Returns: undefined }
+      get_load_test_metrics: { Args: never; Returns: Json }
       get_tenant_metrics_mode: {
         Args: { p_tenant_id: string }
         Returns: string
@@ -6717,6 +6719,10 @@ export type Database = {
       retry_job: { Args: { p_job_id: string }; Returns: boolean }
       run_job_queue_cron: { Args: never; Returns: undefined }
       run_job_queue_parallel: { Args: never; Returns: undefined }
+      seed_load_test_jobs: {
+        Args: { p_tenant_count?: number; p_total_jobs?: number }
+        Returns: Json
+      }
       sequence_step_workspace_access: {
         Args: { step_sequence_id: string }
         Returns: boolean
