@@ -29,6 +29,21 @@ serve(async (req) => {
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase: AnySupabaseClient = createClient(supabaseUrl, supabaseServiceKey);
 
+  // Some RPCs rely on auth.uid() / JWT context. Create an authed client that
+  // forwards the caller's Authorization header.
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const supabaseAuthed: AnySupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: {
+        authorization: req.headers.get("authorization") ?? "",
+      },
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
   // Verify platform admin
   const authHeader = req.headers.get("authorization");
   if (!authHeader) {
@@ -103,7 +118,7 @@ serve(async (req) => {
     case "get_l3_outbox":
       return await getL3Outbox(supabase, testConfig);
     case "get_hs_metrics":
-      return await getHsMetrics(supabase, testConfig);
+      return await getHsMetrics(supabaseAuthed, testConfig);
     default:
       return new Response(JSON.stringify({ error: "Unknown action" }), {
         status: 400,
@@ -1588,12 +1603,20 @@ async function deployL3ScaleTest(
       provider_message_id: `sandbox-l3-${config.runId}-${idx}`,
     }));
 
-    const { data: outbox, error: outboxError } = await supabase
+    const { error: outboxError } = await supabase
       .from("channel_outbox")
-      .insert(outboxEntries)
-      .select();
+      .upsert(outboxEntries, {
+        onConflict: "tenant_id,workspace_id,idempotency_key",
+        ignoreDuplicates: true,
+      });
 
     if (outboxError) throw outboxError;
+
+    // Read back the actual count for this run
+    const { count: outboxCount } = await supabase
+      .from("channel_outbox")
+      .select("id", { count: "exact", head: true })
+      .eq("run_id", config.runId);
 
     // Also create job_queue entries to test worker metrics
     const jobs = (leads || []).slice(0, Math.min(10, leads?.length || 0)).map((lead: { email: string }, idx: number) => ({
@@ -1624,14 +1647,14 @@ async function deployL3ScaleTest(
       })
       .eq("id", config.runId);
 
-    console.log(`L3 Scale test deployed: ${outbox?.length || 0} outbox entries created`);
+    console.log(`L3 Scale test deployed: ${outboxCount || 0} outbox entries exist`);
 
     return new Response(
       JSON.stringify({
         success: true,
         data: {
           runId: config.runId,
-          outboxCreated: outbox?.length || 0,
+          outboxCreated: outboxCount || 0,
           jobsCreated: jobs.length,
         },
       }),
