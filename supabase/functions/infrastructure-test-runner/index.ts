@@ -39,6 +39,8 @@ interface ITROutput {
   timestamp: string;
   duration_ms: number;
   disclaimer: string;
+  certification_hash?: string;
+  certification_version?: string;
   tests: {
     email_e2e: TestResult;
     voice_e2e: TestResult;
@@ -1009,6 +1011,54 @@ Deno.serve(async (req) => {
     
     // Only certify if LIVE mode AND all tests pass
     output.certified = mode === 'live' && output.overall === 'PASS';
+
+    // CERTIFICATION LATCH: Write durable certification to workspace on live PASS
+    if (output.certified) {
+      const CERTIFICATION_VERSION = '1.0.0';
+      
+      // Create certification hash from evidence
+      const certificationPayload = JSON.stringify({
+        tests: Object.fromEntries(
+          Object.entries(output.tests).map(([k, v]) => [k, v.status])
+        ),
+        evidence: {
+          campaign_run_ids: output.evidence.campaign_run_ids,
+          outbox_rows: output.evidence.outbox_rows,
+          provider_ids: output.evidence.provider_ids.length,
+          worker_ids: output.evidence.worker_ids,
+        },
+        timestamp: new Date().toISOString(),
+        version: CERTIFICATION_VERSION,
+      });
+      
+      // Simple hash for integrity verification (not cryptographic, just fingerprint)
+      let hash = 0;
+      for (let i = 0; i < certificationPayload.length; i++) {
+        const char = certificationPayload.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+      const certificationHash = `itr-${Math.abs(hash).toString(16)}-${Date.now().toString(36)}`;
+      
+      // Write certification latch to workspace
+      const { error: latchError } = await supabase
+        .from('workspaces')
+        .update({
+          platform_certified_at: new Date().toISOString(),
+          platform_certification_hash: certificationHash,
+          platform_certification_version: CERTIFICATION_VERSION,
+        })
+        .eq('id', workspaceId);
+
+      if (latchError) {
+        console.error('[ITR] Failed to write certification latch:', latchError);
+        output.evidence.errors.push(`Certification latch write failed: ${latchError.message}`);
+      } else {
+        console.log(`[ITR] Certification latch written: ${certificationHash}`);
+        output.certification_hash = certificationHash;
+        output.certification_version = CERTIFICATION_VERSION;
+      }
+    }
 
     // Log the result
     try {

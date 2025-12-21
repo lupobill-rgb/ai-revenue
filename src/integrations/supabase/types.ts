@@ -6416,6 +6416,9 @@ export type Database = {
           is_default: boolean | null
           name: string
           owner_id: string
+          platform_certification_hash: string | null
+          platform_certification_version: string | null
+          platform_certified_at: string | null
           public_form_password_hash: string | null
           settings: Json | null
           slug: string
@@ -6427,6 +6430,9 @@ export type Database = {
           is_default?: boolean | null
           name: string
           owner_id: string
+          platform_certification_hash?: string | null
+          platform_certification_version?: string | null
+          platform_certified_at?: string | null
           public_form_password_hash?: string | null
           settings?: Json | null
           slug: string
@@ -6438,6 +6444,9 @@ export type Database = {
           is_default?: boolean | null
           name?: string
           owner_id?: string
+          platform_certification_hash?: string | null
+          platform_certification_version?: string | null
+          platform_certified_at?: string | null
           public_form_password_hash?: string | null
           settings?: Json | null
           slug?: string
@@ -6659,6 +6668,10 @@ export type Database = {
           tenant_name: string
         }[]
       }
+      get_workspace_certification: {
+        Args: { _workspace_id: string }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -6671,6 +6684,10 @@ export type Database = {
         Returns: undefined
       }
       is_platform_admin: { Args: never; Returns: boolean }
+      is_workspace_certified: {
+        Args: { _workspace_id: string }
+        Returns: boolean
+      }
       is_workspace_member: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
