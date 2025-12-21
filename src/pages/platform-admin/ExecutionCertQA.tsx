@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { 
   Shield, CheckCircle2, XCircle, Play, Download, Loader2, 
@@ -141,10 +142,13 @@ export default function ExecutionCertQA() {
   
   // Launch Validation
   const [launchChannel, setLaunchChannel] = useState<'email' | 'voice'>('email');
+  const [liveMode, setLiveMode] = useState(false); // Live mode uses real providers
   const [creatingLaunchTest, setCreatingLaunchTest] = useState(false);
   const [deployingLaunchTest, setDeployingLaunchTest] = useState(false);
   const [launchResult, setLaunchResult] = useState<LaunchValidationResult | null>(null);
   const [refreshingLaunchStatus, setRefreshingLaunchStatus] = useState(false);
+  const [providerStatus, setProviderStatus] = useState<{ connected: boolean; provider: string | null } | null>(null);
+  const [checkingProvider, setCheckingProvider] = useState(false);
 
   useEffect(() => {
     checkPlatformAdmin();
@@ -333,12 +337,40 @@ export default function ExecutionCertQA() {
   };
 
   // Launch Validation Functions
+  const checkProviderStatus = async () => {
+    setCheckingProvider(true);
+    try {
+      const result = await callQAFunction('check_provider_status', {
+        channel: launchChannel,
+      });
+      
+      if (result.success) {
+        setProviderStatus(result.data);
+      }
+    } catch (error) {
+      console.error('Check provider status error:', error);
+      setProviderStatus({ connected: false, provider: null });
+    } finally {
+      setCheckingProvider(false);
+    }
+  };
+
+  // Check provider when channel or live mode changes
+  useEffect(() => {
+    if (liveMode) {
+      checkProviderStatus();
+    } else {
+      setProviderStatus(null);
+    }
+  }, [launchChannel, liveMode]);
+
   const createLaunchTestCampaign = async () => {
     setCreatingLaunchTest(true);
     try {
       const result = await callQAFunction('create_launch_test_campaign', {
         channel: launchChannel,
         leadCount: 3,
+        liveMode,
       });
       
       if (result.success) {
@@ -356,7 +388,7 @@ export default function ExecutionCertQA() {
             L3_no_duplicates: true,
           },
         });
-        toast.success(`Test campaign created with 3 leads for ${launchChannel}`);
+        toast.success(`Test campaign created with 3 leads for ${launchChannel}${liveMode ? ' (LIVE MODE)' : ' (Sandbox)'}`);
       } else {
         throw new Error(result.error || 'Failed to create test campaign');
       }
@@ -376,14 +408,15 @@ export default function ExecutionCertQA() {
       const result = await callQAFunction('deploy_launch_test', {
         campaignId: launchResult.campaignId,
         runId: launchResult.runId,
+        liveMode,
       });
       
       if (result.success) {
         setLaunchResult(prev => prev ? { ...prev, status: 'running' } : null);
-        toast.success('Campaign deployed - monitoring...');
+        toast.success(liveMode ? 'LIVE deployment started - real provider calls in progress...' : 'Sandbox deployment - simulated provider calls...');
         
-        // Start polling for status
-        setTimeout(() => refreshLaunchStatus(), 3000);
+        // Start polling for status (longer interval for live mode)
+        setTimeout(() => refreshLaunchStatus(), liveMode ? 5000 : 2000);
       } else {
         throw new Error(result.error || 'Deployment failed');
       }
@@ -842,6 +875,47 @@ export default function ExecutionCertQA() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Live Mode Toggle */}
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="live-mode" className="text-base font-medium">Live Mode</Label>
+                {liveMode && (
+                  <Badge variant="destructive" className="text-xs">REAL PROVIDERS</Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {liveMode 
+                  ? 'Uses real provider APIs (Resend/VAPI) - actual emails/calls will be sent'
+                  : 'Sandbox mode - simulates provider responses without real API calls'}
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              {liveMode && providerStatus && (
+                <div className="flex items-center gap-2 text-sm">
+                  {checkingProvider ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : providerStatus.connected ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <span className="text-green-600">{providerStatus.provider} connected</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-4 w-4 text-red-600" />
+                      <span className="text-red-600">No provider configured</span>
+                    </>
+                  )}
+                </div>
+              )}
+              <Switch
+                id="live-mode"
+                checked={liveMode}
+                onCheckedChange={setLiveMode}
+              />
+            </div>
+          </div>
+
           {/* Setup */}
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
@@ -869,8 +943,9 @@ export default function ExecutionCertQA() {
             <div className="flex items-end">
               <Button 
                 onClick={createLaunchTestCampaign} 
-                disabled={creatingLaunchTest}
+                disabled={creatingLaunchTest || (liveMode && providerStatus && !providerStatus.connected)}
                 className="w-full"
+                variant={liveMode ? 'destructive' : 'default'}
               >
                 {creatingLaunchTest ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
                 Create 3-Lead Test
@@ -879,12 +954,12 @@ export default function ExecutionCertQA() {
             <div className="flex items-end">
               <Button 
                 onClick={deployLaunchTest} 
-                disabled={!launchResult || deployingLaunchTest || launchResult.status !== 'pending'}
-                variant="default"
+                disabled={!launchResult || deployingLaunchTest || launchResult.status !== 'pending' || (liveMode && providerStatus && !providerStatus.connected)}
+                variant={liveMode ? 'destructive' : 'default'}
                 className="w-full"
               >
                 {deployingLaunchTest ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Rocket className="h-4 w-4 mr-2" />}
-                Deploy Now
+                {liveMode ? 'Deploy LIVE' : 'Deploy Now'}
               </Button>
             </div>
           </div>
