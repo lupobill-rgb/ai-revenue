@@ -97,8 +97,9 @@ async function setupTestCampaign(
   config: { itemCount: number; channel: string }
 ) {
   const timestamp = Date.now();
-  const testTenantId = `qa-test-tenant-${timestamp}`;
-  const testWorkspaceId = `qa-test-workspace-${timestamp}`;
+  // Generate valid UUIDs (tenants.id and workspaces.id are UUID type)
+  const testTenantId = crypto.randomUUID();
+  const testWorkspaceId = crypto.randomUUID();
 
   try {
     // Create test tenant
@@ -1105,8 +1106,9 @@ async function createL2FailureTest(
   config: { channel: string; failureType: string }
 ) {
   const timestamp = Date.now();
-  const testTenantId = `qa-l2-tenant-${timestamp}`;
-  const testWorkspaceId = `qa-l2-workspace-${timestamp}`;
+  // Generate valid UUIDs (tenants.id and workspaces.id are UUID type)
+  const testTenantId = crypto.randomUUID();
+  const testWorkspaceId = crypto.randomUUID();
 
   try {
     console.log(`Creating L2 failure test: channel=${config.channel}, failureType=${config.failureType}`);
@@ -1358,8 +1360,9 @@ async function createL3ScaleTest(
   config: { blastSize: number }
 ) {
   const timestamp = Date.now();
-  const testTenantId = `qa-l3-scale-tenant-${timestamp}`;
-  const testWorkspaceId = `qa-l3-scale-ws-${timestamp}`;
+  // Generate valid UUIDs for tenant and workspace (tenants.id is UUID type)
+  const testTenantId = crypto.randomUUID();
+  const testWorkspaceId = crypto.randomUUID();
 
   try {
     // Create test tenant
