@@ -6465,6 +6465,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      complete_campaign_run: { Args: { p_run_id: string }; Returns: Json }
       complete_job: {
         Args: { p_error?: string; p_job_id: string; p_success: boolean }
         Returns: undefined
@@ -6674,6 +6675,10 @@ export type Database = {
       user_belongs_to_tenant: { Args: { _tenant_id: string }; Returns: boolean }
       user_has_workspace_access: {
         Args: { _workspace_id: string }
+        Returns: boolean
+      }
+      validate_campaign_completion: {
+        Args: { p_run_id: string }
         Returns: boolean
       }
       validate_campaign_integrations: {
