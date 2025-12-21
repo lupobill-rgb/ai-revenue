@@ -100,6 +100,10 @@ serve(async (req) => {
       return await createL3ScaleTest(supabase, testConfig);
     case "deploy_l3_scale_test":
       return await deployL3ScaleTest(supabase, testConfig);
+    case "get_l3_outbox":
+      return await getL3Outbox(supabase, testConfig);
+    case "get_hs_metrics":
+      return await getHsMetrics(supabase, testConfig);
     default:
       return new Response(JSON.stringify({ error: "Unknown action" }), {
         status: 400,
@@ -1607,6 +1611,70 @@ async function deployL3ScaleTest(
     console.error("Deploy L3 scale test error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "L3 deployment failed" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// Get L3 outbox rows for a specific run (bypasses client-side RLS issues)
+async function getL3Outbox(
+  supabase: AnySupabaseClient,
+  config: { runId: string }
+) {
+  try {
+    const { data: outboxRows, error } = await supabase
+      .from("channel_outbox")
+      .select("id, idempotency_key, status, provider_message_id, error, created_at")
+      .eq("run_id", config.runId);
+
+    if (error) throw error;
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: { outboxRows: outboxRows || [] },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("Get L3 outbox error:", error);
+    return new Response(
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : "Failed to fetch outbox" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// Get horizontal scaling metrics via RPC (bypasses client-side auth issues)
+async function getHsMetrics(
+  supabase: AnySupabaseClient,
+  config: { windowMinutes?: number }
+) {
+  try {
+    const windowMinutes = config?.windowMinutes || 5;
+    
+    const { data, error } = await supabase.rpc("get_horizontal_scaling_metrics", {
+      p_window_minutes: windowMinutes,
+    });
+
+    if (error) throw error;
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: data || {
+          workers: [],
+          queue_stats: { queued: 0, locked: 0, completed: 0, failed: 0 },
+          oldest_queued_age_seconds: 0,
+          duplicate_groups_last_hour: 0,
+        },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("Get HS metrics error:", error);
+    return new Response(
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : "Failed to fetch HS metrics" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

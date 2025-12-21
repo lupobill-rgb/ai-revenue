@@ -798,39 +798,43 @@ export default function ExecutionCertQA() {
   };
 
   const refreshL3Metrics = async () => {
-    if (!l3TestResult?.runId) return;
+    if (!l3TestResult?.runId) {
+      toast.error('No L3 test run ID available - create a test first');
+      return;
+    }
     
     setRefreshingL3Metrics(true);
     try {
-      // Get outbox count for this run
-      const { data: outboxData, error: outboxError } = await supabase
-        .from('channel_outbox')
-        .select('id, idempotency_key')
-        .eq('run_id', l3TestResult.runId);
+      // Get outbox count for this run via QA edge function (bypasses RLS)
+      const outboxResult = await callQAFunction('get_l3_outbox', {
+        runId: l3TestResult.runId,
+      });
       
-      if (outboxError) throw outboxError;
+      if (!outboxResult.success) {
+        throw new Error(outboxResult.error || 'Failed to fetch outbox data');
+      }
+      
+      const outboxData = outboxResult.data?.outboxRows || [];
 
       // Check for duplicates
-      const keys = (outboxData || []).map(r => r.idempotency_key);
+      const keys = outboxData.map((r: { idempotency_key: string }) => r.idempotency_key);
       const uniqueKeys = new Set(keys);
       const hasDuplicates = keys.length !== uniqueKeys.size;
 
-      // Get HS metrics (same as section 4)
-      const { data: metricsData, error: metricsError } = await supabase.functions.invoke('hs-metrics', {
-        body: { window_minutes: 5 },
-        // Be explicit: some environments don't auto-attach the session token to Functions calls
-        headers: session?.access_token
-          ? { Authorization: `Bearer ${session.access_token}` }
-          : undefined,
+      // Get HS metrics via QA edge function (bypasses RLS)
+      const metricsResult = await callQAFunction('get_hs_metrics', {
+        windowMinutes: 5,
       });
 
-      if (metricsError) throw metricsError;
+      if (!metricsResult.success) {
+        throw new Error(metricsResult.error || 'Failed to fetch HS metrics');
+      }
 
-      const metrics = metricsData?.data;
+      const metrics = metricsResult.data;
       
       setL3TestResult(prev => prev ? {
         ...prev,
-        outboxCount: outboxData?.length || 0,
+        outboxCount: outboxData.length || 0,
         hsMetrics: metrics ? {
           duplicates: metrics.duplicate_groups_last_hour || 0,
           oldestQueuedAge: metrics.oldest_queued_age_seconds || 0,
