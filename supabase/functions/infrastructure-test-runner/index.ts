@@ -1062,6 +1062,7 @@ Deno.serve(async (req) => {
 
     // ================================================================
     // TEST 4: Scale Safety
+    // Enhanced with T0/T+60s snapshots, explicit SLA assertion, and progress requirements
     // ================================================================
     if (testsToRun.includes('scale_safety')) {
       const testStart = Date.now();
@@ -1069,10 +1070,41 @@ Deno.serve(async (req) => {
       
       // Scale safety constants
       const REQUIRED_WORKERS = 4;
-      const MAX_OLDEST_QUEUED_SECONDS = 180;
-      const WORKER_WAIT_TIMEOUT_MS = 60000; // 60 seconds to wait for workers
+      const MAX_OLDEST_QUEUED_SECONDS = 180; // SLA: queue age must stay under this
+      const WORKER_WAIT_TIMEOUT_MS = 60000; // 60 seconds observation window
       const POLL_INTERVAL_MS = 2000; // Check every 2 seconds
-      const MIN_JOBS_TRANSITIONED = 10; // SAFETY CHECK 3: Require actual throughput
+      
+      // Progress requirements - must meet AT LEAST ONE:
+      const MIN_TERMINAL_COUNT = 10; // Option A: >=10 jobs reached terminal (completed+failed)
+      const MIN_DEQUEUE_COUNT = 10;  // Option B: queue depth decreased by >=10
+      
+      // T0 snapshot interface
+      interface QueueSnapshot {
+        timestamp: string;
+        queued_count: number;
+        locked_count: number;
+        completed_count: number;
+        failed_count: number;
+        total_count: number;
+      }
+      
+      // Helper to capture queue state
+      async function captureQueueSnapshot(runId: string): Promise<QueueSnapshot> {
+        const { data: jobs } = await supabase
+          .from('job_queue')
+          .select('status')
+          .eq('run_id', runId);
+        
+        const statuses = jobs || [];
+        return {
+          timestamp: new Date().toISOString(),
+          queued_count: statuses.filter(j => j.status === 'queued').length,
+          locked_count: statuses.filter(j => j.status === 'locked').length,
+          completed_count: statuses.filter(j => j.status === 'completed').length,
+          failed_count: statuses.filter(j => j.status === 'failed' || j.status === 'dead').length,
+          total_count: statuses.length,
+        };
+      }
       
       try {
         // Create 50 jobs to flood the queue
@@ -1145,15 +1177,12 @@ Deno.serve(async (req) => {
         testEvidence.jobs_created = jobs?.length || 0;
         testEvidence.job_ids = jobs?.map(j => j.id) || [];
 
-        // Record initial queue depth for progress tracking
-        const { count: initialQueuedCount } = await supabase
-          .from('job_queue')
-          .select('*', { count: 'exact', head: true })
-          .eq('run_id', run!.id)
-          .eq('status', 'queued');
-        
-        output.evidence.initial_queue_depth = initialQueuedCount || 0;
-        testEvidence.initial_queue_depth = initialQueuedCount || 0;
+        // ============================================================
+        // T0 SNAPSHOT: Capture initial queue state
+        // ============================================================
+        const t0Snapshot = await captureQueueSnapshot(run!.id);
+        testEvidence.t0_snapshot = t0Snapshot;
+        output.evidence.initial_queue_depth = t0Snapshot.queued_count;
 
         if (mode === 'simulation') {
           // SIMULATION: Verify schema correctness only
@@ -1187,17 +1216,20 @@ Deno.serve(async (req) => {
           };
 
         } else {
-          // LIVE: Wait for workers to claim jobs and verify horizontal scaling + throughput
-          console.log(`[ITR Scale Safety LIVE] Waiting for ≥${REQUIRED_WORKERS} workers and ≥${MIN_JOBS_TRANSITIONED} job transitions...`);
+          // ============================================================
+          // LIVE MODE: Observe for 60 seconds, then assert
+          // ============================================================
+          console.log(`[ITR Scale Safety LIVE] Starting ${WORKER_WAIT_TIMEOUT_MS/1000}s observation window...`);
+          console.log(`[ITR Scale Safety LIVE] T0 snapshot: ${JSON.stringify(t0Snapshot)}`);
           
           const waitStart = Date.now();
           let uniqueWorkers: string[] = [];
+          let allWorkersSeen: Set<string> = new Set();
           let oldestQueuedSeconds = 0;
           let pollCount = 0;
-          let jobsTransitioned = 0;
-          let finalQueueDepth = 0;
+          let currentSnapshot: QueueSnapshot = t0Snapshot;
           
-          // Poll until we see enough unique workers AND enough job transitions, or timeout
+          // Poll throughout the observation window (don't exit early)
           while (Date.now() - waitStart < WORKER_WAIT_TIMEOUT_MS) {
             pollCount++;
             
@@ -1208,21 +1240,15 @@ Deno.serve(async (req) => {
               .eq('run_id', run!.id)
               .not('locked_by', 'is', null);
 
-            uniqueWorkers = [...new Set(
-              (claimedJobs || [])
-                .map((j: { locked_by: string | null }) => j.locked_by)
-                .filter(Boolean)
-            )] as string[];
-
-            // Count jobs that have transitioned out of 'queued'
-            const { count: stillQueuedCount } = await supabase
-              .from('job_queue')
-              .select('*', { count: 'exact', head: true })
-              .eq('run_id', run!.id)
-              .eq('status', 'queued');
+            // Track all workers seen during observation (not just current)
+            (claimedJobs || []).forEach((j: { locked_by: string | null }) => {
+              if (j.locked_by) allWorkersSeen.add(j.locked_by);
+            });
             
-            finalQueueDepth = stillQueuedCount || 0;
-            jobsTransitioned = (initialQueuedCount || 0) - finalQueueDepth;
+            uniqueWorkers = [...allWorkersSeen];
+
+            // Capture current snapshot
+            currentSnapshot = await captureQueueSnapshot(run!.id);
 
             // Get current HS metrics for oldest_queued_seconds
             try {
@@ -1232,28 +1258,37 @@ Deno.serve(async (req) => {
               oldestQueuedSeconds = 0;
             }
 
-            console.log(`[ITR Scale Safety] Poll ${pollCount}: ${uniqueWorkers.length} workers, ${jobsTransitioned} jobs transitioned, ${oldestQueuedSeconds}s oldest queued`);
-
-            // SAFETY CHECK 3: Check if we've met BOTH requirements
-            if (uniqueWorkers.length >= REQUIRED_WORKERS && jobsTransitioned >= MIN_JOBS_TRANSITIONED) {
-              console.log(`[ITR Scale Safety] All requirements met: ${uniqueWorkers.length} workers ≥ ${REQUIRED_WORKERS}, ${jobsTransitioned} transitions ≥ ${MIN_JOBS_TRANSITIONED}`);
-              break;
-            }
+            const terminalCount = currentSnapshot.completed_count + currentSnapshot.failed_count;
+            const queueDelta = t0Snapshot.queued_count - currentSnapshot.queued_count;
+            
+            console.log(`[ITR Scale Safety] Poll ${pollCount}: workers=${uniqueWorkers.length}, terminal=${terminalCount}, queue_delta=${queueDelta}, oldest=${oldestQueuedSeconds}s`);
 
             // Wait before next poll
             await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
           }
 
+          // ============================================================
+          // T+60s SNAPSHOT: Capture final queue state
+          // ============================================================
+          const t60Snapshot = await captureQueueSnapshot(run!.id);
+          testEvidence.t60_snapshot = t60Snapshot;
+          
+          // Calculate progress metrics
+          const terminalCount = t60Snapshot.completed_count + t60Snapshot.failed_count;
+          const queueDelta = t0Snapshot.queued_count - t60Snapshot.queued_count;
+          const progressMet = terminalCount >= MIN_TERMINAL_COUNT || queueDelta >= MIN_DEQUEUE_COUNT;
+          
           testEvidence.poll_count = pollCount;
           testEvidence.wait_duration_ms = Date.now() - waitStart;
           testEvidence.unique_workers = uniqueWorkers.length;
           testEvidence.worker_ids = uniqueWorkers;
-          testEvidence.oldest_queued_seconds = oldestQueuedSeconds;
-          testEvidence.jobs_transitioned = jobsTransitioned;
-          testEvidence.final_queue_depth = finalQueueDepth;
+          testEvidence.oldest_queued_seconds_final = oldestQueuedSeconds;
+          testEvidence.terminal_count = terminalCount;
+          testEvidence.queue_delta = queueDelta;
+          testEvidence.progress_met = progressMet;
           output.evidence.worker_ids = uniqueWorkers;
-          output.evidence.jobs_transitioned_count = jobsTransitioned;
-          output.evidence.final_queue_depth = finalQueueDepth;
+          output.evidence.jobs_transitioned_count = queueDelta;
+          output.evidence.final_queue_depth = t60Snapshot.queued_count;
 
           // Check for duplicates in outbox
           const { data: outboxData } = await supabase
@@ -1277,25 +1312,27 @@ Deno.serve(async (req) => {
             .update({ status: 'completed', completed_at: new Date().toISOString() })
             .eq('id', run!.id);
 
+          // ============================================================
           // ASSERTIONS - All must pass for live certification
+          // ============================================================
           const failures: string[] = [];
 
-          // 1. Workers must show up (horizontal scaling)
+          // 1. WORKER REQUIREMENT: Horizontal scaling proven
           if (uniqueWorkers.length < REQUIRED_WORKERS) {
             failures.push(`Workers: ${uniqueWorkers.length} < ${REQUIRED_WORKERS} required (horizontal scaling not proven)`);
           }
 
-          // 2. Oldest queued must be under SLA
+          // 2. SLA REQUIREMENT: Queue age under threshold (explicit assertion)
           if (oldestQueuedSeconds > MAX_OLDEST_QUEUED_SECONDS) {
-            failures.push(`Oldest queued: ${oldestQueuedSeconds}s > ${MAX_OLDEST_QUEUED_SECONDS}s SLA`);
+            failures.push(`SLA Violation: oldest_queued=${oldestQueuedSeconds}s > ${MAX_OLDEST_QUEUED_SECONDS}s threshold`);
           }
 
-          // 3. SAFETY CHECK 3: Actual throughput must be demonstrated
-          if (jobsTransitioned < MIN_JOBS_TRANSITIONED) {
-            failures.push(`Throughput: ${jobsTransitioned} jobs transitioned < ${MIN_JOBS_TRANSITIONED} required (progress not proven)`);
+          // 3. PROGRESS REQUIREMENT: Actual work moved (not just workers touching jobs)
+          if (!progressMet) {
+            failures.push(`Progress: terminal=${terminalCount} < ${MIN_TERMINAL_COUNT} AND queue_delta=${queueDelta} < ${MIN_DEQUEUE_COUNT} (system is not processing)`);
           }
 
-          // 4. No duplicates
+          // 4. INTEGRITY REQUIREMENT: No duplicates
           if (duplicateCount > 0) {
             failures.push(`Duplicates: ${duplicateCount} duplicate entries found`);
           }
