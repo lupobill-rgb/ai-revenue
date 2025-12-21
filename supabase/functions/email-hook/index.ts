@@ -1,8 +1,8 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
-const resend = new Resend(RESEND_API_KEY);
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 interface AuthEmailPayload {
   user: {
@@ -178,6 +178,14 @@ serve(async (req) => {
   }
 
   try {
+    if (!resend) {
+      console.error("RESEND_API_KEY not configured");
+      return new Response(JSON.stringify({ error: "Email service not configured" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const payload: AuthEmailPayload = await req.json();
     console.log("Email hook received:", JSON.stringify(payload, null, 2));
 
