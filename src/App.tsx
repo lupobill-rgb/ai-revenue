@@ -53,6 +53,7 @@ import LandingPages from "./pages/LandingPages";
 import LeadsPage from "./pages/cmo/LeadsPage";
 import PlatformAdmin from "./pages/PlatformAdmin";
 import TenantIsolationQA from "./pages/platform-admin/TenantIsolationQA";
+import ExecutionCertQA from "./pages/platform-admin/ExecutionCertQA";
 import SystemBanner from "./components/SystemBanner";
 
 const queryClient = new QueryClient();
@@ -161,6 +162,7 @@ const AppContent = () => {
         <Route path="/cmo/leads" element={<LeadsPage />} />
         <Route path="/platform-admin" element={<PlatformAdmin />} />
         <Route path="/platform-admin/qa/tenant-isolation" element={<TenantIsolationQA />} />
+        <Route path="/platform-admin/qa/execution-cert" element={<ExecutionCertQA />} />
         <Route path="/profile" element={<Profile />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
