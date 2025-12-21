@@ -1412,15 +1412,29 @@ async function createL3ScaleTest(
 
     if (wsError) throw wsError;
 
-    // Create campaign
-    const { data: campaign, error: campError } = await supabase
-      .from("cmo_campaigns")
+    // Create asset first (campaigns.asset_id references assets)
+    const { data: asset, error: assetError } = await supabase
+      .from("assets")
       .insert({
-        tenant_id: testTenantId,
+        name: `L3 Scale Test Asset - ${timestamp}`,
+        type: "email",
+        status: "approved",
         workspace_id: testWorkspaceId,
-        campaign_name: `L3 Scale-Safe Run Test - ${timestamp}`,
-        campaign_type: "email",
+        channel: "email",
+      })
+      .select()
+      .single();
+
+    if (assetError) throw assetError;
+
+    // Create campaign (references assets table, not cmo_campaigns)
+    const { data: campaign, error: campError } = await supabase
+      .from("campaigns")
+      .insert({
+        asset_id: asset.id,
+        channel: "email",
         status: "active",
+        workspace_id: testWorkspaceId,
       })
       .select()
       .single();
