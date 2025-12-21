@@ -142,6 +142,16 @@ function validateProviderIdFormat(providerId: string, provider: string): { valid
         }
       }
       break;
+    case 'elevenlabs':
+      // ElevenLabs conversation/call IDs - typically alphanumeric with various formats
+      // Accept any reasonably long ID that doesn't look simulated
+      if (providerId.length < 10) {
+        return { valid: false, reason: `ElevenLabs ID too short: ${providerId}` };
+      }
+      if (providerId.startsWith('el_sim') || providerId.includes('_sim_')) {
+        return { valid: false, reason: `Simulated ElevenLabs ID: ${providerId}` };
+      }
+      break;
     default:
       // For unknown providers, just ensure it's not obviously fake
       if (providerId.length < 8) {
@@ -745,17 +755,38 @@ Deno.serve(async (req) => {
       const testEvidence: Record<string, unknown> = { mode, itr_run_id: itrRunId };
       
       try {
-        // Check if voice is configured
+        // Check if voice is configured - support both VAPI and ElevenLabs
         const { data: voiceSettings } = await supabase
           .from('ai_settings_voice')
           .select('*')
           .eq('tenant_id', workspaceId)
           .maybeSingle();
 
-        if (!voiceSettings?.is_connected) {
+        // Determine which provider is available
+        const vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY');
+        const elevenLabsApiKey = Deno.env.get('ELEVENLABS_API_KEY');
+        
+        const hasVapi = Boolean(vapiPrivateKey && voiceSettings?.default_vapi_assistant_id);
+        const hasElevenLabs = Boolean(elevenLabsApiKey || voiceSettings?.elevenlabs_api_key);
+        
+        // Determine the provider to use (prefer VAPI if both configured, as it's designed for calls)
+        const voiceProvider = hasVapi ? 'vapi' : (hasElevenLabs ? 'elevenlabs' : null);
+        
+        testEvidence.voice_provider = voiceProvider;
+        testEvidence.has_vapi = hasVapi;
+        testEvidence.has_elevenlabs = hasElevenLabs;
+
+        if (!voiceSettings?.is_connected && !voiceProvider) {
           output.tests.voice_e2e = {
             status: 'SKIPPED',
-            reason: 'Voice provider not configured',
+            reason: 'Voice provider not configured - need VAPI assistant ID or ElevenLabs API key',
+            duration_ms: Date.now() - testStart,
+            evidence: testEvidence,
+          };
+        } else if (!voiceProvider) {
+          output.tests.voice_e2e = {
+            status: 'SKIPPED',
+            reason: 'No voice provider credentials available (VAPI needs assistant ID, ElevenLabs needs API key)',
             duration_ms: Date.now() - testStart,
             evidence: testEvidence,
           };
@@ -831,13 +862,15 @@ Deno.serve(async (req) => {
               workspace_id: workspaceId,
               run_id: run.id,
               channel: 'voice',
-              provider: 'vapi',
+              provider: voiceProvider, // Use detected provider
               recipient_id: lead.id,
               recipient_phone: lead.phone,
               idempotency_key: `itr-sim-voice-${itrRunId}-${lead.id}`,
               status: 'queued',
               payload: { 
-                assistant_id: voiceSettings.default_vapi_assistant_id,
+                assistant_id: voiceSettings?.default_vapi_assistant_id,
+                voice_id: voiceSettings?.default_elevenlabs_voice_id,
+                provider: voiceProvider,
                 itr_run_id: itrRunId
               },
             }));
@@ -894,6 +927,7 @@ Deno.serve(async (req) => {
                 payload: { 
                   campaign_id: campaign.id, 
                   lead_ids: leads.map(l => l.id),
+                  provider: voiceProvider, // Pass detected provider
                   itr_live_test: true,
                   itr_run_id: itrRunId
                 },
@@ -911,13 +945,15 @@ Deno.serve(async (req) => {
               run_id: run.id,
               job_id: job.id,
               channel: 'voice',
-              provider: 'vapi',
+              provider: voiceProvider, // Use detected provider
               recipient_id: lead.id,
               recipient_phone: lead.phone,
               idempotency_key: `itr-live-voice-${itrRunId}-${lead.id}`,
               status: 'queued',
               payload: { 
-                assistant_id: voiceSettings.default_vapi_assistant_id,
+                assistant_id: voiceSettings?.default_vapi_assistant_id,
+                voice_id: voiceSettings?.default_elevenlabs_voice_id,
+                provider: voiceProvider,
                 itr_run_id: itrRunId
               },
             }));
@@ -953,10 +989,11 @@ Deno.serve(async (req) => {
               }
             }
 
-            // SAFETY CHECK 5: Validate provider ID formats
+            // SAFETY CHECK 5: Validate provider ID formats (use detected provider)
             for (const row of outboxResult.rows) {
               if (row.provider_message_id) {
-                const validation = validateProviderIdFormat(row.provider_message_id, 'vapi');
+                const providerToValidate = voiceProvider === 'elevenlabs' ? 'elevenlabs' : 'vapi';
+                const validation = validateProviderIdFormat(row.provider_message_id, providerToValidate);
                 if (!validation.valid) {
                   throw new Error(`LIVE MODE VIOLATION: Invalid voice provider ID for row ${row.id}: ${validation.reason}`);
                 }
