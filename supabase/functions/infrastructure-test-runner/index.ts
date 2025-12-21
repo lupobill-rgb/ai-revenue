@@ -700,12 +700,11 @@ Deno.serve(async (req) => {
           })
           .eq('id', run!.id);
 
-        // Verify error is readable
-        const { data: failedOutbox } = await supabase
+        // Verify error is readable - check ALL outbox rows for this run
+        const { data: allOutboxRows } = await supabase
           .from('channel_outbox')
           .select('*')
-          .eq('id', outbox!.id)
-          .single();
+          .eq('run_id', run!.id);
 
         const { data: failedRun } = await supabase
           .from('campaign_runs')
@@ -713,21 +712,55 @@ Deno.serve(async (req) => {
           .eq('id', run!.id)
           .single();
 
-        testEvidence.outbox_error = failedOutbox?.error;
+        testEvidence.outbox_count = allOutboxRows?.length || 0;
         testEvidence.run_error = failedRun?.error_message;
         testEvidence.run_status = failedRun?.status;
 
-        // Assert: errors must be present and readable
-        const hasOutboxError = failedOutbox?.error && failedOutbox.error.length > 10;
-        const hasRunError = failedRun?.error_message && failedRun.error_message.length > 10;
         const runIsFailed = failedRun?.status === 'failed';
 
+        // CRITICAL: If run is failed, NO outbox row may have empty/missing error
+        // Silent failure is a platform-killer - fail immediately
+        if (runIsFailed) {
+          const silentFailures = (allOutboxRows || []).filter(row => {
+            const isFailed = row.status === 'failed';
+            const hasEmptyError = !row.error || row.error.trim() === '';
+            return isFailed && hasEmptyError;
+          });
+
+          testEvidence.silent_failures = silentFailures.length;
+          testEvidence.silent_failure_ids = silentFailures.map(r => r.id);
+
+          if (silentFailures.length > 0) {
+            throw new Error(`SILENT FAILURE DETECTED: ${silentFailures.length} outbox row(s) failed without readable error. IDs: ${silentFailures.map(r => r.id).join(', ')}`);
+          }
+        }
+
+        // Check that all failed outbox rows have readable errors
+        const failedOutboxRows = (allOutboxRows || []).filter(row => row.status === 'failed');
+        const outboxWithErrors = failedOutboxRows.filter(row => row.error && row.error.length > 10);
+        
+        testEvidence.failed_outbox_count = failedOutboxRows.length;
+        testEvidence.outbox_with_errors_count = outboxWithErrors.length;
+        testEvidence.outbox_errors = failedOutboxRows.map(r => ({ id: r.id, error: r.error }));
+
+        // Assert: run must be in failed status
         if (!runIsFailed) {
           throw new Error('Run should be in failed status');
         }
-        if (!hasOutboxError) {
-          throw new Error('Outbox row missing readable error');
+
+        // Assert: at least one failed outbox row exists
+        if (failedOutboxRows.length === 0) {
+          throw new Error('No failed outbox rows found - cannot verify error transparency');
         }
+
+        // Assert: all failed outbox rows must have readable errors
+        if (outboxWithErrors.length !== failedOutboxRows.length) {
+          const missing = failedOutboxRows.length - outboxWithErrors.length;
+          throw new Error(`${missing} outbox row(s) missing readable error (min 10 chars required)`);
+        }
+
+        // Assert: campaign run must have readable error
+        const hasRunError = failedRun?.error_message && failedRun.error_message.length > 10;
         if (!hasRunError) {
           throw new Error('Campaign run missing readable error');
         }
