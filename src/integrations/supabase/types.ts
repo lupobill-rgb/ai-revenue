@@ -6686,7 +6686,9 @@ export type Database = {
         Args: { p_campaign_id: string; p_workspace_id: string }
         Returns: undefined
       }
-      is_platform_admin: { Args: never; Returns: boolean }
+      is_platform_admin:
+        | { Args: never; Returns: boolean }
+        | { Args: { _user_id: string }; Returns: boolean }
       is_platform_admin_safe: { Args: never; Returns: boolean }
       is_service_role: { Args: never; Returns: boolean }
       is_workspace_certified: {
