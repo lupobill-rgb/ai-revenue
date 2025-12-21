@@ -1511,40 +1511,66 @@ Deno.serve(async (req) => {
     if (output.certified) {
       const CERTIFICATION_VERSION = '1.1.0'; // Bumped for safety checks
       
-      // Create certification hash from evidence
-      const certificationPayload = JSON.stringify({
-        tests: Object.fromEntries(
-          Object.entries(output.tests).map(([k, v]) => [k, v.status])
-        ),
+      // Generate unique run ID for this certification attempt (for traceability)
+      const certificationRunId = crypto.randomUUID();
+      
+      // ================================================================
+      // DETERMINISTIC HASH COMPUTATION
+      // Hash is computed from canonical payload that EXCLUDES timestamp
+      // Same evidence = same hash (reproducible)
+      // ================================================================
+      
+      // Build canonical payload with SORTED arrays for determinism
+      const canonicalPayload = {
+        version: CERTIFICATION_VERSION,
+        mode: mode,
+        // Test statuses and reasons (sorted by test name)
+        tests: Object.keys(output.tests)
+          .sort()
+          .reduce((acc, key) => {
+            const test = output.tests[key as keyof typeof output.tests];
+            acc[key] = {
+              status: test.status,
+              reason: test.reason || null,
+            };
+            return acc;
+          }, {} as Record<string, { status: string; reason: string | null }>),
+        // Sorted evidence identifiers (only identifiers, not values that change per run)
         evidence: {
-          itr_run_id: itrRunId,
-          campaign_run_ids: output.evidence.campaign_run_ids,
-          outbox_row_ids: output.evidence.outbox_row_ids.length,
-          provider_ids: output.evidence.provider_ids.length,
-          simulated_provider_ids: output.evidence.simulated_provider_ids.length,
-          worker_ids: output.evidence.worker_ids,
+          campaign_run_count: output.evidence.campaign_run_ids.length,
+          campaign_run_ids: [...output.evidence.campaign_run_ids].sort(),
+          outbox_row_count: output.evidence.outbox_row_ids.length,
+          provider_id_count: output.evidence.provider_ids.length,
+          simulated_provider_id_count: output.evidence.simulated_provider_ids.length,
+          worker_ids: [...output.evidence.worker_ids].sort(),
           jobs_transitioned_count: output.evidence.jobs_transitioned_count,
         },
-        timestamp: new Date().toISOString(),
-        version: CERTIFICATION_VERSION,
-      });
+      };
       
-      // Simple hash for integrity verification (not cryptographic, just fingerprint)
-      let hash = 0;
-      for (let i = 0; i < certificationPayload.length; i++) {
-        const char = certificationPayload.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32bit integer
-      }
-      const certificationHash = `itr-${Math.abs(hash).toString(16)}-${Date.now().toString(36)}`;
+      // Stable JSON serialization (sorted keys)
+      const stableJson = JSON.stringify(canonicalPayload, Object.keys(canonicalPayload).sort());
+      
+      // Compute SHA-256 hash (using Web Crypto API)
+      const encoder = new TextEncoder();
+      const data = encoder.encode(stableJson);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      // Certification hash: version prefix + first 16 chars of SHA-256
+      const certificationHash = `itr-v${CERTIFICATION_VERSION.replace(/\./g, '')}-${hashHex.slice(0, 16)}`;
+      
+      // Timestamp stored separately (not in hash)
+      const certifiedAt = new Date().toISOString();
       
       // Write certification latch to workspace
       const { error: latchError } = await supabase
         .from('workspaces')
         .update({
-          platform_certified_at: new Date().toISOString(),
+          platform_certified_at: certifiedAt,
           platform_certification_hash: certificationHash,
           platform_certification_version: CERTIFICATION_VERSION,
+          platform_certification_run_id: certificationRunId,
         })
         .eq('id', workspaceId);
 
@@ -1552,9 +1578,11 @@ Deno.serve(async (req) => {
         console.error('[ITR] Failed to write certification latch:', latchError);
         output.evidence.errors.push(`Certification latch write failed: ${latchError.message}`);
       } else {
-        console.log(`[ITR] Certification latch written: ${certificationHash}`);
+        console.log(`[ITR] Certification latch written: hash=${certificationHash}, run_id=${certificationRunId}`);
         output.certification_hash = certificationHash;
         output.certification_version = CERTIFICATION_VERSION;
+        // Add run ID to output for traceability
+        (output as any).certification_run_id = certificationRunId;
       }
     }
 

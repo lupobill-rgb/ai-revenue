@@ -6417,6 +6417,7 @@ export type Database = {
           name: string
           owner_id: string
           platform_certification_hash: string | null
+          platform_certification_run_id: string | null
           platform_certification_version: string | null
           platform_certified_at: string | null
           public_form_password_hash: string | null
@@ -6431,6 +6432,7 @@ export type Database = {
           name: string
           owner_id: string
           platform_certification_hash?: string | null
+          platform_certification_run_id?: string | null
           platform_certification_version?: string | null
           platform_certified_at?: string | null
           public_form_password_hash?: string | null
@@ -6445,6 +6447,7 @@ export type Database = {
           name?: string
           owner_id?: string
           platform_certification_hash?: string | null
+          platform_certification_run_id?: string | null
           platform_certification_version?: string | null
           platform_certified_at?: string | null
           public_form_password_hash?: string | null
