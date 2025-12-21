@@ -756,6 +756,39 @@ export default function ExecutionCertQA() {
     }
   };
 
+  // Gate status helper functions
+  const getL1Status = (): 'pass' | 'pending' | 'fail' => {
+    if (!launchResult) return 'pending';
+    if (launchResult.passCriteria.L1_provider_ids) return 'pass';
+    if (launchResult.status === 'failed') return 'fail';
+    return 'pending';
+  };
+
+  const getL2Status = (): 'pass' | 'pending' | 'fail' => {
+    if (!l2TestResult) return 'pending';
+    if (l2TestResult.passCriteria.L2_run_status_failed && l2TestResult.passCriteria.L2_outbox_error_readable) return 'pass';
+    if (l2TestResult.status === 'completed' || l2TestResult.status === 'running') return 'pending';
+    return 'pending';
+  };
+
+  const getL3Status = (): 'pass' | 'pending' | 'fail' => {
+    if (!l3TestResult?.hsMetrics) return 'pending';
+    if (l3TestResult.l3a_no_duplicates && l3TestResult.l3b_queue_age_ok && l3TestResult.l3c_workers_active) return 'pass';
+    if (l3TestResult.l3a_no_duplicates === false || l3TestResult.l3b_queue_age_ok === false) return 'fail';
+    return 'pending';
+  };
+
+  const getGateMasterStatus = (): 'pass' | 'partial' | 'pending' | 'fail' => {
+    const l1 = getL1Status();
+    const l2 = getL2Status();
+    const l3 = getL3Status();
+    
+    if (l1 === 'pass' && l2 === 'pass' && l3 === 'pass') return 'pass';
+    if (l1 === 'fail' || l2 === 'fail' || l3 === 'fail') return 'fail';
+    if (l1 === 'pass' || l2 === 'pass' || l3 === 'pass') return 'partial';
+    return 'pending';
+  };
+
   const getOverallStatus = () => {
     const hasResults = concurrencyResults.length > 0 || slaResult !== null || hsMetrics !== null || launchResult !== null;
     if (!hasResults) return 'pending';
@@ -1152,18 +1185,121 @@ export default function ExecutionCertQA() {
         </CardContent>
       </Card>
 
-      {/* Section 5: Launch Validation (L1/L2/L3) */}
-      <Card>
+      {/* Section 5: Launch Validation Dashboard (L1/L2/L3) */}
+      <Card className="border-2 border-primary/20">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Rocket className="h-5 w-5" />
-            5. Launch Validation (E2E)
-          </CardTitle>
-          <CardDescription>
-            Create and deploy a 3-lead test campaign, verify provider dispatch, failure transparency, and scale safety
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Rocket className="h-5 w-5" />
+                5. Launch Validation Dashboard
+              </CardTitle>
+              <CardDescription>
+                Create and deploy a 3-lead test campaign, verify provider dispatch, failure transparency, and scale safety
+              </CardDescription>
+            </div>
+            {/* Master PASS/FAIL Badge */}
+            <div className="flex flex-col items-end gap-1">
+              {(launchResult || l2TestResult || l3TestResult) && (
+                <>
+                  <Badge 
+                    variant={
+                      getGateMasterStatus() === 'pass' ? 'default' : 
+                      getGateMasterStatus() === 'partial' ? 'secondary' : 
+                      getGateMasterStatus() === 'pending' ? 'outline' :
+                      'destructive'
+                    }
+                    className="text-lg px-4 py-2"
+                  >
+                    {getGateMasterStatus() === 'pass' && '✓ ALL GATES PASS'}
+                    {getGateMasterStatus() === 'partial' && '⚠ PARTIAL'}
+                    {getGateMasterStatus() === 'pending' && '◌ PENDING'}
+                    {getGateMasterStatus() === 'fail' && '✗ GATES FAILING'}
+                  </Badge>
+                  <p className="text-xs text-muted-foreground">
+                    Platform is {getGateMasterStatus() === 'pass' ? 'production-ready' : 'not yet verified'}
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Gate Summary Cards */}
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className={`p-4 rounded-lg border-2 ${
+              getL1Status() === 'pass' ? 'border-green-500 bg-green-500/10' : 
+              getL1Status() === 'pending' ? 'border-muted' : 
+              'border-yellow-500 bg-yellow-500/10'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Mail className="h-4 w-4" />
+                <span className="font-semibold">Gate L1</span>
+                <Badge variant={getL1Status() === 'pass' ? 'default' : 'secondary'} className="ml-auto">
+                  {getL1Status().toUpperCase()}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Provider Dispatch</p>
+              <p className="text-xs mt-1">
+                {launchResult ? `${launchResult.channel.toUpperCase()}: ${launchResult.outboxRows.filter(r => r.provider_message_id).length}/${launchResult.outboxRows.length} sent` : 'Not tested'}
+              </p>
+            </div>
+
+            <div className={`p-4 rounded-lg border-2 ${
+              getL2Status() === 'pass' ? 'border-green-500 bg-green-500/10' : 
+              getL2Status() === 'pending' ? 'border-muted' : 
+              'border-yellow-500 bg-yellow-500/10'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="font-semibold">Gate L2</span>
+                <Badge variant={getL2Status() === 'pass' ? 'default' : 'secondary'} className="ml-auto">
+                  {getL2Status().toUpperCase()}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Failure Transparency</p>
+              <p className="text-xs mt-1">
+                {l2TestResult ? `Errors visible: ${l2TestResult.passCriteria.L2_outbox_error_readable ? 'Yes' : 'No'}` : 'Not tested'}
+              </p>
+            </div>
+
+            <div className={`p-4 rounded-lg border-2 ${
+              getL3Status() === 'pass' ? 'border-green-500 bg-green-500/10' : 
+              getL3Status() === 'pending' ? 'border-muted' : 
+              'border-yellow-500 bg-yellow-500/10'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="h-4 w-4" />
+                <span className="font-semibold">Gate L3</span>
+                <Badge variant={getL3Status() === 'pass' ? 'default' : 'secondary'} className="ml-auto">
+                  {getL3Status().toUpperCase()}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Scale-Safe Run</p>
+              <p className="text-xs mt-1">
+                {l3TestResult?.hsMetrics ? `${l3TestResult.hsMetrics.activeWorkers} workers, ${l3TestResult.hsMetrics.duplicates} dups` : 'Not tested'}
+              </p>
+            </div>
+
+            <div className={`p-4 rounded-lg border-2 ${
+              (launchResult?.passCriteria.L3_no_duplicates && l3TestResult?.l3a_no_duplicates) ? 'border-green-500 bg-green-500/10' : 
+              (!launchResult && !l3TestResult) ? 'border-muted' : 
+              'border-yellow-500 bg-yellow-500/10'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Database className="h-4 w-4" />
+                <span className="font-semibold">Idempotency</span>
+                <Badge variant={(launchResult?.passCriteria.L3_no_duplicates && l3TestResult?.l3a_no_duplicates) ? 'default' : 'secondary'} className="ml-auto">
+                  {(launchResult?.passCriteria.L3_no_duplicates && l3TestResult?.l3a_no_duplicates) ? 'PASS' : 'PENDING'}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">No Duplicate Sends</p>
+              <p className="text-xs mt-1">Unique idempotency keys</p>
+            </div>
+          </div>
+
+          <Separator />
+
           {/* Live Mode Toggle */}
           <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
             <div className="space-y-1">
