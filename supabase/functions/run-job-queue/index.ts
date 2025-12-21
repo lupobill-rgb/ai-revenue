@@ -39,6 +39,8 @@ interface Job {
   payload: Record<string, unknown>;
   status: string;
   attempts: number;
+  scheduled_for?: string;
+  created_at?: string;
 }
 
 interface Lead {
@@ -122,6 +124,19 @@ function calculateBackoff(attempts: number): number {
   return Math.floor(exponentialDelay + jitter);
 }
 
+// IMPORTANT (Q1 Idempotency): scheduled_for MUST be deterministic across workers.
+// Prefer job.payload.scheduled_for (if enqueued), otherwise fall back to the job row's scheduled_for/created_at.
+function getDeterministicScheduledFor(job: Job): string {
+  const payload = job.payload as Record<string, unknown> | null;
+  const payloadScheduled = payload?.["scheduled_for"];
+
+  if (typeof payloadScheduled === "string" && payloadScheduled) return payloadScheduled;
+  if (typeof job.scheduled_for === "string" && job.scheduled_for) return job.scheduled_for;
+  if (typeof job.created_at === "string" && job.created_at) return job.created_at;
+
+  // Last resort: avoid crashing, but this can break idempotency if it ever happens.
+  return new Date().toISOString();
+}
 // Record worker tick metrics for observability
 async function recordWorkerTickMetrics(
   supabase: any,
@@ -345,7 +360,7 @@ async function processEmailBatch(
   const subject = (emailContent as Record<string, string>).subject || `Message from ${emailSettings.sender_name || "Us"}`;
   const body = (emailContent as Record<string, string>).body || (emailContent as Record<string, string>).html || "Hello!";
   const assetId = String(campaign.asset_id || campaignId);
-  const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
+  const scheduledFor = getDeterministicScheduledFor(job);
 
   // Use optimized batch processing for Resend provider
   if (useBatching && selectedProvider === "resend") {
@@ -583,7 +598,7 @@ async function processVoiceBatch(
     }
 
     const scriptVersion = voiceSettings.default_vapi_assistant_id || "v1";
-    const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
+    const scheduledFor = getDeterministicScheduledFor(job);
 
     // Use optimized concurrent batching
     if (useBatching && leads.length > 1) {
@@ -840,7 +855,7 @@ async function processVoiceBatch(
                    "Hello, this is an automated message.";
 
     // Generate idempotency key: sha256(run_id + campaign_id + voice_id + scheduled_for)
-    const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
+    const scheduledFor = getDeterministicScheduledFor(job);
     const idempotencyKey = await generateIdempotencyKey([
       job.run_id,
       campaignId,
@@ -959,7 +974,7 @@ async function processSocialBatch(
     .single();
 
   // Generate idempotency key upfront for all cases
-  const scheduledFor = String(job.payload.scheduled_for || new Date().toISOString());
+  const scheduledFor = getDeterministicScheduledFor(job);
   const postId = String(campaign.asset_id || campaignId);
   const idempotencyKey = await generateIdempotencyKey([
     job.run_id,
