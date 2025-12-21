@@ -1427,11 +1427,10 @@ async function createL3ScaleTest(
 
     if (runError) throw runError;
 
-    // Create leads for the test
+    // Create leads for the test (leads table uses workspace_id, not tenant_id)
     const leads = [];
     for (let i = 0; i < config.blastSize; i++) {
       leads.push({
-        tenant_id: testTenantId,
         workspace_id: testWorkspaceId,
         email: `l3-test-${i}@qa-sandbox.local`,
         first_name: `L3Test`,
@@ -1495,11 +1494,10 @@ async function deployL3ScaleTest(
       })
       .eq("id", config.runId);
 
-    // Get leads for this tenant
+    // Get leads for this workspace (leads table uses workspace_id, not tenant_id)
     const { data: leads } = await supabase
       .from("leads")
       .select("*")
-      .eq("tenant_id", run.tenant_id)
       .eq("workspace_id", run.workspace_id)
       .eq("source", "qa_l3_scale_test")
       .limit(config.blastSize);
