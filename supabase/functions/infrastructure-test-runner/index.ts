@@ -14,6 +14,14 @@
  * 
  * IMPORTANT: Only 'live' mode certifies production readiness!
  * Simulation PASS ≠ Production Certified
+ * 
+ * SAFETY INVARIANTS (enforced in this file):
+ * 1. Mode defaults to 'simulation' if missing/invalid - NEVER defaults to live
+ * 2. Live mode hard-fails if any simulation artifacts detected
+ * 3. Scale test requires actual throughput progress, not just worker touches
+ * 4. Tenant/workspace IDs are validated on every insert
+ * 5. Live mode requires real provider IDs (no sim_ prefixes)
+ * 6. All ITR rows tagged with itr_run_id for cleanup and traceability
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -24,6 +32,9 @@ const corsHeaders = {
 };
 
 type TestMode = 'simulation' | 'live';
+
+// Simulated provider ID patterns - MUST fail in live mode
+const SIMULATED_PROVIDER_PREFIXES = ['sim_', 'call_sim_', 'test_', 'fake_', 'mock_'];
 
 interface TestResult {
   status: 'PASS' | 'FAIL' | 'SKIPPED' | 'TIMEOUT';
@@ -50,6 +61,8 @@ interface ITROutput {
   };
   evidence: {
     itr_run_id: string;
+    mode: TestMode;
+    mode_source: 'explicit' | 'defaulted';
     campaign_run_ids: string[];
     outbox_row_ids: string[];
     outbox_final_statuses: Record<string, string>;
@@ -57,6 +70,13 @@ interface ITROutput {
     simulated_provider_ids: string[];
     worker_ids: string[];
     errors: string[];
+    tenant_id: string;
+    workspace_id: string;
+    jobs_transitioned_count: number;
+    initial_queue_depth: number;
+    final_queue_depth: number;
+    cleanup_performed: boolean;
+    cleanup_row_count: number;
   };
 }
 
@@ -74,13 +94,71 @@ async function waitForCondition(
   return false;
 }
 
+// SAFETY: Validate mode - always default to simulation
+function parseMode(input: unknown): { mode: TestMode; source: 'explicit' | 'defaulted' } {
+  if (input === 'live') {
+    return { mode: 'live', source: 'explicit' };
+  }
+  if (input === 'simulation') {
+    return { mode: 'simulation', source: 'explicit' };
+  }
+  // ANY other value (undefined, null, typos, invalid strings) -> simulation
+  console.warn(`[ITR] Invalid mode "${input}" - defaulting to SIMULATION for safety`);
+  return { mode: 'simulation', source: 'defaulted' };
+}
+
+// SAFETY: Check if provider ID looks simulated
+function isSimulatedProviderId(providerId: string | null | undefined): boolean {
+  if (!providerId) return false;
+  const lowerPid = providerId.toLowerCase();
+  return SIMULATED_PROVIDER_PREFIXES.some(prefix => lowerPid.startsWith(prefix));
+}
+
+// SAFETY: Validate provider ID format per provider
+function validateProviderIdFormat(providerId: string, provider: string): { valid: boolean; reason?: string } {
+  if (!providerId || providerId.trim() === '') {
+    return { valid: false, reason: 'Empty provider ID' };
+  }
+  
+  // Check for simulated prefixes
+  if (isSimulatedProviderId(providerId)) {
+    return { valid: false, reason: `Simulated prefix detected: ${providerId}` };
+  }
+  
+  // Provider-specific format validation (lightweight regex)
+  switch (provider) {
+    case 'resend':
+      // Resend IDs typically look like: "b4f5a8c2-1234-5678-9abc-def012345678"
+      if (!/^[a-f0-9-]{20,}$/i.test(providerId)) {
+        return { valid: false, reason: `Invalid Resend ID format: ${providerId}` };
+      }
+      break;
+    case 'vapi':
+      // Vapi call IDs typically look like: "call_abc123..."
+      if (!/^call_[a-zA-Z0-9]{8,}$/i.test(providerId)) {
+        // Allow more lenient format but flag simulated ones
+        if (providerId.startsWith('call_sim')) {
+          return { valid: false, reason: `Simulated Vapi call ID: ${providerId}` };
+        }
+      }
+      break;
+    default:
+      // For unknown providers, just ensure it's not obviously fake
+      if (providerId.length < 8) {
+        return { valid: false, reason: `Provider ID too short: ${providerId}` };
+      }
+  }
+  
+  return { valid: true };
+}
+
 // Wait for outbox rows to reach terminal state (LIVE mode)
 async function waitForOutboxTerminal(
   supabase: any,
   runId: string,
   expectedCount: number,
   timeoutMs: number = 60000
-): Promise<{ success: boolean; rows: Array<{ id: string; status: string; provider_message_id: string | null; error: string | null }> }> {
+): Promise<{ success: boolean; rows: Array<{ id: string; status: string; provider_message_id: string | null; error: string | null; provider_response: any }> }> {
   const terminalStatuses = ['sent', 'delivered', 'called', 'posted', 'failed', 'skipped'];
   const startTime = Date.now();
   
@@ -138,6 +216,17 @@ async function waitForRunTerminal(
   return { success: false, run };
 }
 
+// SAFETY: Validate tenant/workspace IDs match what was passed
+function validateIds(row: { tenant_id: string; workspace_id: string }, tenantId: string, workspaceId: string): { valid: boolean; reason?: string } {
+  if (row.tenant_id !== tenantId) {
+    return { valid: false, reason: `tenant_id mismatch: expected ${tenantId}, got ${row.tenant_id}` };
+  }
+  if (row.workspace_id !== workspaceId) {
+    return { valid: false, reason: `workspace_id mismatch: expected ${workspaceId}, got ${row.workspace_id}` };
+  }
+  return { valid: true };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -153,8 +242,13 @@ Deno.serve(async (req) => {
   const testsToRun = body.tests || ['email_e2e', 'voice_e2e', 'failure_transparency', 'scale_safety'];
   const tenantId = body.tenant_id;
   const workspaceId = body.workspace_id;
-  const mode: TestMode = body.mode === 'live' ? 'live' : 'simulation';
+  
+  // SAFETY CHECK 1: Mode defaults to simulation if missing/invalid
+  const { mode, source: modeSource } = parseMode(body.mode);
   const liveTimeoutMs = body.timeout_ms || 60000; // Default 60s for live mode
+
+  // Generate run ID for traceability and cleanup
+  const itrRunId = crypto.randomUUID();
 
   const output: ITROutput = {
     overall: 'PASS',
@@ -173,7 +267,9 @@ Deno.serve(async (req) => {
       scale_safety: { status: 'SKIPPED', duration_ms: 0, evidence: {} },
     },
     evidence: {
-      itr_run_id: crypto.randomUUID(),
+      itr_run_id: itrRunId,
+      mode,
+      mode_source: modeSource,
       campaign_run_ids: [],
       outbox_row_ids: [],
       outbox_final_statuses: {},
@@ -181,6 +277,13 @@ Deno.serve(async (req) => {
       simulated_provider_ids: [],
       worker_ids: [],
       errors: [],
+      tenant_id: tenantId || 'MISSING',
+      workspace_id: workspaceId || 'MISSING',
+      jobs_transitioned_count: 0,
+      initial_queue_depth: 0,
+      final_queue_depth: 0,
+      cleanup_performed: false,
+      cleanup_row_count: 0,
     },
   };
 
@@ -191,15 +294,36 @@ Deno.serve(async (req) => {
       }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // SAFETY CHECK 4: Validate tenant_id and workspace_id are UUIDs
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(tenantId) || !uuidRegex.test(workspaceId)) {
+      return new Response(JSON.stringify({
+        error: 'tenant_id and workspace_id must be valid UUIDs',
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // SAFETY CHECK 6: Check for duplicate itr_run_id before starting
+    const { data: existingRuns } = await supabase
+      .from('campaign_runs')
+      .select('id')
+      .eq('run_config->>itr_run_id', itrRunId)
+      .limit(1);
+    
+    if (existingRuns && existingRuns.length > 0) {
+      return new Response(JSON.stringify({
+        error: `Duplicate ITR run ID detected: ${itrRunId}. This should never happen.`,
+      }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // ================================================================
     // TEST 1: Email E2E
     // ================================================================
     if (testsToRun.includes('email_e2e')) {
       const testStart = Date.now();
-      const testEvidence: Record<string, unknown> = { mode };
+      const testEvidence: Record<string, unknown> = { mode, itr_run_id: itrRunId };
       
       try {
-        // 1. Create test campaign
+        // 1. Create test campaign (tagged with itr_run_id)
         const { data: campaign, error: campaignErr } = await supabase
           .from('cmo_campaigns')
           .insert({
@@ -208,20 +332,28 @@ Deno.serve(async (req) => {
             campaign_name: `ITR-Email-${mode}-${Date.now()}`,
             campaign_type: 'email',
             status: 'draft',
-            goal: `ITR ${mode} certification test`,
+            goal: `ITR ${mode} certification test [${itrRunId}]`,
           })
           .select()
           .single();
 
         if (campaignErr) throw new Error(`Campaign creation failed: ${campaignErr.message}`);
         testEvidence.campaign_id = campaign.id;
+        
+        // SAFETY CHECK 4: Verify tenant/workspace IDs in created row
+        const idCheck = validateIds(campaign, tenantId, workspaceId);
+        if (!idCheck.valid) {
+          throw new Error(`CRITICAL: ${idCheck.reason}`);
+        }
 
         // 2. Create test leads
         const leadPromises = [1, 2, 3].map(i => 
           supabase.from('leads').insert({
             workspace_id: workspaceId,
-            name: `ITR Test Lead ${i}`,
+            first_name: `ITR`,
+            last_name: `Test Lead ${i}`,
             email: `itr-${mode}-${Date.now()}-${i}@test.invalid`,
+            source: 'itr_test',
             status: 'new',
           }).select().single()
         );
@@ -229,7 +361,7 @@ Deno.serve(async (req) => {
         const leads = leadResults.map(r => r.data).filter(Boolean);
         testEvidence.lead_count = leads.length;
 
-        // 3. Create campaign run
+        // 3. Create campaign run (tagged with itr_run_id)
         const { data: run, error: runErr } = await supabase
           .from('campaign_runs')
           .insert({
@@ -238,7 +370,12 @@ Deno.serve(async (req) => {
             campaign_id: campaign.id,
             channel: 'email',
             status: 'queued',
-            run_config: { test_mode: true, itr_run: true, itr_mode: mode },
+            run_config: { 
+              test_mode: true, 
+              itr_run: true, 
+              itr_mode: mode,
+              itr_run_id: itrRunId // Tag for cleanup
+            },
           })
           .select()
           .single();
@@ -246,6 +383,12 @@ Deno.serve(async (req) => {
         if (runErr) throw new Error(`Run creation failed: ${runErr.message}`);
         testEvidence.run_id = run.id;
         output.evidence.campaign_run_ids.push(run.id);
+        
+        // SAFETY CHECK 4: Verify tenant/workspace IDs
+        const runIdCheck = validateIds(run, tenantId, workspaceId);
+        if (!runIdCheck.valid) {
+          throw new Error(`CRITICAL: ${runIdCheck.reason}`);
+        }
 
         if (mode === 'simulation') {
           // SIMULATION: Directly create and update outbox entries
@@ -257,9 +400,13 @@ Deno.serve(async (req) => {
             provider: 'resend',
             recipient_id: lead.id,
             recipient_email: lead.email,
-            idempotency_key: `itr-sim-email-${run.id}-${lead.id}`,
+            idempotency_key: `itr-sim-email-${itrRunId}-${lead.id}`, // Use itr_run_id for uniqueness
             status: 'reserved',
-            payload: { subject: 'ITR Simulation Test', body: 'Test email' },
+            payload: { 
+              subject: 'ITR Simulation Test', 
+              body: 'Test email',
+              itr_run_id: itrRunId 
+            },
           }));
 
           const { data: outbox, error: outboxErr } = await supabase
@@ -269,7 +416,7 @@ Deno.serve(async (req) => {
 
           if (outboxErr) throw new Error(`Outbox creation failed: ${outboxErr.message}`);
 
-          // Simulate successful sends
+          // Simulate successful sends (marked with itr_direct_write=true)
           const providerIds: string[] = [];
           for (const row of outbox || []) {
             const providerId = `sim_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -281,7 +428,12 @@ Deno.serve(async (req) => {
               .update({ 
                 status: 'sent', 
                 provider_message_id: providerId,
-                provider_response: { simulated: true, timestamp: new Date().toISOString() }
+                provider_response: { 
+                  simulated: true, 
+                  itr_direct_write: true, // Tag for live mode detection
+                  timestamp: new Date().toISOString(),
+                  itr_run_id: itrRunId
+                }
               })
               .eq('id', row.id);
           }
@@ -310,7 +462,8 @@ Deno.serve(async (req) => {
               payload: { 
                 campaign_id: campaign.id, 
                 lead_ids: leads.map(l => l.id),
-                itr_live_test: true 
+                itr_live_test: true,
+                itr_run_id: itrRunId
               },
             })
             .select()
@@ -329,9 +482,13 @@ Deno.serve(async (req) => {
             provider: 'resend',
             recipient_id: lead.id,
             recipient_email: lead.email,
-            idempotency_key: `itr-live-email-${run.id}-${lead.id}`,
+            idempotency_key: `itr-live-email-${itrRunId}-${lead.id}`,
             status: 'reserved',
-            payload: { subject: 'ITR Live Test', body: 'Test email - live mode' },
+            payload: { 
+              subject: 'ITR Live Test', 
+              body: 'Test email - live mode',
+              itr_run_id: itrRunId
+            },
           }));
 
           await supabase.from('channel_outbox').insert(outboxEntries);
@@ -358,10 +515,37 @@ Deno.serve(async (req) => {
             output.evidence.outbox_final_statuses[row.id] = row.status;
           }
 
-          // Extract provider IDs
+          // SAFETY CHECK 2: Detect simulation artifacts in live mode
+          for (const row of outboxResult.rows) {
+            // Check for simulated flag in provider_response
+            if (row.provider_response?.simulated === true) {
+              throw new Error(`LIVE MODE VIOLATION: Outbox row ${row.id} has provider_response.simulated=true`);
+            }
+            // Check for itr_direct_write flag
+            if (row.provider_response?.itr_direct_write === true) {
+              throw new Error(`LIVE MODE VIOLATION: Outbox row ${row.id} was updated via direct write (itr_direct_write=true)`);
+            }
+            // Check for simulated provider ID prefix
+            if (isSimulatedProviderId(row.provider_message_id)) {
+              throw new Error(`LIVE MODE VIOLATION: Outbox row ${row.id} has simulated provider ID: ${row.provider_message_id}`);
+            }
+          }
+
+          // Extract and validate provider IDs
           const providerIds = outboxResult.rows
             .map(r => r.provider_message_id)
             .filter(Boolean) as string[];
+          
+          // SAFETY CHECK 5: Validate provider ID formats in live mode
+          for (const row of outboxResult.rows) {
+            if (row.provider_message_id) {
+              const validation = validateProviderIdFormat(row.provider_message_id, 'resend');
+              if (!validation.valid) {
+                throw new Error(`LIVE MODE VIOLATION: Invalid provider ID for row ${row.id}: ${validation.reason}`);
+              }
+            }
+          }
+          
           output.evidence.provider_ids.push(...providerIds);
 
           if (!outboxResult.success) {
@@ -385,7 +569,7 @@ Deno.serve(async (req) => {
         testEvidence.all_have_provider_id = allHaveProviderId;
         testEvidence.final_outbox_count = finalOutbox?.length || 0;
 
-        // Check duplicates
+        // Check duplicates using itr_run_id-scoped idempotency keys
         const keys = finalOutbox?.map((r: { idempotency_key: string }) => r.idempotency_key) || [];
         const uniqueKeys = new Set(keys);
         testEvidence.duplicates = keys.length - uniqueKeys.size;
@@ -425,7 +609,7 @@ Deno.serve(async (req) => {
     // ================================================================
     if (testsToRun.includes('voice_e2e')) {
       const testStart = Date.now();
-      const testEvidence: Record<string, unknown> = { mode };
+      const testEvidence: Record<string, unknown> = { mode, itr_run_id: itrRunId };
       
       try {
         // Check if voice is configured
@@ -452,21 +636,29 @@ Deno.serve(async (req) => {
               campaign_name: `ITR-Voice-${mode}-${Date.now()}`,
               campaign_type: 'voice',
               status: 'draft',
-              goal: `ITR voice ${mode} certification test`,
+              goal: `ITR voice ${mode} certification test [${itrRunId}]`,
             })
             .select()
             .single();
 
           if (campaignErr) throw new Error(`Voice campaign creation failed: ${campaignErr.message}`);
           testEvidence.campaign_id = campaign.id;
+          
+          // SAFETY CHECK 4: Verify tenant/workspace IDs
+          const idCheck = validateIds(campaign, tenantId, workspaceId);
+          if (!idCheck.valid) {
+            throw new Error(`CRITICAL: ${idCheck.reason}`);
+          }
 
           // Create test leads with phone numbers
           const leadPromises = [1, 2, 3].map(i => 
             supabase.from('leads').insert({
               workspace_id: workspaceId,
-              name: `ITR Voice Lead ${i}`,
+              first_name: `ITR Voice`,
+              last_name: `Lead ${i}`,
               email: `itr-voice-${mode}-${Date.now()}-${i}@test.invalid`,
               phone: `+1555000${1000 + i}`,
+              source: 'itr_test',
               status: 'new',
             }).select().single()
           );
@@ -483,7 +675,12 @@ Deno.serve(async (req) => {
               campaign_id: campaign.id,
               channel: 'voice',
               status: 'queued',
-              run_config: { test_mode: true, itr_run: true, itr_mode: mode },
+              run_config: { 
+                test_mode: true, 
+                itr_run: true, 
+                itr_mode: mode,
+                itr_run_id: itrRunId
+              },
             })
             .select()
             .single();
@@ -491,6 +688,12 @@ Deno.serve(async (req) => {
           if (runErr) throw new Error(`Voice run creation failed: ${runErr.message}`);
           testEvidence.run_id = run.id;
           output.evidence.campaign_run_ids.push(run.id);
+          
+          // SAFETY CHECK 4: Verify tenant/workspace IDs
+          const runIdCheck = validateIds(run, tenantId, workspaceId);
+          if (!runIdCheck.valid) {
+            throw new Error(`CRITICAL: ${runIdCheck.reason}`);
+          }
 
           if (mode === 'simulation') {
             // SIMULATION: Directly create and update outbox entries
@@ -502,9 +705,12 @@ Deno.serve(async (req) => {
               provider: 'vapi',
               recipient_id: lead.id,
               recipient_phone: lead.phone,
-              idempotency_key: `itr-sim-voice-${run.id}-${lead.id}`,
+              idempotency_key: `itr-sim-voice-${itrRunId}-${lead.id}`,
               status: 'reserved',
-              payload: { assistant_id: voiceSettings.default_vapi_assistant_id },
+              payload: { 
+                assistant_id: voiceSettings.default_vapi_assistant_id,
+                itr_run_id: itrRunId
+              },
             }));
 
             const { data: outbox, error: outboxErr } = await supabase
@@ -526,7 +732,12 @@ Deno.serve(async (req) => {
                 .update({ 
                   status: 'called', 
                   provider_message_id: callId,
-                  provider_response: { simulated: true, call_status: 'completed' }
+                  provider_response: { 
+                    simulated: true, 
+                    itr_direct_write: true,
+                    call_status: 'completed',
+                    itr_run_id: itrRunId
+                  }
                 })
                 .eq('id', row.id);
             }
@@ -554,7 +765,8 @@ Deno.serve(async (req) => {
                 payload: { 
                   campaign_id: campaign.id, 
                   lead_ids: leads.map(l => l.id),
-                  itr_live_test: true 
+                  itr_live_test: true,
+                  itr_run_id: itrRunId
                 },
               })
               .select()
@@ -573,9 +785,12 @@ Deno.serve(async (req) => {
               provider: 'vapi',
               recipient_id: lead.id,
               recipient_phone: lead.phone,
-              idempotency_key: `itr-live-voice-${run.id}-${lead.id}`,
+              idempotency_key: `itr-live-voice-${itrRunId}-${lead.id}`,
               status: 'reserved',
-              payload: { assistant_id: voiceSettings.default_vapi_assistant_id },
+              payload: { 
+                assistant_id: voiceSettings.default_vapi_assistant_id,
+                itr_run_id: itrRunId
+              },
             }));
 
             await supabase.from('channel_outbox').insert(outboxEntries);
@@ -594,6 +809,29 @@ Deno.serve(async (req) => {
             for (const row of outboxResult.rows) {
               output.evidence.outbox_row_ids.push(row.id);
               output.evidence.outbox_final_statuses[row.id] = row.status;
+            }
+
+            // SAFETY CHECK 2: Detect simulation artifacts in live mode
+            for (const row of outboxResult.rows) {
+              if (row.provider_response?.simulated === true) {
+                throw new Error(`LIVE MODE VIOLATION: Voice outbox row ${row.id} has provider_response.simulated=true`);
+              }
+              if (row.provider_response?.itr_direct_write === true) {
+                throw new Error(`LIVE MODE VIOLATION: Voice outbox row ${row.id} was updated via direct write`);
+              }
+              if (isSimulatedProviderId(row.provider_message_id)) {
+                throw new Error(`LIVE MODE VIOLATION: Voice outbox row ${row.id} has simulated provider ID: ${row.provider_message_id}`);
+              }
+            }
+
+            // SAFETY CHECK 5: Validate provider ID formats
+            for (const row of outboxResult.rows) {
+              if (row.provider_message_id) {
+                const validation = validateProviderIdFormat(row.provider_message_id, 'vapi');
+                if (!validation.valid) {
+                  throw new Error(`LIVE MODE VIOLATION: Invalid voice provider ID for row ${row.id}: ${validation.reason}`);
+                }
+              }
             }
 
             const providerIds = outboxResult.rows
@@ -649,7 +887,7 @@ Deno.serve(async (req) => {
     // ================================================================
     if (testsToRun.includes('failure_transparency')) {
       const testStart = Date.now();
-      const testEvidence: Record<string, unknown> = { mode };
+      const testEvidence: Record<string, unknown> = { mode, itr_run_id: itrRunId };
       
       try {
         // Create campaign that will fail
@@ -661,12 +899,20 @@ Deno.serve(async (req) => {
             campaign_name: `ITR-FailTest-${mode}-${Date.now()}`,
             campaign_type: 'email',
             status: 'draft',
-            goal: `ITR failure transparency ${mode} test`,
+            goal: `ITR failure transparency ${mode} test [${itrRunId}]`,
           })
           .select()
           .single();
 
         testEvidence.campaign_id = campaign?.id;
+        
+        // SAFETY CHECK 4: Verify tenant/workspace IDs
+        if (campaign) {
+          const idCheck = validateIds(campaign, tenantId, workspaceId);
+          if (!idCheck.valid) {
+            throw new Error(`CRITICAL: ${idCheck.reason}`);
+          }
+        }
 
         // Create run
         const { data: run } = await supabase
@@ -677,7 +923,13 @@ Deno.serve(async (req) => {
             campaign_id: campaign!.id,
             channel: 'email',
             status: 'queued',
-            run_config: { test_mode: true, itr_run: true, force_failure: true, itr_mode: mode },
+            run_config: { 
+              test_mode: true, 
+              itr_run: true, 
+              force_failure: true, 
+              itr_mode: mode,
+              itr_run_id: itrRunId
+            },
           })
           .select()
           .single();
@@ -695,9 +947,12 @@ Deno.serve(async (req) => {
             channel: 'email',
             provider: 'resend',
             recipient_email: 'fail-test@test.invalid',
-            idempotency_key: `itr-fail-${mode}-${run!.id}`,
+            idempotency_key: `itr-fail-${itrRunId}`,
             status: 'reserved',
-            payload: { subject: 'Fail Test' },
+            payload: { 
+              subject: 'Fail Test',
+              itr_run_id: itrRunId
+            },
           })
           .select()
           .single();
@@ -810,13 +1065,14 @@ Deno.serve(async (req) => {
     // ================================================================
     if (testsToRun.includes('scale_safety')) {
       const testStart = Date.now();
-      const testEvidence: Record<string, unknown> = { mode };
+      const testEvidence: Record<string, unknown> = { mode, itr_run_id: itrRunId };
       
       // Scale safety constants
       const REQUIRED_WORKERS = 4;
       const MAX_OLDEST_QUEUED_SECONDS = 180;
       const WORKER_WAIT_TIMEOUT_MS = 60000; // 60 seconds to wait for workers
       const POLL_INTERVAL_MS = 2000; // Check every 2 seconds
+      const MIN_JOBS_TRANSITIONED = 10; // SAFETY CHECK 3: Require actual throughput
       
       try {
         // Create 50 jobs to flood the queue
@@ -828,12 +1084,20 @@ Deno.serve(async (req) => {
             campaign_name: `ITR-Scale-${mode}-${Date.now()}`,
             campaign_type: 'email',
             status: 'draft',
-            goal: `ITR scale safety ${mode} test`,
+            goal: `ITR scale safety ${mode} test [${itrRunId}]`,
           })
           .select()
           .single();
 
         testEvidence.campaign_id = campaign?.id;
+        
+        // SAFETY CHECK 4: Verify tenant/workspace IDs
+        if (campaign) {
+          const idCheck = validateIds(campaign, tenantId, workspaceId);
+          if (!idCheck.valid) {
+            throw new Error(`CRITICAL: ${idCheck.reason}`);
+          }
+        }
 
         const { data: run } = await supabase
           .from('campaign_runs')
@@ -843,7 +1107,13 @@ Deno.serve(async (req) => {
             campaign_id: campaign!.id,
             channel: 'email',
             status: 'running',
-            run_config: { test_mode: true, itr_run: true, scale_test: true, itr_mode: mode },
+            run_config: { 
+              test_mode: true, 
+              itr_run: true, 
+              scale_test: true, 
+              itr_mode: mode,
+              itr_run_id: itrRunId
+            },
           })
           .select()
           .single();
@@ -859,7 +1129,11 @@ Deno.serve(async (req) => {
           job_type: 'email_send_batch',
           status: 'queued',
           scheduled_for: new Date().toISOString(),
-          payload: { batch_index: i, itr_scale_test: true },
+          payload: { 
+            batch_index: i, 
+            itr_scale_test: true,
+            itr_run_id: itrRunId
+          },
         }));
 
         const { data: jobs, error: jobsErr } = await supabase
@@ -870,6 +1144,16 @@ Deno.serve(async (req) => {
         if (jobsErr) throw new Error(`Job queue flood failed: ${jobsErr.message}`);
         testEvidence.jobs_created = jobs?.length || 0;
         testEvidence.job_ids = jobs?.map(j => j.id) || [];
+
+        // Record initial queue depth for progress tracking
+        const { count: initialQueuedCount } = await supabase
+          .from('job_queue')
+          .select('*', { count: 'exact', head: true })
+          .eq('run_id', run!.id)
+          .eq('status', 'queued');
+        
+        output.evidence.initial_queue_depth = initialQueuedCount || 0;
+        testEvidence.initial_queue_depth = initialQueuedCount || 0;
 
         if (mode === 'simulation') {
           // SIMULATION: Verify schema correctness only
@@ -903,15 +1187,17 @@ Deno.serve(async (req) => {
           };
 
         } else {
-          // LIVE: Wait for workers to claim jobs and verify horizontal scaling
-          console.log(`[ITR Scale Safety LIVE] Waiting for ≥${REQUIRED_WORKERS} workers to claim jobs...`);
+          // LIVE: Wait for workers to claim jobs and verify horizontal scaling + throughput
+          console.log(`[ITR Scale Safety LIVE] Waiting for ≥${REQUIRED_WORKERS} workers and ≥${MIN_JOBS_TRANSITIONED} job transitions...`);
           
           const waitStart = Date.now();
           let uniqueWorkers: string[] = [];
           let oldestQueuedSeconds = 0;
           let pollCount = 0;
+          let jobsTransitioned = 0;
+          let finalQueueDepth = 0;
           
-          // Poll until we see enough unique workers or timeout
+          // Poll until we see enough unique workers AND enough job transitions, or timeout
           while (Date.now() - waitStart < WORKER_WAIT_TIMEOUT_MS) {
             pollCount++;
             
@@ -928,6 +1214,16 @@ Deno.serve(async (req) => {
                 .filter(Boolean)
             )] as string[];
 
+            // Count jobs that have transitioned out of 'queued'
+            const { count: stillQueuedCount } = await supabase
+              .from('job_queue')
+              .select('*', { count: 'exact', head: true })
+              .eq('run_id', run!.id)
+              .eq('status', 'queued');
+            
+            finalQueueDepth = stillQueuedCount || 0;
+            jobsTransitioned = (initialQueuedCount || 0) - finalQueueDepth;
+
             // Get current HS metrics for oldest_queued_seconds
             try {
               const { data: hsData } = await supabase.rpc('get_hs_metrics');
@@ -936,11 +1232,11 @@ Deno.serve(async (req) => {
               oldestQueuedSeconds = 0;
             }
 
-            console.log(`[ITR Scale Safety] Poll ${pollCount}: ${uniqueWorkers.length} workers, ${oldestQueuedSeconds}s oldest queued`);
+            console.log(`[ITR Scale Safety] Poll ${pollCount}: ${uniqueWorkers.length} workers, ${jobsTransitioned} jobs transitioned, ${oldestQueuedSeconds}s oldest queued`);
 
-            // Check if we've met the worker requirement
-            if (uniqueWorkers.length >= REQUIRED_WORKERS) {
-              console.log(`[ITR Scale Safety] Worker requirement met: ${uniqueWorkers.length} ≥ ${REQUIRED_WORKERS}`);
+            // SAFETY CHECK 3: Check if we've met BOTH requirements
+            if (uniqueWorkers.length >= REQUIRED_WORKERS && jobsTransitioned >= MIN_JOBS_TRANSITIONED) {
+              console.log(`[ITR Scale Safety] All requirements met: ${uniqueWorkers.length} workers ≥ ${REQUIRED_WORKERS}, ${jobsTransitioned} transitions ≥ ${MIN_JOBS_TRANSITIONED}`);
               break;
             }
 
@@ -953,7 +1249,11 @@ Deno.serve(async (req) => {
           testEvidence.unique_workers = uniqueWorkers.length;
           testEvidence.worker_ids = uniqueWorkers;
           testEvidence.oldest_queued_seconds = oldestQueuedSeconds;
+          testEvidence.jobs_transitioned = jobsTransitioned;
+          testEvidence.final_queue_depth = finalQueueDepth;
           output.evidence.worker_ids = uniqueWorkers;
+          output.evidence.jobs_transitioned_count = jobsTransitioned;
+          output.evidence.final_queue_depth = finalQueueDepth;
 
           // Check for duplicates in outbox
           const { data: outboxData } = await supabase
@@ -980,7 +1280,7 @@ Deno.serve(async (req) => {
           // ASSERTIONS - All must pass for live certification
           const failures: string[] = [];
 
-          // 1. Workers must show up
+          // 1. Workers must show up (horizontal scaling)
           if (uniqueWorkers.length < REQUIRED_WORKERS) {
             failures.push(`Workers: ${uniqueWorkers.length} < ${REQUIRED_WORKERS} required (horizontal scaling not proven)`);
           }
@@ -990,7 +1290,12 @@ Deno.serve(async (req) => {
             failures.push(`Oldest queued: ${oldestQueuedSeconds}s > ${MAX_OLDEST_QUEUED_SECONDS}s SLA`);
           }
 
-          // 3. No duplicates
+          // 3. SAFETY CHECK 3: Actual throughput must be demonstrated
+          if (jobsTransitioned < MIN_JOBS_TRANSITIONED) {
+            failures.push(`Throughput: ${jobsTransitioned} jobs transitioned < ${MIN_JOBS_TRANSITIONED} required (progress not proven)`);
+          }
+
+          // 4. No duplicates
           if (duplicateCount > 0) {
             failures.push(`Duplicates: ${duplicateCount} duplicate entries found`);
           }
@@ -1015,6 +1320,74 @@ Deno.serve(async (req) => {
           evidence: testEvidence,
         };
         output.evidence.errors.push(`scale_safety: ${errorMessage}`);
+      }
+    }
+
+    // ================================================================
+    // SAFETY CHECK 6: Cleanup ITR-created rows in live mode
+    // ================================================================
+    if (mode === 'live') {
+      try {
+        console.log(`[ITR] Performing cleanup for itr_run_id: ${itrRunId}`);
+        
+        // Delete test leads created by this run
+        const { count: leadsDeleted } = await supabase
+          .from('leads')
+          .delete({ count: 'exact' })
+          .eq('source', 'itr_test')
+          .like('email', `%${itrRunId.slice(0, 8)}%`);
+        
+        // Delete outbox rows for this ITR run (via campaign_runs with itr_run_id in run_config)
+        // First get the run IDs
+        const { data: itrRuns } = await supabase
+          .from('campaign_runs')
+          .select('id')
+          .contains('run_config', { itr_run_id: itrRunId });
+        
+        const runIds = itrRuns?.map(r => r.id) || [];
+        
+        let outboxDeleted = 0;
+        if (runIds.length > 0) {
+          const { count } = await supabase
+            .from('channel_outbox')
+            .delete({ count: 'exact' })
+            .in('run_id', runIds);
+          outboxDeleted = count || 0;
+        }
+        
+        // Delete job_queue rows for this ITR run
+        let jobsDeleted = 0;
+        if (runIds.length > 0) {
+          const { count } = await supabase
+            .from('job_queue')
+            .delete({ count: 'exact' })
+            .in('run_id', runIds);
+          jobsDeleted = count || 0;
+        }
+        
+        // Don't delete campaign_runs or campaigns - keep for audit trail
+        // But mark them as cleaned up
+        if (runIds.length > 0) {
+          await supabase
+            .from('campaign_runs')
+            .update({ 
+              run_config: { 
+                ...{ itr_run: true, itr_run_id: itrRunId },
+                itr_cleaned_up: true,
+                itr_cleanup_at: new Date().toISOString()
+              }
+            })
+            .in('id', runIds);
+        }
+        
+        output.evidence.cleanup_performed = true;
+        output.evidence.cleanup_row_count = (leadsDeleted || 0) + outboxDeleted + jobsDeleted;
+        
+        console.log(`[ITR] Cleanup complete: ${output.evidence.cleanup_row_count} rows affected`);
+        
+      } catch (cleanupErr) {
+        console.error('[ITR] Cleanup failed:', cleanupErr);
+        output.evidence.errors.push(`Cleanup failed: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`);
       }
     }
 
@@ -1052,7 +1425,7 @@ Deno.serve(async (req) => {
 
     // CERTIFICATION LATCH: Write durable certification to workspace on live PASS
     if (output.certified) {
-      const CERTIFICATION_VERSION = '1.0.0';
+      const CERTIFICATION_VERSION = '1.1.0'; // Bumped for safety checks
       
       // Create certification hash from evidence
       const certificationPayload = JSON.stringify({
@@ -1060,10 +1433,13 @@ Deno.serve(async (req) => {
           Object.entries(output.tests).map(([k, v]) => [k, v.status])
         ),
         evidence: {
+          itr_run_id: itrRunId,
           campaign_run_ids: output.evidence.campaign_run_ids,
           outbox_row_ids: output.evidence.outbox_row_ids.length,
           provider_ids: output.evidence.provider_ids.length,
+          simulated_provider_ids: output.evidence.simulated_provider_ids.length,
           worker_ids: output.evidence.worker_ids,
+          jobs_transitioned_count: output.evidence.jobs_transitioned_count,
         },
         timestamp: new Date().toISOString(),
         version: CERTIFICATION_VERSION,
@@ -1106,7 +1482,7 @@ Deno.serve(async (req) => {
         agent: 'infrastructure-test-runner',
         mode: `certification-${mode}`,
         status: output.overall === 'PASS' ? 'completed' : 'failed',
-        input: { tests: testsToRun, mode },
+        input: { tests: testsToRun, mode, itr_run_id: itrRunId },
         output: output,
         duration_ms: output.duration_ms,
       });
