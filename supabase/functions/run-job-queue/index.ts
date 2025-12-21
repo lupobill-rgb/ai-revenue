@@ -1374,12 +1374,32 @@ Deno.serve(async (req) => {
           .limit(1);
 
         if (!pendingJobs || pendingJobs.length === 0) {
-          // All jobs done - mark run as completed via RPC
-          await supabase.rpc("update_campaign_run_status", {
-            p_run_id: job.run_id,
-            p_status: "completed",
-            p_completed_at: new Date().toISOString(),
-          });
+          // All jobs done - check outbox for failures before marking completed
+          // INVARIANT: A run can only be "completed" if zero outbox rows failed
+          const { data: outboxRows } = await supabase
+            .from("channel_outbox")
+            .select("status")
+            .eq("run_id", job.run_id);
+
+          const hasFailed = outboxRows?.some(r => r.status === "failed") ?? false;
+          const allTerminal = outboxRows?.every(r => 
+            ["sent", "delivered", "called", "posted", "failed", "skipped"].includes(r.status)
+          ) ?? true;
+
+          if (allTerminal) {
+            // Determine final status based on outbox results
+            const finalStatus = hasFailed ? "partial" : "completed";
+            const errorMsg = hasFailed ? "Some deliveries failed" : undefined;
+            
+            await supabase.rpc("update_campaign_run_status", {
+              p_run_id: job.run_id,
+              p_status: finalStatus,
+              p_error_message: errorMsg,
+              p_completed_at: new Date().toISOString(),
+            });
+            
+            console.log(`[run-job-queue] Run ${job.run_id} finalized as ${finalStatus} (failed outbox: ${hasFailed})`);
+          }
         }
       } else if (result.partial) {
         // Partial success - some items succeeded, some failed
