@@ -227,6 +227,72 @@ function validateIds(row: { tenant_id: string; workspace_id: string }, tenantId:
   return { valid: true };
 }
 
+function validateWorkspaceId(row: { workspace_id: string }, workspaceId: string): { valid: boolean; reason?: string } {
+  if (row.workspace_id !== workspaceId) {
+    return { valid: false, reason: `workspace_id mismatch: expected ${workspaceId}, got ${row.workspace_id}` };
+  }
+  return { valid: true };
+}
+
+async function createItrCampaignForRuns(args: {
+  supabase: any;
+  workspaceId: string;
+  channel: 'email' | 'voice';
+  name: string;
+  itrRunId: string;
+}): Promise<{ campaign: { id: string; workspace_id: string; asset_id: string; channel: string; status: string }; asset: { id: string; workspace_id: string; type: string; status: string } }> {
+  const { supabase, workspaceId, channel, name, itrRunId } = args;
+
+  // campaign_runs.campaign_id FK points to public.campaigns(id), so we must create the parent row there.
+  const assetType = channel === 'voice' ? 'voice' : 'email';
+
+  const { data: asset, error: assetErr } = await supabase
+    .from('assets')
+    .insert({
+      workspace_id: workspaceId,
+      name: `${name} Asset`,
+      description: `ITR ${channel} asset (${itrRunId})`,
+      type: assetType,
+      status: 'draft',
+      channel,
+    })
+    .select('id, workspace_id, type, status')
+    .single();
+
+  if (assetErr || !asset?.id) {
+    throw new Error(`Asset creation failed: ${assetErr?.message || 'no asset returned'}`);
+  }
+
+  const { data: campaign, error: campaignErr } = await supabase
+    .from('campaigns')
+    .insert({
+      workspace_id: workspaceId,
+      asset_id: asset.id,
+      channel,
+      status: 'draft',
+    })
+    .select('id, workspace_id, asset_id, channel, status')
+    .single();
+
+  if (campaignErr || !campaign?.id) {
+    throw new Error(`Campaign creation failed: ${campaignErr?.message || 'no campaign returned'}`);
+  }
+
+  // Preflight: verify it can be read back immediately (catches table mismatch/trigger rollback).
+  const { data: roundTrip, error: roundTripErr } = await supabase
+    .from('campaigns')
+    .select('id')
+    .eq('id', campaign.id)
+    .maybeSingle();
+
+  if (roundTripErr || !roundTrip?.id) {
+    throw new Error(`Campaign preflight failed: ${roundTripErr?.message || 'campaign not readable after insert'}`);
+  }
+
+  return { campaign, asset };
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -323,30 +389,21 @@ Deno.serve(async (req) => {
       const testEvidence: Record<string, unknown> = { mode, itr_run_id: itrRunId };
       
       try {
-        // 1. Create test campaign (tagged with itr_run_id)
-        // NOTE: goal must be one of: 'leads', 'meetings', 'revenue', 'engagement'
-        const { data: campaign, error: campaignErr } = await supabase
-          .from('cmo_campaigns')
-          .insert({
-            tenant_id: tenantId,
-            workspace_id: workspaceId,
-            campaign_name: `ITR-Email-${mode}-${Date.now()}`,
-            campaign_type: 'email',
-            status: 'draft',
-            goal: 'leads', // Valid enum value; ITR context tracked via run_config.itr_run_id
-          })
-          .select()
-          .single();
+        // 1. Create test campaign in the correct parent table for campaign_runs FK
+        const { campaign, asset } = await createItrCampaignForRuns({
+          supabase,
+          workspaceId,
+          channel: 'email',
+          name: `ITR-Email-${mode}-${Date.now()}`,
+          itrRunId,
+        });
 
-        if (campaignErr || !campaign) {
-          throw new Error(`Campaign creation failed: ${campaignErr?.message || 'no campaign returned'}`);
-        }
         testEvidence.campaign_id = campaign.id;
-        
-        // SAFETY CHECK 4: Verify tenant/workspace IDs in created row
-        const idCheck = validateIds(campaign, tenantId, workspaceId);
-        if (!idCheck.valid) {
-          throw new Error(`CRITICAL: ${idCheck.reason}`);
+        testEvidence.asset_id = asset.id;
+
+        const campaignWsCheck = validateWorkspaceId(campaign, workspaceId);
+        if (!campaignWsCheck.valid) {
+          throw new Error(`CRITICAL: ${campaignWsCheck.reason}`);
         }
 
         // 2. Create test leads
@@ -383,7 +440,9 @@ Deno.serve(async (req) => {
           .select()
           .single();
 
-        if (runErr) throw new Error(`Run creation failed: ${runErr.message}`);
+        if (runErr || !run?.id) {
+          throw new Error(`Run creation failed: ${runErr?.message || 'no run returned'}`);
+        }
         testEvidence.run_id = run.id;
         output.evidence.campaign_run_ids.push(run.id);
         
@@ -630,30 +689,21 @@ Deno.serve(async (req) => {
             evidence: testEvidence,
           };
         } else {
-          // Create voice campaign
-          // NOTE: goal must be one of: 'leads', 'meetings', 'revenue', 'engagement'
-          const { data: campaign, error: campaignErr } = await supabase
-            .from('cmo_campaigns')
-            .insert({
-              tenant_id: tenantId,
-              workspace_id: workspaceId,
-              campaign_name: `ITR-Voice-${mode}-${Date.now()}`,
-              campaign_type: 'voice',
-              status: 'draft',
-              goal: 'meetings', // Valid enum value for voice campaigns
-            })
-            .select()
-            .single();
+          // Create voice campaign in the correct parent table for campaign_runs FK
+          const { campaign, asset } = await createItrCampaignForRuns({
+            supabase,
+            workspaceId,
+            channel: 'voice',
+            name: `ITR-Voice-${mode}-${Date.now()}`,
+            itrRunId,
+          });
 
-          if (campaignErr || !campaign) {
-            throw new Error(`Voice campaign creation failed: ${campaignErr?.message || 'no campaign returned'}`);
-          }
           testEvidence.campaign_id = campaign.id;
-          
-          // SAFETY CHECK 4: Verify tenant/workspace IDs
-          const idCheck = validateIds(campaign, tenantId, workspaceId);
-          if (!idCheck.valid) {
-            throw new Error(`CRITICAL: ${idCheck.reason}`);
+          testEvidence.asset_id = asset.id;
+
+          const campaignWsCheck = validateWorkspaceId(campaign, workspaceId);
+          if (!campaignWsCheck.valid) {
+            throw new Error(`CRITICAL: ${campaignWsCheck.reason}`);
           }
 
           // Create test leads with phone numbers
@@ -691,7 +741,9 @@ Deno.serve(async (req) => {
             .select()
             .single();
 
-          if (runErr) throw new Error(`Voice run creation failed: ${runErr.message}`);
+          if (runErr || !run?.id) {
+            throw new Error(`Voice run creation failed: ${runErr?.message || 'no run returned'}`);
+          }
           testEvidence.run_id = run.id;
           output.evidence.campaign_run_ids.push(run.id);
           
@@ -896,31 +948,21 @@ Deno.serve(async (req) => {
       const testEvidence: Record<string, unknown> = { mode, itr_run_id: itrRunId };
       
       try {
-        // Create campaign that will fail
-        // NOTE: goal must be one of: 'leads', 'meetings', 'revenue', 'engagement'
-        const { data: campaign, error: campaignErr } = await supabase
-          .from('cmo_campaigns')
-          .insert({
-            tenant_id: tenantId,
-            workspace_id: workspaceId,
-            campaign_name: `ITR-FailTest-${mode}-${Date.now()}`,
-            campaign_type: 'email',
-            status: 'draft',
-            goal: 'leads', // Valid enum value
-          })
-          .select()
-          .single();
-
-        if (campaignErr || !campaign) {
-          throw new Error(`Failure test campaign creation failed: ${campaignErr?.message || 'no campaign returned'}`);
-        }
+        // Create campaign that will fail (in campaigns table to satisfy campaign_runs FK)
+        const { campaign, asset } = await createItrCampaignForRuns({
+          supabase,
+          workspaceId,
+          channel: 'email',
+          name: `ITR-FailTest-${mode}-${Date.now()}`,
+          itrRunId,
+        });
 
         testEvidence.campaign_id = campaign.id;
-        
-        // SAFETY CHECK 4: Verify tenant/workspace IDs
-        const idCheck = validateIds(campaign, tenantId, workspaceId);
-        if (!idCheck.valid) {
-          throw new Error(`CRITICAL: ${idCheck.reason}`);
+        testEvidence.asset_id = asset.id;
+
+        const campaignWsCheck = validateWorkspaceId(campaign, workspaceId);
+        if (!campaignWsCheck.valid) {
+          throw new Error(`CRITICAL: ${campaignWsCheck.reason}`);
         }
 
         // Create run
@@ -1178,31 +1220,21 @@ Deno.serve(async (req) => {
       }
       
       try {
-        // Create 50 jobs to flood the queue
-        // NOTE: goal must be one of: 'leads', 'meetings', 'revenue', 'engagement'
-        const { data: campaign, error: campaignErr } = await supabase
-          .from('cmo_campaigns')
-          .insert({
-            tenant_id: tenantId,
-            workspace_id: workspaceId,
-            campaign_name: `ITR-Scale-${mode}-${Date.now()}`,
-            campaign_type: 'email',
-            status: 'draft',
-            goal: 'engagement', // Valid enum value for scale test
-          })
-          .select()
-          .single();
-
-        if (campaignErr || !campaign) {
-          throw new Error(`Scale test campaign creation failed: ${campaignErr?.message || 'no campaign returned'}`);
-        }
+        // Create campaign for scale test (in campaigns table to satisfy campaign_runs FK)
+        const { campaign, asset } = await createItrCampaignForRuns({
+          supabase,
+          workspaceId,
+          channel: 'email',
+          name: `ITR-Scale-${mode}-${Date.now()}`,
+          itrRunId,
+        });
 
         testEvidence.campaign_id = campaign.id;
-        
-        // SAFETY CHECK 4: Verify tenant/workspace IDs
-        const idCheck = validateIds(campaign, tenantId, workspaceId);
-        if (!idCheck.valid) {
-          throw new Error(`CRITICAL: ${idCheck.reason}`);
+        testEvidence.asset_id = asset.id;
+
+        const campaignWsCheck = validateWorkspaceId(campaign, workspaceId);
+        if (!campaignWsCheck.valid) {
+          throw new Error(`CRITICAL: ${campaignWsCheck.reason}`);
         }
 
         const { data: run, error: runErr } = await supabase
