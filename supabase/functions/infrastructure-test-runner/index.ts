@@ -993,53 +993,100 @@ Deno.serve(async (req) => {
         testEvidence.run_error = failedRun?.error_message;
         testEvidence.run_status = failedRun?.status;
 
-        const runIsFailed = failedRun?.status === 'failed';
+        // ================================================================
+        // ZERO-TOLERANCE SILENT FAILURE DETECTION
+        // These checks run ALWAYS, regardless of run status
+        // ================================================================
 
-        // CRITICAL: If run is failed, NO outbox row may have empty/missing error
-        // Silent failure is a platform-killer - fail immediately
-        if (runIsFailed) {
-          const silentFailures = (allOutboxRows || []).filter(row => {
-            const isFailed = row.status === 'failed';
-            const hasEmptyError = !row.error || row.error.trim() === '';
-            return isFailed && hasEmptyError;
-          });
+        // INVARIANT 1 (Outbox-level): Every failed row MUST have non-empty error
+        // Minimum 10 characters for meaningful error message
+        const MIN_ERROR_LENGTH = 10;
+        const failedOutboxRows = (allOutboxRows || []).filter(row => row.status === 'failed');
+        const silentFailures = failedOutboxRows.filter(row => {
+          const errorText = row.error?.trim() || '';
+          return errorText.length < MIN_ERROR_LENGTH;
+        });
 
-          testEvidence.silent_failures = silentFailures.length;
-          testEvidence.silent_failure_ids = silentFailures.map(r => r.id);
+        testEvidence.failed_outbox_count = failedOutboxRows.length;
+        testEvidence.silent_failures = silentFailures.length;
+        testEvidence.silent_failure_ids = silentFailures.map(r => r.id);
+        testEvidence.silent_failure_details = silentFailures.map(r => ({
+          id: r.id,
+          error: r.error,
+          error_length: (r.error?.trim() || '').length
+        }));
 
-          if (silentFailures.length > 0) {
-            throw new Error(`SILENT FAILURE DETECTED: ${silentFailures.length} outbox row(s) failed without readable error. IDs: ${silentFailures.map(r => r.id).join(', ')}`);
+        // HARD FAIL: Silent failures make the platform untrustworthy
+        if (silentFailures.length > 0) {
+          throw new Error(
+            `SILENT FAILURE DETECTED: ${silentFailures.length} outbox row(s) failed without readable error ` +
+            `(min ${MIN_ERROR_LENGTH} chars required). IDs: ${silentFailures.map(r => r.id).join(', ')}`
+          );
+        }
+
+        // INVARIANT 2 (Run-level): If ANY outbox row failed, run MUST be failed/partial
+        // A "completed" run with failed deliveries is a lie
+        const runStatus = failedRun?.status;
+        const runIsFailed = runStatus === 'failed';
+        const runIsPartial = runStatus === 'partial';
+        const runIsCompleted = runStatus === 'completed';
+        
+        if (failedOutboxRows.length > 0) {
+          // Has failures - run cannot be "completed" 
+          if (runIsCompleted) {
+            throw new Error(
+              `RUN STATUS MISMATCH: Run ${run!.id} is "completed" but has ${failedOutboxRows.length} failed outbox row(s). ` +
+              `Run must be "failed" or "partial" when failures exist.`
+            );
+          }
+          
+          // Run should be failed or partial
+          if (!runIsFailed && !runIsPartial) {
+            throw new Error(
+              `RUN STATUS MISMATCH: Run ${run!.id} has status "${runStatus}" but has ${failedOutboxRows.length} failed outbox row(s). ` +
+              `Expected "failed" or "partial".`
+            );
+          }
+          
+          // Run must have readable error message when failures exist
+          const runErrorLength = (failedRun?.error_message?.trim() || '').length;
+          if (runErrorLength < MIN_ERROR_LENGTH) {
+            throw new Error(
+              `RUN ERROR MISSING: Run ${run!.id} has ${failedOutboxRows.length} failed outbox row(s) but ` +
+              `error_message is missing or too short (${runErrorLength} chars, min ${MIN_ERROR_LENGTH}).`
+            );
           }
         }
 
-        // Check that all failed outbox rows have readable errors
-        const failedOutboxRows = (allOutboxRows || []).filter(row => row.status === 'failed');
-        const outboxWithErrors = failedOutboxRows.filter(row => row.error && row.error.length > 10);
-        
-        testEvidence.failed_outbox_count = failedOutboxRows.length;
+        // Collect evidence about errors
+        const outboxWithErrors = failedOutboxRows.filter(row => 
+          (row.error?.trim() || '').length >= MIN_ERROR_LENGTH
+        );
         testEvidence.outbox_with_errors_count = outboxWithErrors.length;
-        testEvidence.outbox_errors = failedOutboxRows.map(r => ({ id: r.id, error: r.error }));
+        testEvidence.outbox_errors = failedOutboxRows.map(r => ({ 
+          id: r.id, 
+          error: r.error,
+          error_length: (r.error?.trim() || '').length 
+        }));
 
-        // Assert: run must be in failed status
+        // ================================================================
+        // Standard assertions for this test case
+        // ================================================================
+
+        // This test specifically creates a failure, so run must be failed
         if (!runIsFailed) {
-          throw new Error('Run should be in failed status');
+          throw new Error(`Run should be in failed status, got: ${runStatus}`);
         }
 
-        // Assert: at least one failed outbox row exists
+        // At least one failed outbox row must exist for this test
         if (failedOutboxRows.length === 0) {
           throw new Error('No failed outbox rows found - cannot verify error transparency');
         }
 
-        // Assert: all failed outbox rows must have readable errors
-        if (outboxWithErrors.length !== failedOutboxRows.length) {
-          const missing = failedOutboxRows.length - outboxWithErrors.length;
-          throw new Error(`${missing} outbox row(s) missing readable error (min 10 chars required)`);
-        }
-
-        // Assert: campaign run must have readable error
-        const hasRunError = failedRun?.error_message && failedRun.error_message.length > 10;
+        // Verify run has readable error (already checked above, but explicit)
+        const hasRunError = failedRun?.error_message && failedRun.error_message.length >= MIN_ERROR_LENGTH;
         if (!hasRunError) {
-          throw new Error('Campaign run missing readable error');
+          throw new Error(`Campaign run missing readable error (min ${MIN_ERROR_LENGTH} chars)`);
         }
 
         output.tests.failure_transparency = {
