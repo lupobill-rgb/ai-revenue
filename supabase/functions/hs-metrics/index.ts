@@ -1,42 +1,20 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Restrict CORS to allowed origins only
-const ALLOWED_ORIGINS = [
-  "https://cmo.ubigrowth.ai",
-  "https://ubigrowth.ai",
-  "https://www.ubigrowth.ai",
-  "http://localhost:5173",
-  "http://localhost:3000",
-];
-
-function getCorsHeaders(origin: string | null): Record<string, string> | null {
-  // If origin is not in allowlist, return null (no CORS headers)
-  if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
-    return null;
-  }
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
-}
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 Deno.serve(async (req) => {
-  const origin = req.headers.get("Origin");
-  const corsHeaders = getCorsHeaders(origin);
-
-  // For preflight, only allow if origin is valid
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    if (!corsHeaders) {
-      return new Response(null, { status: 403 });
-    }
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Build response headers (may be empty if origin not allowed)
   const responseHeaders: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(corsHeaders || {}),
+    ...corsHeaders,
   };
 
   // 1. Check Authorization header - must return 401 if missing
@@ -51,33 +29,39 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // 2. Create user client to verify auth and check platform admin
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    // Use service client to verify user token and check platform admin
+    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 3. Check if user is platform admin - must return 403 if not
-    const { data: isAdmin, error: adminError } = await userClient.rpc("is_platform_admin");
-    
-    if (adminError) {
-      console.error("hs-metrics: Admin check error:", adminError.message);
-      // Auth error means not authorized - return 403
+    // Extract token and verify user
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await serviceClient.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error("hs-metrics: Auth error:", authError?.message || "No user");
       return new Response(
         JSON.stringify({ error: "Access denied - authentication failed" }),
         { status: 403, headers: responseHeaders }
       );
     }
 
-    if (!isAdmin) {
-      console.warn("hs-metrics: Access denied - not platform admin");
+    // Check if user is platform admin by querying the table directly
+    const { data: adminData } = await serviceClient
+      .from("platform_admins")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!adminData) {
+      console.warn("hs-metrics: Access denied - not platform admin:", user.id);
       return new Response(
         JSON.stringify({ error: "Access denied - platform admin required" }),
         { status: 403, headers: responseHeaders }
       );
     }
+
+    console.log("hs-metrics: User authenticated as platform admin:", user.id);
 
     // 4. Parse window_minutes from request body
     let windowMinutes = 5;
@@ -90,9 +74,7 @@ Deno.serve(async (req) => {
       // No body or invalid JSON, use default
     }
 
-    // 5. Create service_role client to call the RPC
-    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
-
+    // 5. Call the RPC with service client
     const { data, error } = await serviceClient.rpc("get_horizontal_scaling_metrics", {
       p_window_minutes: windowMinutes,
     });
