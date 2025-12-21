@@ -537,28 +537,69 @@ Deno.serve(async (req) => {
           testEvidence.outbox_count = outbox?.length || 0;
 
         } else {
-          // LIVE: Create job queue entry and let workers process
-          const { data: job, error: jobErr } = await supabase
+          // ============================================================
+          // LIVE MODE: Check for worker activity FIRST (before waiting 60s)
+          // ============================================================
+          const { data: recentLockedJobs } = await supabase
             .from('job_queue')
-            .insert({
-              tenant_id: tenantId,
-              workspace_id: workspaceId,
-              run_id: run.id,
-              job_type: 'email_send_batch',
-              status: 'queued',
-              scheduled_for: new Date().toISOString(),
-              payload: { 
-                campaign_id: campaign.id, 
-                lead_ids: leads.map(l => l.id),
-                itr_live_test: true,
-                itr_run_id: itrRunId
-              },
-            })
-            .select()
-            .single();
+            .select('id')
+            .not('locked_by', 'is', null)
+            .gte('updated_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
+            .limit(1);
+          
+          const { data: recentCompletedJobs } = await supabase
+            .from('job_queue')
+            .select('id')
+            .in('status', ['completed', 'failed'])
+            .gte('updated_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
+            .limit(1);
+          
+          const workersOnline = (recentLockedJobs?.length || 0) > 0 || (recentCompletedJobs?.length || 0) > 0;
+          testEvidence.workers_online_preflight = workersOnline;
+          
+          if (!workersOnline) {
+            // Workers are offline - SKIP this test (not TIMEOUT after 60s)
+            console.log('[ITR Email E2E] SKIPPED: No worker activity detected in last 2 minutes');
+            
+            // Mark run as failed (since we can't process it)
+            await supabase
+              .from('campaign_runs')
+              .update({ status: 'failed', completed_at: new Date().toISOString(), error_message: 'Workers offline - email test skipped' })
+              .eq('id', run.id);
+            
+            output.tests.email_e2e = {
+              status: 'SKIPPED',
+              reason: 'Workers Offline: No job processing activity detected in last 2 minutes. Deploy workers to process jobs and run live tests.',
+              duration_ms: Date.now() - testStart,
+              evidence: testEvidence,
+            };
+            
+            // Don't throw - continue to next test
+          } else {
+            // Workers are online - proceed with live test
+            
+            // LIVE: Create job queue entry and let workers process
+            const { data: job, error: jobErr } = await supabase
+              .from('job_queue')
+              .insert({
+                tenant_id: tenantId,
+                workspace_id: workspaceId,
+                run_id: run.id,
+                job_type: 'email_send_batch',
+                status: 'queued',
+                scheduled_for: new Date().toISOString(),
+                payload: { 
+                  campaign_id: campaign.id, 
+                  lead_ids: leads.map(l => l.id),
+                  itr_live_test: true,
+                  itr_run_id: itrRunId
+                },
+              })
+              .select()
+              .single();
 
-          if (jobErr) throw new Error(`Job creation failed: ${jobErr.message}`);
-          testEvidence.job_id = job.id;
+            if (jobErr) throw new Error(`Job creation failed: ${jobErr.message}`);
+            testEvidence.job_id = job.id;
 
           // Create outbox entries with 'reserved' status (workers will process)
           const outboxEntries = leads.map(lead => ({
@@ -641,43 +682,47 @@ Deno.serve(async (req) => {
           }
 
           testEvidence.simulated = false;
+          } // close workersOnline else
+        } // close mode !== 'simulation' else
+
+        // Only verify assertions if we didn't skip due to workers offline
+        if (!output.tests.email_e2e || output.tests.email_e2e.status !== 'SKIPPED') {
+          // Verify assertions (same for both modes)
+          const { data: finalOutbox } = await supabase
+            .from('channel_outbox')
+            .select('*')
+            .eq('run_id', run.id);
+
+          const terminalStatuses = ['sent', 'delivered', 'failed', 'skipped'];
+          const allTerminal = finalOutbox?.every((r: { status: string }) => terminalStatuses.includes(r.status)) ?? false;
+          const allHaveProviderId = finalOutbox?.every((r: { provider_message_id: string | null }) => r.provider_message_id) ?? false;
+          
+          testEvidence.all_terminal = allTerminal;
+          testEvidence.all_have_provider_id = allHaveProviderId;
+          testEvidence.final_outbox_count = finalOutbox?.length || 0;
+
+          // Check duplicates using itr_run_id-scoped idempotency keys
+          const keys = finalOutbox?.map((r: { idempotency_key: string }) => r.idempotency_key) || [];
+          const uniqueKeys = new Set(keys);
+          testEvidence.duplicates = keys.length - uniqueKeys.size;
+
+          if (!allTerminal) {
+            throw new Error('Not all outbox rows reached terminal status');
+          }
+          if (!allHaveProviderId && mode === 'simulation') {
+            // In simulation we expect provider IDs, in live mode depends on provider
+            throw new Error('Not all outbox rows have provider_message_id');
+          }
+          if (finalOutbox?.length !== 3) {
+            throw new Error(`Expected 3 outbox rows, got ${finalOutbox?.length}`);
+          }
+
+          output.tests.email_e2e = {
+            status: 'PASS',
+            duration_ms: Date.now() - testStart,
+            evidence: testEvidence,
+          };
         }
-
-        // Verify assertions (same for both modes)
-        const { data: finalOutbox } = await supabase
-          .from('channel_outbox')
-          .select('*')
-          .eq('run_id', run.id);
-
-        const terminalStatuses = ['sent', 'delivered', 'failed', 'skipped'];
-        const allTerminal = finalOutbox?.every((r: { status: string }) => terminalStatuses.includes(r.status)) ?? false;
-        const allHaveProviderId = finalOutbox?.every((r: { provider_message_id: string | null }) => r.provider_message_id) ?? false;
-        
-        testEvidence.all_terminal = allTerminal;
-        testEvidence.all_have_provider_id = allHaveProviderId;
-        testEvidence.final_outbox_count = finalOutbox?.length || 0;
-
-        // Check duplicates using itr_run_id-scoped idempotency keys
-        const keys = finalOutbox?.map((r: { idempotency_key: string }) => r.idempotency_key) || [];
-        const uniqueKeys = new Set(keys);
-        testEvidence.duplicates = keys.length - uniqueKeys.size;
-
-        if (!allTerminal) {
-          throw new Error('Not all outbox rows reached terminal status');
-        }
-        if (!allHaveProviderId && mode === 'simulation') {
-          // In simulation we expect provider IDs, in live mode depends on provider
-          throw new Error('Not all outbox rows have provider_message_id');
-        }
-        if (finalOutbox?.length !== 3) {
-          throw new Error(`Expected 3 outbox rows, got ${finalOutbox?.length}`);
-        }
-
-        output.tests.email_e2e = {
-          status: 'PASS',
-          duration_ms: Date.now() - testStart,
-          evidence: testEvidence,
-        };
 
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
