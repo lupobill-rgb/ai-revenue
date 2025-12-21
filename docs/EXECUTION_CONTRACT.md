@@ -1,5 +1,11 @@
 # Execution Contract
 
+> **Version: execution-kernel@v1.0 — FROZEN**
+>
+> See [EXECUTION_KERNEL_FREEZE.md](./EXECUTION_KERNEL_FREEZE.md) for change policy.
+
+---
+
 > **This is the architecture line in the sand.**
 >
 > A campaign is "launched" only if:
