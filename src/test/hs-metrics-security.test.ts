@@ -83,7 +83,7 @@ describe('Horizontal Scaling Metrics Security', () => {
     });
 
     it('should return 200 with metrics for platform admin', async () => {
-      // This test requires a real platform admin JWT - will fail if not set
+      // MANDATORY: This test requires a real platform admin JWT - fails hard if not set
       expect(TEST_PLATFORM_ADMIN_JWT).toBeTruthy();
 
       const response = await fetch(`${SUPABASE_URL}/functions/v1/hs-metrics`, {
