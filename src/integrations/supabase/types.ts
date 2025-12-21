@@ -6716,6 +6716,7 @@ export type Database = {
       }
       retry_job: { Args: { p_job_id: string }; Returns: boolean }
       run_job_queue_cron: { Args: never; Returns: undefined }
+      run_job_queue_parallel: { Args: never; Returns: undefined }
       sequence_step_workspace_access: {
         Args: { step_sequence_id: string }
         Returns: boolean
