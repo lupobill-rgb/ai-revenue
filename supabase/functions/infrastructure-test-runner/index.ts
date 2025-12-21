@@ -1379,17 +1379,67 @@ Deno.serve(async (req) => {
 
         } else {
           // ============================================================
-          // LIVE MODE: Observe for 60 seconds, then assert
+          // LIVE MODE: Check for worker activity first
           // ============================================================
-          console.log(`[ITR Scale Safety LIVE] Starting ${WORKER_WAIT_TIMEOUT_MS/1000}s observation window...`);
-          console.log(`[ITR Scale Safety LIVE] T0 snapshot: ${JSON.stringify(t0Snapshot)}`);
           
-          const waitStart = Date.now();
-          let uniqueWorkers: string[] = [];
-          let allWorkersSeen: Set<string> = new Set();
-          let oldestQueuedSeconds = 0;
-          let pollCount = 0;
-          let currentSnapshot: QueueSnapshot = t0Snapshot;
+          // PREFLIGHT: Check if workers are online (job activity in last 2 minutes)
+          const { data: recentLockedJobs } = await supabase
+            .from('job_queue')
+            .select('id')
+            .not('locked_by', 'is', null)
+            .gte('updated_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
+            .limit(1);
+          
+          const { data: recentCompletedJobs } = await supabase
+            .from('job_queue')
+            .select('id')
+            .in('status', ['completed', 'failed'])
+            .gte('completed_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
+            .limit(1);
+          
+          const workersOnline = (recentLockedJobs?.length || 0) > 0 || (recentCompletedJobs?.length || 0) > 0;
+          testEvidence.workers_online_preflight = workersOnline;
+          
+          if (!workersOnline) {
+            // Workers are offline - SKIP this test (not FAIL)
+            console.log('[ITR Scale Safety] SKIPPED: No worker activity detected in last 2 minutes');
+            
+            // Clean up the jobs we just created
+            await supabase
+              .from('job_queue')
+              .delete()
+              .eq('run_id', run.id);
+            
+            await supabase
+              .from('campaign_runs')
+              .update({ status: 'skipped', completed_at: new Date().toISOString(), error_message: 'Workers offline - scale test skipped' })
+              .eq('id', run.id);
+            
+            output.tests.scale_safety = {
+              status: 'SKIPPED',
+              reason: 'Workers Offline: No job processing activity detected in last 2 minutes. Deploy workers to this environment to run scale tests.',
+              duration_ms: Date.now() - testStart,
+              evidence: testEvidence,
+            };
+            
+            // Add to blocking reasons - SKIPPED still blocks certification
+            output.blocking_reasons.push('scale_safety: Workers Offline (SKIPPED - deploy workers to certify)');
+            
+            // Continue to next test instead of throwing
+            output.tests.scale_safety.evidence = testEvidence;
+          } else {
+            // ============================================================
+            // Workers are online - proceed with observation
+            // ============================================================
+            console.log(`[ITR Scale Safety LIVE] Starting ${WORKER_WAIT_TIMEOUT_MS/1000}s observation window...`);
+            console.log(`[ITR Scale Safety LIVE] T0 snapshot: ${JSON.stringify(t0Snapshot)}`);
+            
+            const waitStart = Date.now();
+            let uniqueWorkers: string[] = [];
+            let allWorkersSeen: Set<string> = new Set();
+            let oldestQueuedSeconds = 0;
+            let pollCount = 0;
+            let currentSnapshot: QueueSnapshot = t0Snapshot;
           
           // Poll throughout the observation window (don't exit early)
           while (Date.now() - waitStart < WORKER_WAIT_TIMEOUT_MS) {
@@ -1518,7 +1568,8 @@ Deno.serve(async (req) => {
             duration_ms: Date.now() - testStart,
             evidence: testEvidence,
           };
-        }
+          } // end workers online block
+        } // end else (not simulation)
 
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
