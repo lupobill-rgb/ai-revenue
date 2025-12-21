@@ -6687,6 +6687,7 @@ export type Database = {
         Returns: undefined
       }
       is_platform_admin: { Args: never; Returns: boolean }
+      is_platform_admin_safe: { Args: never; Returns: boolean }
       is_service_role: { Args: never; Returns: boolean }
       is_workspace_certified: {
         Args: { _workspace_id: string }
