@@ -1189,6 +1189,22 @@ Deno.serve(async (req) => {
     if (!jobs || jobs.length === 0) {
       console.log(`[${workerId}] No queued jobs found`);
       
+      // IMPORTANT: Record heartbeat even when no jobs claimed
+      // This ensures L3c (active workers) check passes during idle periods
+      await recordWorkerTickMetrics(supabase, {
+        workerId,
+        tickStartedAt: new Date(runStartTime),
+        jobsClaimed: 0,
+        jobsProcessed: 0,
+        jobsSucceeded: 0,
+        jobsFailed: 0,
+        jobsThrottled: 0,
+        lockContentionCount: 0,
+        tenantJobs: {},
+        queueDepth: statusCounts.queued,
+        error: null,
+      });
+      
       // Log the tick with no jobs
       await logJobQueueTick(supabase, workerId, invocationType, statusCounts, 0, null);
       
