@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useDataIntegrity, validateDataIntegrity } from "@/hooks/useDataIntegrity";
 import { useWorkspaceContext, DataQualityStatus } from "@/contexts/WorkspaceContext";
-import { DemoModeToggle } from "@/components/DemoModeToggle";
+import { DemoModeToggle, DataModeBanner } from "@/components/DemoModeToggle";
 import { TrendingUp, CheckCircle, Clock, Eye, PlayCircle, Mail, Phone, Layout, DollarSign, Target, AlertCircle, Settings, Plus, BarChart3, LineChart, HelpCircle, Activity, ShieldAlert } from "lucide-react";
 import { CampaignRunDetailsDrawer } from "@/components/campaigns/CampaignRunDetailsDrawer";
 import NavBar from "@/components/NavBar";
@@ -369,63 +369,15 @@ const Dashboard = () => {
             </div>
           ) : (
             <>
-              {/* DEMO MODE - Show warning when in demo mode */}
-              {dataIntegrity.isDemoMode && campaigns.length > 0 && (
-                <Card className="mb-8 border-amber-500/50 bg-amber-500/10">
-                  <CardHeader>
-                    <div className="flex items-start gap-4">
-                      <AlertCircle className="h-6 w-6 text-amber-500 flex-shrink-0 mt-1" />
-                      <div className="flex-1">
-                        <CardTitle className="text-foreground text-xl mb-2 flex items-center gap-2">
-                          <Badge variant="outline" className="border-amber-500 text-amber-500 bg-amber-500/10">
-                            DEMO DATA
-                          </Badge>
-                          Simulated Metrics
-                        </CardTitle>
-                        <CardDescription className="text-foreground/80 mb-4">
-                          Demo mode is enabled. These metrics are <strong>simulated for demonstration</strong>. 
-                          Switch to real mode in Settings to use actual analytics data.
-                        </CardDescription>
-                        <Button
-                          variant="outline"
-                          onClick={() => navigate("/settings/integrations")}
-                          className="border-amber-500 text-amber-600 hover:bg-amber-500/10"
-                        >
-                          <Settings className="mr-2 h-4 w-4" />
-                          Configure Settings
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
+              {/* Data Mode Banner - shows sample data or missing provider warnings */}
+              {dataIntegrity.workspaceId && (
+                <DataModeBanner 
+                  workspaceId={dataIntegrity.workspaceId}
+                  onConnectStripe={() => navigate("/settings/integrations")}
+                  onConnectAnalytics={() => navigate("/settings/integrations")}
+                />
               )}
 
-              {/* DATA INTEGRITY: Live mode with missing integrations - show enforcement notice */}
-              {dataIntegrity.isLiveMode && campaigns.length > 0 && !dataIntegrity.shouldShowImpressions && (
-                <Card className="mb-8 border-blue-500/50 bg-blue-500/10">
-                  <CardHeader>
-                    <div className="flex items-start gap-4">
-                      <BarChart3 className="h-6 w-6 text-blue-500 flex-shrink-0 mt-1" />
-                      <div className="flex-1">
-                        <CardTitle className="text-foreground text-xl mb-2">
-                          Connect Analytics Providers
-                        </CardTitle>
-                        <CardDescription className="text-foreground/80 mb-4">
-                          Real mode is active. To see actual campaign performance data, connect your analytics providers 
-                          (Google Analytics, Meta Ads, LinkedIn Ads, etc.) in Settings.
-                        </CardDescription>
-                        <Button
-                          onClick={() => navigate("/settings/integrations")}
-                          className="bg-blue-500 hover:bg-blue-600 text-white"
-                        >
-                          <Settings className="mr-2 h-4 w-4" />
-                          Connect Integrations
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-              )}
 
               {/* AI Quick Actions */}
               <div className="mb-8">

@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Loader2, AlertTriangle, Database, Zap } from "lucide-react";
 
 type WorkspaceRow = {
   id: string;
@@ -72,12 +73,32 @@ export function SampleDataToggle({ workspaceId, compact = false }: SampleDataTog
     return Boolean(ws.stripe_connected || analyticsConnected);
   }, [ws, analyticsConnected]);
 
+  const allProvidersConnected = useMemo(() => {
+    if (!ws) return false;
+    return Boolean(ws.stripe_connected && analyticsConnected);
+  }, [ws, analyticsConnected]);
+
   const disabledReason = useMemo(() => {
     if (!ws) return "Loading workspace…";
     if (hasLiveProviders && ws.demo_mode) return "Demo mode is ON while providers are connected.";
     if (hasLiveProviders) return "Disable providers (Stripe/Analytics) to enable demo mode.";
     return null;
   }, [ws, hasLiveProviders]);
+
+  // Badge text per spec
+  const badgeText = useMemo(() => {
+    if (!ws) return "Loading";
+    if (ws.demo_mode) return "SAMPLE DATA";
+    if (allProvidersConnected) return "LIVE";
+    return "LIVE (SETUP REQUIRED)";
+  }, [ws, allProvidersConnected]);
+
+  const badgeVariant = useMemo(() => {
+    if (!ws) return "outline" as const;
+    if (ws.demo_mode) return "secondary" as const;
+    if (allProvidersConnected) return "default" as const;
+    return "destructive" as const;
+  }, [ws, allProvidersConnected]);
 
   // If providers become connected, force demo_mode OFF (hard rule)
   useEffect(() => {
@@ -134,8 +155,8 @@ export function SampleDataToggle({ workspaceId, compact = false }: SampleDataTog
   if (compact) {
     return (
       <div className="flex items-center gap-2">
-        <Badge variant={ws.demo_mode ? "secondary" : "outline"} className="text-xs">
-          {ws.demo_mode ? "Sample Data" : "Live"}
+        <Badge variant={badgeVariant} className="text-xs font-medium">
+          {badgeText}
         </Badge>
         <Button
           variant="ghost"
@@ -181,6 +202,136 @@ export function SampleDataToggle({ workspaceId, compact = false }: SampleDataTog
       </div>
     </Card>
   );
+}
+
+// Data Mode Banner - shows at top of dashboard
+interface DataModeBannerProps {
+  workspaceId: string;
+  onConnectStripe?: () => void;
+  onConnectAnalytics?: () => void;
+}
+
+export function DataModeBanner({ workspaceId, onConnectStripe, onConnectAnalytics }: DataModeBannerProps) {
+  const [ws, setWs] = useState<WorkspaceRow | null>(null);
+  const [analyticsConnected, setAnalyticsConnected] = useState<boolean>(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      const { data: wsData } = await supabase
+        .from("workspaces")
+        .select("id,tenant_id,demo_mode,stripe_connected")
+        .eq("id", workspaceId)
+        .maybeSingle();
+
+      if (!mounted || !wsData) return;
+      setWs(wsData);
+
+      const { data: siData } = await supabase
+        .from("social_integrations")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("is_active", true)
+        .in("platform", ["google_analytics", "meta", "facebook", "linkedin"])
+        .limit(1);
+
+      if (!mounted) return;
+      setAnalyticsConnected((siData?.length || 0) > 0);
+    })();
+
+    return () => { mounted = false; };
+  }, [workspaceId]);
+
+  const onDisableSampleData = async () => {
+    if (!ws) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("workspaces")
+      .update({ demo_mode: false })
+      .eq("id", ws.id);
+    setSaving(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setWs({ ...ws, demo_mode: false });
+    toast.success("Sample Data disabled");
+  };
+
+  if (!ws) return null;
+
+  // Demo mode ON banner
+  if (ws.demo_mode) {
+    return (
+      <Alert className="mb-6 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+        <Database className="h-4 w-4 text-amber-600" />
+        <AlertTitle className="text-amber-800 dark:text-amber-200">Sample Data Mode</AlertTitle>
+        <AlertDescription className="text-amber-700 dark:text-amber-300">
+          You're viewing illustrative metrics to preview reporting. Connect providers (Stripe + Analytics) and run real campaigns to see live results.
+          <div className="flex flex-wrap gap-2 mt-3">
+            {onConnectStripe && (
+              <Button size="sm" variant="outline" onClick={onConnectStripe}>
+                Connect Stripe
+              </Button>
+            )}
+            {onConnectAnalytics && (
+              <Button size="sm" variant="outline" onClick={onConnectAnalytics}>
+                Connect Analytics
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" onClick={onDisableSampleData} disabled={saving}>
+              {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Disable Sample Data
+            </Button>
+          </div>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  // Live mode but missing providers
+  const missingStripe = !ws.stripe_connected;
+  const missingAnalytics = !analyticsConnected;
+
+  if (missingStripe || missingAnalytics) {
+    let providerMessage = "";
+    if (missingStripe && missingAnalytics) {
+      providerMessage = "Stripe isn't connected, so revenue will show as $0. Analytics isn't connected, so impressions/clicks will show as 0.";
+    } else if (missingStripe) {
+      providerMessage = "Stripe isn't connected, so revenue will show as $0.";
+    } else {
+      providerMessage = "Analytics isn't connected, so impressions/clicks will show as 0.";
+    }
+
+    return (
+      <Alert className="mb-6 border-orange-500/50 bg-orange-50 dark:bg-orange-950/20">
+        <AlertTriangle className="h-4 w-4 text-orange-600" />
+        <AlertTitle className="text-orange-800 dark:text-orange-200">Live Data Not Connected</AlertTitle>
+        <AlertDescription className="text-orange-700 dark:text-orange-300">
+          This dashboard is in Live Mode. Metrics will remain zero until you connect providers and run activity.
+          <span className="block mt-1">{providerMessage}</span>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {missingStripe && onConnectStripe && (
+              <Button size="sm" variant="outline" onClick={onConnectStripe}>
+                <Zap className="h-3 w-3 mr-1" />
+                Connect Stripe
+              </Button>
+            )}
+            {missingAnalytics && onConnectAnalytics && (
+              <Button size="sm" variant="outline" onClick={onConnectAnalytics}>
+                Connect Analytics
+              </Button>
+            )}
+          </div>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  // All good - no banner needed
+  return null;
 }
 
 // Backward compatibility alias
