@@ -209,6 +209,8 @@ const Reports = () => {
       const workspaceId = dataIntegrity.workspaceId;
       let viewImpressions = 0;
       let viewRevenue = 0;
+      let analyticsConnected = false;
+      let demoMode = false;
       
       if (workspaceId) {
         // Query gated views for totals
@@ -225,6 +227,8 @@ const Reports = () => {
           .maybeSingle() as { data: any };
         
         if (impressionsData) {
+          demoMode = impressionsData.demo_mode === true;
+          analyticsConnected = impressionsData.analytics_connected === true;
           viewImpressions = Number(impressionsData.total_impressions || 0);
         }
         if (revenueData) {
@@ -251,16 +255,19 @@ const Reports = () => {
         .select("*")
         .eq("workspace_id", workspaceId);
       
-      // Create a map for quick lookup
+      // Create a map for quick lookup - only include metrics for campaigns in our list
+      const campaignIds = new Set((campaignsData || []).map((c: any) => c.id));
       const metricsMap = new Map(
-        (gatedMetrics || []).map((m: any) => [m.campaign_id, m])
+        (gatedMetrics || [])
+          .filter((m: any) => campaignIds.has(m.campaign_id))
+          .map((m: any) => [m.campaign_id, m])
       );
 
       if (campaignsError) throw campaignsError;
 
       // Gating: Only show revenue if Stripe connected, impressions if analytics connected
       const canShowRevenue = dataIntegrity.shouldShowRevenue;
-      const canShowImpressions = dataIntegrity.shouldShowImpressions;
+      const canShowImpressions = demoMode || analyticsConnected;
 
       const reports: CampaignReport[] = (campaignsData || []).map((campaign: any) => {
         const metrics = metricsMap.get(campaign.id) || {};
@@ -278,7 +285,7 @@ const Reports = () => {
           status: campaign.status,
           impressions,
           clicks,
-          conversions: metrics.conversions || 0,
+          conversions: canShowImpressions ? (metrics.conversions || 0) : 0,
           revenue,
           cost,
           roi,
@@ -287,9 +294,9 @@ const Reports = () => {
       });
 
       setCampaigns(reports);
-      // Use gated view totals, not aggregated campaign metrics
-      setTotalRevenue(viewRevenue);
-      setTotalImpressions(viewImpressions);
+      // Use gated view totals - zero out if not connected
+      setTotalRevenue(canShowRevenue ? viewRevenue : 0);
+      setTotalImpressions(canShowImpressions ? viewImpressions : 0);
       const avgROI = reports.length > 0 && canShowRevenue
         ? reports.reduce((sum, c) => sum + c.roi, 0) / reports.length 
         : 0;

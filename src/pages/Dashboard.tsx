@@ -166,6 +166,8 @@ const Dashboard = () => {
       let viewClicks = 0;
       let viewRevenue = 0;
       let dataQualityStatus: DataQualityStatus = 'LIVE_OK';
+      let analyticsConnected = false;
+      let demoMode = false;
       
       if (workspaceId) {
         // Query the v_impressions_clicks_by_workspace view
@@ -178,8 +180,10 @@ const Dashboard = () => {
         
         if (impressionsData) {
           // Guard against demo data leak in live mode
-          dataIntegrity.guardDemoLeak(impressionsData.demo_mode ? 'demo' : 'live');
+          demoMode = impressionsData.demo_mode === true;
+          dataIntegrity.guardDemoLeak(demoMode ? 'demo' : 'live');
           
+          analyticsConnected = impressionsData.analytics_connected === true;
           viewImpressions = Number(impressionsData.total_impressions || 0);
           viewClicks = Number(impressionsData.total_clicks || 0);
           dataQualityStatus = (impressionsData.data_quality_status || 'LIVE_OK') as DataQualityStatus;
@@ -217,9 +221,12 @@ const Dashboard = () => {
         .select("*")
         .eq("workspace_id", workspaceId);
       
-      // Create a map for quick lookup
+      // Create a map for quick lookup - only include metrics for campaigns in our list
+      const campaignIds = new Set((campaignsData || []).map((c: any) => c.id));
       const metricsMap = new Map(
-        (gatedMetrics || []).map((m: any) => [m.campaign_id, m])
+        (gatedMetrics || [])
+          .filter((m: any) => campaignIds.has(m.campaign_id))
+          .map((m: any) => [m.campaign_id, m])
       );
 
       if (campaignsError) throw campaignsError;
@@ -238,6 +245,8 @@ const Dashboard = () => {
 
       // GATED: Only show cost/revenue if Stripe connected OR in demo mode
       const canShowRevenue = dataQualityStatus === 'LIVE_OK' || dataQualityStatus === 'DEMO_MODE';
+      // GATED: Only show impressions/clicks if analytics connected OR in demo mode
+      const canShowEngagement = demoMode || analyticsConnected;
       
       let totalCost = 0;
       if (canShowRevenue) {
@@ -250,14 +259,16 @@ const Dashboard = () => {
       }
 
       const gatedRevenue = canShowRevenue ? viewRevenue : 0;
+      const gatedImpressions = canShowEngagement ? viewImpressions : 0;
+      const gatedClicks = canShowEngagement ? viewClicks : 0;
       const totalROI = canShowRevenue && totalCost > 0 ? ((gatedRevenue - totalCost) / totalCost) * 100 : 0;
 
       setMetrics({
         totalRevenue: gatedRevenue,
         totalCost,
         totalROI,
-        totalImpressions: viewImpressions,
-        totalClicks: viewClicks,
+        totalImpressions: gatedImpressions,
+        totalClicks: gatedClicks,
         activeCampaigns: campaignsData?.length || 0,
         dataQualityStatus,
       });
@@ -270,14 +281,17 @@ const Dashboard = () => {
         const revenue = canShowRevenue ? parseFloat(metrics?.revenue || 0) : 0;
         const cost = canShowRevenue ? parseFloat(metrics?.cost || 0) : 0;
         const roi = canShowRevenue && cost > 0 ? ((revenue - cost) / cost) * 100 : 0;
+        // Zero out impressions/clicks if no analytics connected in live mode
+        const views = canShowEngagement ? (metrics?.impressions || 0) : 0;
+        const clicks = canShowEngagement ? (metrics?.clicks || 0) : 0;
 
         return {
           id: asset.id,
           name: asset.name,
           type: asset.type,
           channel: c.channel,
-          views: metrics?.impressions || 0,
-          clicks: metrics?.clicks || 0,
+          views,
+          clicks,
           revenue,
           cost,
           roi,
