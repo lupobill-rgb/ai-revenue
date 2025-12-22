@@ -398,8 +398,10 @@ export async function getMetricsSnapshots(
     endDate?: string;
   }
 ) {
+  // Use gated view that respects workspace mode and Stripe connection
+  // Revenue/ROI will be 0 when not in demo_mode and Stripe isn't connected
   let query = supabase
-    .from("cmo_metrics_snapshots")
+    .from("v_cmo_metrics_by_workspace")
     .select("*")
     .eq("workspace_id", workspaceId);
 
@@ -416,7 +418,9 @@ export async function getMetricsSnapshots(
   const { data, error } = await query.order("snapshot_date", { ascending: false });
 
   if (error) throw error;
-  return data as CMOMetricsSnapshot[];
+  // View returns gated data with additional fields (demo_mode, stripe_connected, data_quality_status)
+  // Cast to CMOMetricsSnapshot which has the core fields we need
+  return (data || []) as unknown as CMOMetricsSnapshot[];
 }
 
 // Weekly Summaries
