@@ -1194,6 +1194,13 @@ export type Database = {
             referencedRelation: "campaign_runs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "channel_outbox_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_dashboard_metrics"
+            referencedColumns: ["run_id"]
+          },
         ]
       }
       channel_preferences: {
@@ -3490,6 +3497,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_runs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_queue_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_dashboard_metrics"
+            referencedColumns: ["run_id"]
           },
         ]
       }
@@ -6474,6 +6488,28 @@ export type Database = {
       }
     }
     Views: {
+      v_campaign_dashboard_metrics: {
+        Row: {
+          created_at: string | null
+          delivered_or_sent: number | null
+          failed: number | null
+          outbox_total: number | null
+          provider_ids: number | null
+          run_id: string | null
+          run_status: string | null
+          tenant_id: string | null
+          workspace_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       worker_health_summary: {
         Row: {
           avg_tick_duration_ms: number | null
