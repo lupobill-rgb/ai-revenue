@@ -1561,7 +1561,8 @@ Deno.serve(async (req) => {
           // LIVE MODE: Check for worker activity first
           // ============================================================
           
-          // PREFLIGHT: Check if workers are online (job activity in last 2 minutes)
+          // PREFLIGHT: Check if workers are online via multiple signals
+          // Signal 1: Jobs locked/completed in last 2 minutes
           const { data: recentLockedJobs } = await supabase
             .from('job_queue')
             .select('id')
@@ -1576,8 +1577,24 @@ Deno.serve(async (req) => {
             .gte('updated_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
             .limit(1);
           
-          const workersOnline = (recentLockedJobs?.length || 0) > 0 || (recentCompletedJobs?.length || 0) > 0;
+          // Signal 2: Worker tick metrics in last 5 minutes (workers may be idle but online)
+          const { data: recentWorkerTicks } = await supabase
+            .from('worker_tick_metrics')
+            .select('worker_id')
+            .gte('tick_started_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+            .limit(4);
+          
+          const hasJobActivity = (recentLockedJobs?.length || 0) > 0 || (recentCompletedJobs?.length || 0) > 0;
+          const hasWorkerTicks = (recentWorkerTicks?.length || 0) >= 2; // At least 2 workers ticked recently
+          
+          // Workers are "online" if we have job activity OR recent worker ticks
+          const workersOnline = hasJobActivity || hasWorkerTicks;
           testEvidence.workers_online_preflight = workersOnline;
+          testEvidence.preflight_signals = {
+            has_job_activity: hasJobActivity,
+            has_worker_ticks: hasWorkerTicks,
+            recent_worker_count: recentWorkerTicks?.length || 0,
+          };
           
           if (!workersOnline) {
             // Workers are offline - SKIP this test (not FAIL)
@@ -1612,6 +1629,41 @@ Deno.serve(async (req) => {
             // ============================================================
             console.log(`[ITR Scale Safety LIVE] Starting ${WORKER_WAIT_TIMEOUT_MS/1000}s observation window...`);
             console.log(`[ITR Scale Safety LIVE] T0 snapshot: ${JSON.stringify(t0Snapshot)}`);
+            
+            // ============================================================
+            // TRIGGER WORKERS: Manually invoke run-job-queue to ensure 
+            // workers process test jobs (don't rely on cron timing)
+            // ============================================================
+            console.log(`[ITR Scale Safety LIVE] Triggering 4 workers to process test jobs...`);
+            const internalSecret = Deno.env.get('INTERNAL_FUNCTION_SECRET') || '';
+            const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+            
+            // Spawn 4 parallel worker invocations (same as cron does)
+            const workerPromises = Array.from({ length: 4 }, async (_, i) => {
+              try {
+                const resp = await fetch(`${supabaseUrl}/functions/v1/run-job-queue`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-internal-secret': internalSecret,
+                  },
+                  body: JSON.stringify({ source: 'itr-scale-test', worker_index: i }),
+                });
+                const result = await resp.text();
+                console.log(`[ITR Scale Safety] Worker ${i} response: ${resp.status} - ${result.substring(0, 200)}`);
+                return { index: i, status: resp.status, ok: resp.ok };
+              } catch (err) {
+                console.error(`[ITR Scale Safety] Worker ${i} invocation failed:`, err);
+                return { index: i, status: 0, ok: false, error: err };
+              }
+            });
+            
+            // Wait for all workers to complete (up to 15s)
+            const workerResults = await Promise.allSettled(workerPromises);
+            testEvidence.worker_invocations = workerResults.map(r => 
+              r.status === 'fulfilled' ? r.value : { error: 'promise rejected' }
+            );
+            console.log(`[ITR Scale Safety] Worker invocations completed`);
             
             const waitStart = Date.now();
             let uniqueWorkers: string[] = [];
