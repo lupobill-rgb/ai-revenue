@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useDataIntegrity, validateDataIntegrity } from "@/hooks/useDataIntegrity";
+import { DataModeBanner } from "@/components/DemoModeToggle";
 import { BarChart3, TrendingUp, DollarSign, Eye, Users, Clock, Target, ArrowUpRight, Database, ShieldAlert } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
@@ -216,6 +217,34 @@ const Reports = () => {
     if (showSampleData) return;
     
     try {
+      // DATA INTEGRITY: Get totals from gated views first
+      const workspaceId = dataIntegrity.workspaceId;
+      let viewImpressions = 0;
+      let viewRevenue = 0;
+      
+      if (workspaceId) {
+        // Query gated views for totals
+        const { data: impressionsData } = await supabase
+          .from('v_impressions_clicks_by_workspace' as any)
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .maybeSingle() as { data: any };
+          
+        const { data: revenueData } = await supabase
+          .from('v_revenue_by_workspace' as any)
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .maybeSingle() as { data: any };
+        
+        if (impressionsData) {
+          viewImpressions = Number(impressionsData.total_impressions || 0);
+        }
+        if (revenueData) {
+          viewRevenue = Number(revenueData.revenue || 0);
+        }
+      }
+      
+      // Fetch campaign list for the table (without relying on metrics for totals)
       const { data: campaignsData, error: campaignsError } = await supabase
         .from("campaigns")
         .select(`
@@ -237,10 +266,17 @@ const Reports = () => {
 
       if (campaignsError) throw campaignsError;
 
+      // Gating: Only show revenue if Stripe connected, impressions if analytics connected
+      const canShowRevenue = dataIntegrity.shouldShowRevenue;
+      const canShowImpressions = dataIntegrity.shouldShowImpressions;
+
       const reports: CampaignReport[] = (campaignsData || []).map((campaign: any) => {
         const metrics = campaign.campaign_metrics?.[0] || {};
-        const revenue = metrics.revenue || 0;
-        const cost = metrics.cost || 0;
+        // Gate individual campaign metrics based on data integrity
+        const revenue = canShowRevenue ? (metrics.revenue || 0) : 0;
+        const cost = canShowRevenue ? (metrics.cost || 0) : 0;
+        const impressions = canShowImpressions ? (metrics.impressions || 0) : 0;
+        const clicks = canShowImpressions ? (metrics.clicks || 0) : 0;
         const roi = cost > 0 ? ((revenue - cost) / cost) * 100 : 0;
 
         return {
@@ -248,8 +284,8 @@ const Reports = () => {
           asset_name: campaign.assets.name,
           channel: campaign.channel,
           status: campaign.status,
-          impressions: metrics.impressions || 0,
-          clicks: metrics.clicks || 0,
+          impressions,
+          clicks,
           conversions: metrics.conversions || 0,
           revenue,
           cost,
@@ -259,9 +295,10 @@ const Reports = () => {
       });
 
       setCampaigns(reports);
-      setTotalRevenue(reports.reduce((sum, c) => sum + c.revenue, 0));
-      setTotalImpressions(reports.reduce((sum, c) => sum + c.impressions, 0));
-      const avgROI = reports.length > 0 
+      // Use gated view totals, not aggregated campaign metrics
+      setTotalRevenue(viewRevenue);
+      setTotalImpressions(viewImpressions);
+      const avgROI = reports.length > 0 && canShowRevenue
         ? reports.reduce((sum, c) => sum + c.roi, 0) / reports.length 
         : 0;
       setTotalROI(avgROI);
