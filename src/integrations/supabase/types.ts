@@ -6424,6 +6424,7 @@ export type Database = {
       workspaces: {
         Row: {
           created_at: string
+          demo_mode: boolean
           id: string
           is_default: boolean | null
           name: string
@@ -6439,6 +6440,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          demo_mode?: boolean
           id?: string
           is_default?: boolean | null
           name: string
@@ -6454,6 +6456,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          demo_mode?: boolean
           id?: string
           is_default?: boolean | null
           name?: string

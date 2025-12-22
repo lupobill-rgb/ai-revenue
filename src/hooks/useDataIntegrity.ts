@@ -93,24 +93,16 @@ export function useDataIntegrity(): DataIntegrityContext {
 
       setTenantId(userTenant.tenant_id);
 
-      // Get tenant's metrics_mode - CRITICAL for data integrity
-      const { data: tenant } = await supabase
-        .from("tenants")
-        .select("metrics_mode")
-        .eq("id", userTenant.tenant_id)
-        .single();
-
-      const mode = (tenant?.metrics_mode as "real" | "demo") || "real";
-      setMetricsMode(mode);
-
-      // Get user's workspace
+      // Get user's workspace (with demo_mode)
       const { data: ownedWorkspace } = await supabase
         .from("workspaces")
-        .select("id")
+        .select("id, demo_mode")
         .eq("owner_id", user.id)
         .maybeSingle();
 
       let wsId = ownedWorkspace?.id;
+      let wsMode = ownedWorkspace?.demo_mode;
+      
       if (!wsId) {
         const { data: membership } = await supabase
           .from("workspace_members")
@@ -118,9 +110,33 @@ export function useDataIntegrity(): DataIntegrityContext {
           .eq("user_id", user.id)
           .maybeSingle();
         wsId = membership?.workspace_id;
+        
+        // Fetch demo_mode for member workspace
+        if (wsId) {
+          const { data: memberWs } = await supabase
+            .from("workspaces")
+            .select("demo_mode")
+            .eq("id", wsId)
+            .maybeSingle();
+          wsMode = memberWs?.demo_mode;
+        }
       }
 
       setWorkspaceId(wsId || null);
+      
+      // Set metrics mode from workspace demo_mode (primary) or tenant metrics_mode (fallback)
+      if (wsMode !== undefined && wsMode !== null) {
+        setMetricsMode(wsMode ? "demo" : "real");
+      } else {
+        // Fallback to tenant's metrics_mode
+        const { data: tenant } = await supabase
+          .from("tenants")
+          .select("metrics_mode")
+          .eq("id", userTenant.tenant_id)
+          .single();
+        const mode = (tenant?.metrics_mode as "real" | "demo") || "real";
+        setMetricsMode(mode);
+      }
 
       // Check integrations (tenant_id scoped)
       const integrationStatus: IntegrationStatus = { ...DEFAULT_INTEGRATIONS };
