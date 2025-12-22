@@ -173,14 +173,29 @@ async function setupTestCampaign(
 
     if (wsError) throw wsError;
 
-    // Create test campaign
-    const { data: campaign, error: campError } = await supabase
-      .from("cmo_campaigns")
+    // Create test asset (required for campaigns table FK)
+    const { data: asset, error: assetError } = await supabase
+      .from("assets")
       .insert({
-        tenant_id: testTenantId,
+        name: `QA Execution Cert Asset - ${config.channel} - ${timestamp}`,
+        // asset.type enum: video | email | voice | landing_page | website
+        type: config.channel === "email" ? "email" : config.channel === "voice" ? "voice" : "website",
+        status: "approved",
         workspace_id: testWorkspaceId,
-        campaign_name: `QA Execution Cert Test - ${timestamp}`,
-        campaign_type: config.channel,
+        channel: config.channel,
+      })
+      .select()
+      .single();
+
+    if (assetError) throw assetError;
+
+    // Create test campaign in campaigns table (campaign_runs FK references campaigns)
+    const { data: campaign, error: campError } = await supabase
+      .from("campaigns")
+      .insert({
+        asset_id: asset.id,
+        workspace_id: testWorkspaceId,
+        channel: config.channel,
         status: "active",
       })
       .select()
@@ -650,7 +665,6 @@ async function createLaunchTestCampaign(
     const leads = [];
     for (let i = 0; i < (config.leadCount || 3); i++) {
       leads.push({
-        tenant_id: testTenantId,
         workspace_id: testWorkspaceId,
         email: `launch-test-${i}@qa-sandbox.local`,
         phone: `+1555999${i.toString().padStart(4, "0")}`,
@@ -673,7 +687,8 @@ async function createLaunchTestCampaign(
       .from("assets")
       .insert({
         name: `Launch Test Asset - ${config.channel} - ${timestamp}`,
-        type: config.channel === "email" ? "email" : config.channel === "voice" ? "voice_agent" : "social_post",
+        // asset.type is an enum: video | email | voice | landing_page | website
+        type: config.channel === "email" ? "email" : config.channel === "voice" ? "voice" : "website",
         status: "approved",
         workspace_id: testWorkspaceId,
         channel: config.channel,
@@ -767,11 +782,10 @@ async function deployLaunchTest(
 
     if (!run) throw new Error("Run not found");
 
-    // Get leads for this tenant/workspace
+    // Get leads for this workspace (leads table uses workspace_id, not tenant_id)
     const { data: leads } = await supabase
       .from("leads")
       .select("*")
-      .eq("tenant_id", run.tenant_id)
       .eq("workspace_id", run.workspace_id)
       .eq("source", "qa_launch_test")
       .limit(10);
@@ -1205,7 +1219,8 @@ async function createL2FailureTest(
       .from("assets")
       .insert({
         name: `L2 Failure Test Asset (${config.failureType}) - ${timestamp}`,
-        type: config.channel === "email" ? "email" : config.channel === "voice" ? "voice_agent" : "social_post",
+        // asset.type is an enum: video | email | voice | landing_page | website
+        type: config.channel === "email" ? "email" : config.channel === "voice" ? "voice" : "website",
         status: "approved",
         workspace_id: testWorkspaceId,
         channel: config.channel,
@@ -1248,10 +1263,9 @@ async function createL2FailureTest(
 
     if (runError) throw runError;
 
-    // Create test leads for this tenant
+    // Create test leads for this workspace (leads table uses workspace_id, not tenant_id)
     const testLeads = [
       {
-        tenant_id: testTenantId,
         workspace_id: testWorkspaceId,
         first_name: "L2 Test",
         last_name: "Lead",
@@ -1315,11 +1329,10 @@ async function deployL2FailureTest(
       })
       .eq("id", config.runId);
 
-    // Get leads for this tenant
+    // Get leads for this workspace (leads table uses workspace_id, not tenant_id)
     const { data: leads } = await supabase
       .from("leads")
       .select("*")
-      .eq("tenant_id", run.tenant_id)
       .eq("workspace_id", run.workspace_id)
       .eq("source", "qa_l2_failure_test")
       .limit(10);
