@@ -16,6 +16,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import ModuleToggles from "@/components/ModuleToggles";
 import ChannelToggles from "@/components/ChannelToggles";
 import TeamManagement from "@/components/TeamManagement";
+import { SampleDataToggle } from "@/components/DemoModeToggle";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -226,13 +227,19 @@ export default function Settings() {
               <p className="text-muted-foreground mt-2">Manage your team, channels, modules and brand guidelines</p>
             </div>
 
-            <Tabs defaultValue="team" className="space-y-6">
+            <Tabs defaultValue="workspace" className="space-y-6">
               <TabsList className="w-full flex gap-1 h-auto flex-wrap justify-start p-1">
+                <TabsTrigger value="workspace" className="px-4">Workspace</TabsTrigger>
                 <TabsTrigger value="team" className="px-4">Team</TabsTrigger>
                 <TabsTrigger value="channels" className="px-4">Channels</TabsTrigger>
                 <TabsTrigger value="modules" className="px-4">Modules</TabsTrigger>
                 <TabsTrigger value="brand" className="px-4">Brand</TabsTrigger>
               </TabsList>
+
+              {/* Workspace Tab */}
+              <TabsContent value="workspace" className="space-y-6">
+                {workspaceId && <SampleDataToggle workspaceId={workspaceId} />}
+              </TabsContent>
 
               {/* Team Tab */}
               <TabsContent value="team" className="space-y-6">

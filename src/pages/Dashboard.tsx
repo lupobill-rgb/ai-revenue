@@ -443,7 +443,7 @@ const Dashboard = () => {
                           No campaigns deployed yet. Toggle demo mode to explore analytics features.
                         </CardDescription>
                       </div>
-                      <DemoModeToggle />
+                      {dataIntegrity.workspaceId && <DemoModeToggle workspaceId={dataIntegrity.workspaceId} compact />}
                     </div>
                   </CardHeader>
                 </Card>

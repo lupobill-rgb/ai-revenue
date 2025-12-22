@@ -1,99 +1,187 @@
-// Demo Mode Toggle - Controls workspace demo_mode with integration status indicators
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+// Sample Data Toggle - Controls workspace demo_mode with mutual exclusivity to live providers
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
-import { AlertCircle, CheckCircle2, Database, CreditCard, BarChart3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 
-interface DemoModeToggleProps {
-  className?: string;
-  showIntegrationStatus?: boolean;
+type WorkspaceRow = {
+  id: string;
+  tenant_id: string;
+  demo_mode: boolean;
+  stripe_connected: boolean;
+};
+
+interface SampleDataToggleProps {
+  workspaceId: string;
+  compact?: boolean;
 }
 
-export function DemoModeToggle({ className = "", showIntegrationStatus = true }: DemoModeToggleProps) {
-  const { 
-    demoMode, 
-    stripeConnected, 
-    analyticsConnected, 
-    dataQualityStatus,
-    toggleDemoMode,
-    isLoading 
-  } = useWorkspaceContext();
+export function SampleDataToggle({ workspaceId, compact = false }: SampleDataToggleProps) {
+  const [ws, setWs] = useState<WorkspaceRow | null>(null);
+  const [analyticsConnected, setAnalyticsConnected] = useState<boolean>(false);
+  const [saving, setSaving] = useState(false);
 
-  return (
-    <div className={`flex items-center gap-4 ${className}`}>
-      {/* Demo Mode Toggle */}
+  // Load workspace + integration state
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      const { data: wsData, error: wsErr } = await supabase
+        .from("workspaces")
+        .select("id,tenant_id,demo_mode,stripe_connected")
+        .eq("id", workspaceId)
+        .maybeSingle();
+
+      if (!mounted) return;
+
+      if (wsErr || !wsData) {
+        console.error("Failed to load workspace:", wsErr?.message);
+        return;
+      }
+      setWs(wsData);
+
+      // analytics connected: any active GA/Meta/LinkedIn integration
+      const { data: siData, error: siErr } = await supabase
+        .from("social_integrations")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("is_active", true)
+        .in("platform", ["google_analytics", "meta", "facebook", "linkedin"])
+        .limit(1);
+
+      if (!mounted) return;
+
+      if (siErr) {
+        console.warn("analyticsConnected lookup failed:", siErr.message);
+        setAnalyticsConnected(false);
+      } else {
+        setAnalyticsConnected((siData?.length || 0) > 0);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [workspaceId]);
+
+  const hasLiveProviders = useMemo(() => {
+    if (!ws) return false;
+    return Boolean(ws.stripe_connected || analyticsConnected);
+  }, [ws, analyticsConnected]);
+
+  const disabledReason = useMemo(() => {
+    if (!ws) return "Loading workspace…";
+    if (hasLiveProviders && ws.demo_mode) return "Demo mode is ON while providers are connected.";
+    if (hasLiveProviders) return "Disable providers (Stripe/Analytics) to enable demo mode.";
+    return null;
+  }, [ws, hasLiveProviders]);
+
+  // If providers become connected, force demo_mode OFF (hard rule)
+  useEffect(() => {
+    if (!ws) return;
+    if (hasLiveProviders && ws.demo_mode) {
+      (async () => {
+        setSaving(true);
+        const { error } = await supabase
+          .from("workspaces")
+          .update({ demo_mode: false })
+          .eq("id", ws.id);
+
+        setSaving(false);
+
+        if (error) {
+          toast.error(`Failed to disable demo mode: ${error.message}`);
+          return;
+        }
+        setWs({ ...ws, demo_mode: false });
+        toast.warning("Sample Data was turned off because live providers are connected.");
+      })();
+    }
+  }, [hasLiveProviders]);
+
+  const onToggle = async (next: boolean) => {
+    if (!ws) return;
+
+    // enforce rule: cannot enable demo mode if providers connected
+    if (next === true && hasLiveProviders) {
+      toast.error("Cannot enable Sample Data while Stripe/Analytics are connected.");
+      return;
+    }
+
+    setSaving(true);
+    const { error } = await supabase
+      .from("workspaces")
+      .update({ demo_mode: next })
+      .eq("id", ws.id);
+
+    setSaving(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    setWs({ ...ws, demo_mode: next });
+    toast.success(next ? "Sample Data enabled" : "Sample Data disabled");
+  };
+
+  if (!ws) return null;
+
+  // Compact version for dashboard header
+  if (compact) {
+    return (
       <div className="flex items-center gap-2">
-        <Switch
-          id="demo-mode"
-          checked={demoMode}
-          onCheckedChange={toggleDemoMode}
-          disabled={isLoading}
-        />
-        <Label htmlFor="demo-mode" className="text-sm font-medium cursor-pointer">
-          {demoMode ? "Demo Mode" : "Live Mode"}
-        </Label>
+        <Badge variant={ws.demo_mode ? "secondary" : "outline"} className="text-xs">
+          {ws.demo_mode ? "Sample Data" : "Live"}
+        </Badge>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={saving || (hasLiveProviders && !ws.demo_mode)}
+          onClick={() => onToggle(!ws.demo_mode)}
+          title={disabledReason || undefined}
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : ws.demo_mode ? "Go Live" : "Preview"}
+        </Button>
       </div>
+    );
+  }
 
-      {/* Data Quality Status Badge */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger>
-            <Badge 
-              variant={dataQualityStatus === 'LIVE_OK' ? 'default' : dataQualityStatus === 'DEMO_MODE' ? 'secondary' : 'destructive'}
-              className="gap-1"
-            >
-              {dataQualityStatus === 'LIVE_OK' && <CheckCircle2 className="h-3 w-3" />}
-              {dataQualityStatus === 'DEMO_MODE' && <Database className="h-3 w-3" />}
-              {dataQualityStatus !== 'LIVE_OK' && dataQualityStatus !== 'DEMO_MODE' && <AlertCircle className="h-3 w-3" />}
-              {dataQualityStatus.replace(/_/g, ' ')}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p className="text-xs">
-              {dataQualityStatus === 'LIVE_OK' && "All integrations connected. Showing real data."}
-              {dataQualityStatus === 'DEMO_MODE' && "Demo mode active. Showing sample data."}
-              {dataQualityStatus === 'NO_STRIPE_CONNECTED' && "Revenue data hidden. Connect Stripe to see real revenue."}
-              {dataQualityStatus === 'NO_ANALYTICS_CONNECTED' && "Impressions hidden. Connect analytics provider."}
-              {dataQualityStatus === 'NO_PROVIDER_CONNECTED' && "No providers connected. Revenue and impressions hidden."}
-            </p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-
-      {/* Integration Status Indicators */}
-      {showIntegrationStatus && !demoMode && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
-                <div className={`flex items-center gap-1 ${stripeConnected ? 'text-green-600' : 'text-muted-foreground'}`}>
-                  <CreditCard className="h-3 w-3" />
-                  <span className="sr-only">Stripe</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{stripeConnected ? "Stripe connected" : "Stripe not connected"}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
-                <div className={`flex items-center gap-1 ${analyticsConnected ? 'text-green-600' : 'text-muted-foreground'}`}>
-                  <BarChart3 className="h-3 w-3" />
-                  <span className="sr-only">Analytics</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{analyticsConnected ? "Analytics connected" : "Analytics not connected"}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+  // Full version for settings page
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="font-semibold">Show Sample Data (Preview Mode)</div>
+          <div className="text-sm text-muted-foreground">
+            When enabled, dashboards show illustrative numbers so users can visualize outputs.
+            {hasLiveProviders ? " Live providers are connected." : " No live providers connected."}
+          </div>
         </div>
-      )}
-    </div>
+
+        <div className="flex items-center gap-3">
+          {disabledReason && !hasLiveProviders && (
+            <span className="text-xs text-muted-foreground">{disabledReason}</span>
+          )}
+
+          <Button
+            variant={ws.demo_mode ? "default" : "outline"}
+            disabled={saving || (hasLiveProviders && !ws.demo_mode)}
+            onClick={() => onToggle(!ws.demo_mode)}
+            title={hasLiveProviders && !ws.demo_mode ? "Disconnect providers to enable." : ""}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            {saving ? "Saving…" : ws.demo_mode ? "ON" : "OFF"}
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
+
+// Backward compatibility alias
+export { SampleDataToggle as DemoModeToggle };
