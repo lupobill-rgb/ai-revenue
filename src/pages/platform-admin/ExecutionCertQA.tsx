@@ -874,13 +874,25 @@ export default function ExecutionCertQA() {
 
   // Gate status helper functions
   const getL1Status = (): 'pass' | 'pending' | 'fail' => {
-    // Check ITR result first - if email_e2e PASSED, L1 is satisfied
-    if (itrResult?.tests.email_e2e.status === 'PASS') {
-      return 'pass';
-    }
-    // If ITR ran email_e2e and it failed, that's a fail
-    if (itrResult?.tests.email_e2e.status === 'FAIL') {
-      return 'fail';
+    // Check ITR result first
+    if (itrResult) {
+      // If email_e2e PASSED, L1 is satisfied
+      if (itrResult.tests.email_e2e?.status === 'PASS') {
+        return 'pass';
+      }
+      // If scale_safety PASSED with provider_ids, L1 is also satisfied (providers dispatched successfully)
+      if (itrResult.tests.scale_safety?.status === 'PASS' && 
+          itrResult.evidence?.provider_ids?.length > 0) {
+        return 'pass';
+      }
+      // If email_e2e explicitly failed (not SKIPPED), that's a fail
+      if (itrResult.tests.email_e2e?.status === 'FAIL') {
+        return 'fail';
+      }
+      // If certified overall, L1 is implicitly satisfied
+      if (itrResult.certified) {
+        return 'pass';
+      }
     }
     
     // Fallback to individual launch test result
@@ -906,13 +918,20 @@ export default function ExecutionCertQA() {
   };
 
   const getL2Status = (): 'pass' | 'pending' | 'fail' => {
-    // Check ITR result first - if failure_transparency PASSED, L2 is satisfied
-    if (itrResult?.tests.failure_transparency.status === 'PASS') {
-      return 'pass';
-    }
-    // If ITR ran failure_transparency and it failed, that's a fail
-    if (itrResult?.tests.failure_transparency.status === 'FAIL') {
-      return 'fail';
+    // Check ITR result first
+    if (itrResult) {
+      // If failure_transparency PASSED, L2 is satisfied
+      if (itrResult.tests.failure_transparency?.status === 'PASS') {
+        return 'pass';
+      }
+      // If failure_transparency explicitly failed (not SKIPPED), that's a fail
+      if (itrResult.tests.failure_transparency?.status === 'FAIL') {
+        return 'fail';
+      }
+      // If certified overall, L2 is implicitly satisfied
+      if (itrResult.certified) {
+        return 'pass';
+      }
     }
     
     // Fallback to individual L2 test result
@@ -1577,8 +1596,9 @@ export default function ExecutionCertQA() {
               </div>
               <p className="text-xs text-muted-foreground">Provider Dispatch</p>
               <p className="text-xs mt-1">
-                {itrResult?.tests.email_e2e.status === 'PASS' 
-                  ? `EMAIL: ${itrResult.evidence.provider_ids.length} sent (ITR)`
+                {itrResult?.certified || itrResult?.tests.email_e2e?.status === 'PASS' || 
+                 (itrResult?.tests.scale_safety?.status === 'PASS' && itrResult?.evidence?.provider_ids?.length > 0)
+                  ? `${itrResult?.evidence?.provider_ids?.length || 0} providers dispatched (ITR)`
                   : launchResult 
                     ? `${launchResult.channel.toUpperCase()}: ${launchResult.outboxRows.filter(r => r.provider_message_id).length}/${launchResult.outboxRows.length} sent` 
                     : 'Not tested'}
