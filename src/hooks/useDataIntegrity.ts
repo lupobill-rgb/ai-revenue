@@ -46,6 +46,9 @@ export interface DataIntegrityContext {
   // Query filter helper
   getTenantFilter: () => { tenant_id: string } | null;
   
+  // Guard function - throws if demo data leaks into live mode
+  guardDemoLeak: (responseMetaDataMode?: string) => void;
+  
   // Refresh function
   refresh: () => Promise<void>;
 }
@@ -246,6 +249,14 @@ export function useDataIntegrity(): DataIntegrityContext {
     return { tenant_id: tenantId };
   }, [tenantId]);
 
+  // GUARD: One-line check to prevent demo data leaking into live mode
+  const guardDemoLeak = useCallback((responseMetaDataMode?: string) => {
+    if (isLiveMode && responseMetaDataMode === 'demo') {
+      console.error('[DATA INTEGRITY] DEMO DATA LEAK BLOCKED: Live mode received demo data');
+      throw new Error('DEMO DATA LEAK: blocked');
+    }
+  }, [isLiveMode]);
+
   return {
     tenantId,
     workspaceId,
@@ -262,6 +273,7 @@ export function useDataIntegrity(): DataIntegrityContext {
     formatImpressions,
     formatClicks,
     getTenantFilter,
+    guardDemoLeak,
     refresh: fetchIntegrityContext,
   };
 }
