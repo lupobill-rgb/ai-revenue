@@ -475,9 +475,15 @@ const Dashboard = () => {
                 </div>
               )}
 
-              {/* Rollup Metrics - DATA INTEGRITY ENFORCED */}
-              <div className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                <Card className="border-border bg-card">
+              {/* Rollup Metrics - DATA INTEGRITY ENFORCED with visible provenance */}
+              <div className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
+                {/* Revenue Card */}
+                <Card className="border-border bg-card relative">
+                  {dataIntegrity.isDemoMode && (
+                    <Badge className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] px-1.5 py-0.5">
+                      Demo
+                    </Badge>
+                  )}
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       Total Revenue
@@ -487,19 +493,27 @@ const Dashboard = () => {
                   <CardContent>
                     <div className="text-3xl font-bold text-foreground">
                       {/* RULE 3: If Stripe not connected in live mode, show $0 */}
-                      {dataIntegrity.formatRevenue(
-                        dataIntegrity.shouldShowRevenue ? metrics.totalRevenue : 0
-                      )}
+                      {dataIntegrity.shouldShowRevenue 
+                        ? dataIntegrity.formatRevenue(metrics.totalRevenue)
+                        : "—"}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {dataIntegrity.isLiveMode && !dataIntegrity.integrations.stripe 
-                        ? "Connect Stripe to track revenue"
-                        : "Across all campaigns"}
+                        ? "Connect Stripe to track"
+                        : dataIntegrity.isDemoMode 
+                          ? "Demo data" 
+                          : "From Stripe"}
                     </p>
                   </CardContent>
                 </Card>
 
-                <Card className="border-border bg-card">
+                {/* Cost Card */}
+                <Card className="border-border bg-card relative">
+                  {dataIntegrity.isDemoMode && (
+                    <Badge className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] px-1.5 py-0.5">
+                      Demo
+                    </Badge>
+                  )}
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       Total Cost
@@ -511,12 +525,18 @@ const Dashboard = () => {
                       ${metrics.totalCost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Total spend
+                      {dataIntegrity.isDemoMode ? "Demo data" : "Total spend"}
                     </p>
                   </CardContent>
                 </Card>
 
-                <Card className="border-border bg-card">
+                {/* ROI Card */}
+                <Card className="border-border bg-card relative">
+                  {dataIntegrity.isDemoMode && (
+                    <Badge className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] px-1.5 py-0.5">
+                      Demo
+                    </Badge>
+                  )}
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       ROI
@@ -526,18 +546,51 @@ const Dashboard = () => {
                   <CardContent>
                     <div className="text-3xl font-bold text-foreground">
                       {/* RULE 3: If Stripe not connected in live mode, show "—" */}
-                      {dataIntegrity.formatROI(
-                        dataIntegrity.shouldShowRevenue ? metrics.totalROI : 0
-                      )}
+                      {dataIntegrity.shouldShowRevenue 
+                        ? dataIntegrity.formatROI(metrics.totalROI)
+                        : "—"}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {dataIntegrity.isLiveMode && !dataIntegrity.integrations.stripe 
-                        ? "Connect Stripe to calculate ROI"
-                        : "Return on investment"}
+                        ? "Connect Stripe to calculate"
+                        : dataIntegrity.isDemoMode 
+                          ? "Demo data" 
+                          : "From revenue data"}
                     </p>
                   </CardContent>
                 </Card>
 
+                {/* Impressions/Clicks Card - NEW with proper enforcement */}
+                <Card className="border-border bg-card relative">
+                  {dataIntegrity.isDemoMode && (
+                    <Badge className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] px-1.5 py-0.5">
+                      Demo
+                    </Badge>
+                  )}
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Impressions
+                    </CardTitle>
+                    <Eye className="h-5 w-5 text-blue-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-foreground">
+                      {/* RULE 4: If no analytics connected in live mode, show 0 */}
+                      {dataIntegrity.shouldShowImpressions 
+                        ? dataIntegrity.formatImpressions(metrics.totalImpressions).toLocaleString()
+                        : "—"}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {dataIntegrity.isLiveMode && !dataIntegrity.shouldShowImpressions 
+                        ? "Connect analytics"
+                        : dataIntegrity.isDemoMode 
+                          ? "Demo data" 
+                          : `${dataIntegrity.formatClicks(metrics.totalClicks).toLocaleString()} clicks`}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                {/* Active Campaigns - always from real campaign records */}
                 <Card className="border-border bg-card">
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -547,15 +600,46 @@ const Dashboard = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-foreground">
+                      {/* Always from actual campaign records, never placeholders */}
                       {metrics.activeCampaigns}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Currently running
+                      From campaign records
                     </p>
                   </CardContent>
                 </Card>
+              </div>
 
-                {/* Queue Metrics Card */}
+              {/* Connect Integrations CTA - only show in live mode with missing integrations */}
+              {dataIntegrity.isLiveMode && (!dataIntegrity.integrations.stripe || !dataIntegrity.shouldShowImpressions) && campaigns.length > 0 && (
+                <Card className="mb-8 border-blue-500/30 bg-blue-500/5">
+                  <CardContent className="py-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <ShieldAlert className="h-5 w-5 text-blue-500" />
+                        <div>
+                          <p className="font-medium text-foreground">Missing Integrations</p>
+                          <p className="text-sm text-muted-foreground">
+                            {!dataIntegrity.integrations.stripe && "Stripe (revenue) "}
+                            {!dataIntegrity.shouldShowImpressions && "Analytics (impressions/clicks)"}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => navigate("/settings/integrations")}
+                        className="border-blue-500 text-blue-600 hover:bg-blue-500/10"
+                      >
+                        <Settings className="mr-2 h-4 w-4" />
+                        Connect Integrations
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Queue Metrics Card */}
+              <div className="mb-8">
                 <Card className="border-border bg-card">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
