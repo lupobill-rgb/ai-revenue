@@ -25,6 +25,7 @@ interface CampaignMetrics {
   totalImpressions: number;
   totalClicks: number;
   activeCampaigns: number;
+  dataQualityStatus: string;
 }
 
 interface QueueMetrics {
@@ -46,6 +47,9 @@ interface CampaignPerformance {
   status: string;
 }
 
+// Data quality status from views
+type DataQualityStatus = 'LIVE_OK' | 'DEMO_MODE' | 'NO_PROVIDER_CONNECTED' | 'NO_ANALYTICS_CONNECTED' | 'NO_STRIPE_CONNECTED';
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -60,6 +64,7 @@ const Dashboard = () => {
     totalImpressions: 0,
     totalClicks: 0,
     activeCampaigns: 0,
+    dataQualityStatus: 'LIVE_OK',
   });
   const [campaigns, setCampaigns] = useState<CampaignPerformance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,7 +157,50 @@ const Dashboard = () => {
         }
       }
 
-      // Fetch campaigns with metrics - include deployed and running statuses
+      // Get workspace ID for view queries
+      const workspaceId = dataIntegrity.workspaceId;
+      
+      // DATA INTEGRITY: Fetch metrics from views only (no ad-hoc joins)
+      let viewImpressions = 0;
+      let viewClicks = 0;
+      let viewRevenue = 0;
+      let dataQualityStatus: DataQualityStatus = 'LIVE_OK';
+      
+      if (workspaceId) {
+        // Query the v_impressions_clicks_by_workspace view
+        // Using type assertion since views aren't in generated types
+        const { data: impressionsData } = await supabase
+          .from('v_impressions_clicks_by_workspace' as any)
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .maybeSingle() as { data: any };
+        
+        if (impressionsData) {
+          // Guard against demo data leak in live mode
+          dataIntegrity.guardDemoLeak(impressionsData.demo_mode ? 'demo' : 'live');
+          
+          viewImpressions = Number(impressionsData.total_impressions || 0);
+          viewClicks = Number(impressionsData.total_clicks || 0);
+          dataQualityStatus = (impressionsData.data_quality_status || 'LIVE_OK') as DataQualityStatus;
+        }
+        
+        // Query the v_revenue_by_workspace view
+        const { data: revenueData } = await supabase
+          .from('v_revenue_by_workspace' as any)
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .maybeSingle() as { data: any };
+        
+        if (revenueData) {
+          viewRevenue = Number(revenueData.revenue || 0);
+          // Update status if revenue view has different status
+          if (revenueData.data_quality_status === 'NO_STRIPE_CONNECTED') {
+            dataQualityStatus = 'NO_STRIPE_CONNECTED';
+          }
+        }
+      }
+
+      // Fetch active campaigns count - always from real records
       const { data: campaignsData, error: campaignsError } = await supabase
         .from("campaigns")
         .select(`
@@ -180,31 +228,25 @@ const Dashboard = () => {
       
       setLastRefresh(new Date());
 
-      // Calculate rollup metrics
-      let totalRevenue = 0;
+      // Calculate cost from campaign_metrics (not from views yet)
       let totalCost = 0;
-      let totalClicks = 0;
-      let totalImpressions = 0;
-
       campaignsData?.forEach((campaign: any) => {
         const metrics = campaign.campaign_metrics?.[0];
         if (metrics) {
-          totalRevenue += parseFloat(metrics.revenue || 0);
           totalCost += parseFloat(metrics.cost || 0);
-          totalClicks += metrics.clicks || 0;
-          totalImpressions += metrics.impressions || 0;
         }
       });
 
-      const totalROI = totalCost > 0 ? ((totalRevenue - totalCost) / totalCost) * 100 : 0;
+      const totalROI = totalCost > 0 ? ((viewRevenue - totalCost) / totalCost) * 100 : 0;
 
       setMetrics({
-        totalRevenue,
+        totalRevenue: viewRevenue,
         totalCost,
         totalROI,
-        totalImpressions,
-        totalClicks,
+        totalImpressions: viewImpressions,
+        totalClicks: viewClicks,
         activeCampaigns: campaignsData?.length || 0,
+        dataQualityStatus,
       });
 
       // Map campaigns with individual metrics
@@ -279,7 +321,21 @@ const Dashboard = () => {
           
           <div className="mb-8 flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-bold text-foreground">Campaign Dashboard</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-4xl font-bold text-foreground">Campaign Dashboard</h1>
+                {/* DATA MODE LABEL - Clear indicator of data source */}
+                {dataIntegrity.isDemoMode ? (
+                  <Badge className="bg-amber-500 text-white px-3 py-1 text-sm font-semibold">
+                    <Activity className="mr-1 h-3 w-3" />
+                    DEMO DATA
+                  </Badge>
+                ) : (
+                  <Badge className="bg-green-500 text-white px-3 py-1 text-sm font-semibold">
+                    <Activity className="mr-1 h-3 w-3" />
+                    LIVE DATA
+                  </Badge>
+                )}
+              </div>
               <p className="mt-2 text-muted-foreground flex items-center gap-2">
                 <span>Real-time performance tracking • Auto-updates every 30s</span>
                 <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
