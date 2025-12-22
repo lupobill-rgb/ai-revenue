@@ -6,10 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useDataIntegrity, validateDataIntegrity } from "@/hooks/useDataIntegrity";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import { DataModeBanner } from "@/components/DemoModeToggle";
 import { BarChart3, TrendingUp, DollarSign, Eye, Users, Clock, Target, ArrowUpRight, Database, ShieldAlert } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
@@ -75,6 +74,8 @@ const SAMPLE_VELOCITY = [
 const Reports = () => {
   // DATA INTEGRITY: Use centralized hook for strict enforcement
   const dataIntegrity = useDataIntegrity();
+  // DEMO MODE: Use centralized workspace demo_mode instead of local toggle
+  const { demoMode: showSampleData } = useDemoMode();
   
   const [campaigns, setCampaigns] = useState<CampaignReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,24 +88,12 @@ const Reports = () => {
   const [totalLeads, setTotalLeads] = useState(0);
   const [wonLeads, setWonLeads] = useState(0);
   const [avgConversionTime, setAvgConversionTime] = useState(0);
-  const [showSampleData, setShowSampleData] = useState(false);
 
   useEffect(() => {
-    fetchAllData();
-  }, []);
-
-  useEffect(() => {
-    // RULE 1: If demo_mode = false, only fetch live data
-    // RULE 2: Demo data must never be shown in live mode
-    if (showSampleData) {
-      // DATA INTEGRITY CHECK: Block demo data in live mode
-      if (dataIntegrity.isLiveMode) {
-        console.warn("[DATA INTEGRITY] Demo data blocked in live mode");
-        setShowSampleData(false);
-        return;
-      }
-      
-      // Apply sample data only in demo mode
+    // RULE 1: If demo_mode = true (workspace setting), show sample data
+    // RULE 2: If demo_mode = false, only fetch live data
+    if (showSampleData && !dataIntegrity.isLiveMode) {
+      // Apply sample data only when workspace demo_mode is ON
       try {
         validateDataIntegrity(dataIntegrity.metricsMode, "demo");
         setCampaigns(SAMPLE_CAMPAIGNS);
@@ -121,7 +110,6 @@ const Reports = () => {
         setLoading(false);
       } catch (error) {
         console.error("[DATA INTEGRITY VIOLATION]", error);
-        setShowSampleData(false);
       }
     } else {
       // Fetch real data
@@ -332,37 +320,22 @@ const Reports = () => {
                 Lead conversion rates, pipeline velocity, and campaign performance
               </p>
             </div>
-            {/* RULE 2: Only show demo toggle if NOT in live mode */}
-            {!dataIntegrity.isLiveMode && (
-              <div className="flex items-center gap-3 bg-muted/50 px-4 py-2 rounded-lg border border-border">
-                <Database className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="sample-data" className="text-sm font-medium cursor-pointer">
-                  Demo Data
-                </Label>
-                <Switch
-                  id="sample-data"
-                  checked={showSampleData}
-                  onCheckedChange={setShowSampleData}
-                />
-              </div>
+            {/* Demo mode badge */}
+            {showSampleData && (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                <Database className="h-3 w-3 mr-1" />
+                SAMPLE DATA
+              </Badge>
             )}
           </div>
 
-          {/* DATA INTEGRITY: Live mode indicator */}
-          {dataIntegrity.isLiveMode && (
-            <div className="mb-6 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-sm text-green-700 dark:text-green-400 flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4" />
-              <span className="font-medium">Live Mode Active</span> — All data is from connected integrations only. No demo/synthetic data shown.
-              {!dataIntegrity.integrations.stripe && " • Stripe not connected (revenue = $0)"}
-              {!dataIntegrity.shouldShowImpressions && " • Analytics not connected (impressions = 0)"}
-            </div>
-          )}
-
-          {showSampleData && !dataIntegrity.isLiveMode && (
-            <div className="mb-6 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary flex items-center gap-2">
-              <Database className="h-4 w-4" />
-              Showing sample demo data. Toggle off to view real data.
-            </div>
+          {/* Data Mode Banner - centralized from workspace settings */}
+          {dataIntegrity.workspaceId && (
+            <DataModeBanner 
+              workspaceId={dataIntegrity.workspaceId}
+              onConnectStripe={() => {}}
+              onConnectAnalytics={() => {}}
+            />
           )}
 
           <Tabs defaultValue="leads" className="space-y-6">

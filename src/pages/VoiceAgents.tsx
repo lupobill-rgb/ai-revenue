@@ -2,13 +2,13 @@ import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Phone, PhoneOff, Mic, MicOff, RefreshCw, AlertCircle, Loader2, Plus, Trash2, Edit, PhoneCall, Clock, BarChart3, Users, PhoneIncoming, PhoneOutgoing, Play, Pause, Volume2, ChevronDown, ChevronUp, MessageSquare, Zap, CheckCircle2, XCircle, Database } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useVapiConversation } from "@/hooks/useVapiConversation";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -348,7 +348,8 @@ const VoiceAgents = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [activeTab, setActiveTab] = useState("call");
-  const [showSampleData, setShowSampleData] = useState(true);
+  // DEMO MODE: Use centralized workspace demo_mode instead of local toggle
+  const { demoMode: showSampleData } = useDemoMode();
 
   // Display data (sample or real)
   const displayAssistants = showSampleData && assistants.length === 0 ? SAMPLE_ASSISTANTS : assistants;

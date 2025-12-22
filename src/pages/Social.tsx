@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -10,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Share2, Heart, MessageCircle, Repeat2, Eye, TrendingUp, Database, Instagram, Linkedin, Facebook, Construction } from "lucide-react";
 import AIAssistant from "@/components/AIAssistant";
@@ -127,11 +127,12 @@ const getPlatformIcon = (platform: string) => {
 const Social = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  // DEMO MODE: Use centralized workspace demo_mode instead of local toggle
+  const { demoMode: showSampleData } = useDemoMode();
   const [creating, setCreating] = useState(false);
   const [vertical, setVertical] = useState("");
   const [platform, setPlatform] = useState("");
   const [goal, setGoal] = useState("");
-  const [showSampleData, setShowSampleData] = useState(true);
 
   const handleCreateSocial = async () => {
     if (!vertical || !platform) {
@@ -229,18 +230,12 @@ const Social = () => {
                   AI-powered social media content for multiple platforms
                 </p>
               </div>
-              {!SOCIAL_COMING_SOON && (
-                <div className="flex items-center gap-3 bg-muted/50 px-4 py-2 rounded-lg border border-border">
-                  <Database className="h-4 w-4 text-muted-foreground" />
-                  <Label htmlFor="sample-data-social" className="text-sm font-medium cursor-pointer">
-                    Demo Data
-                  </Label>
-                  <Switch
-                    id="sample-data-social"
-                    checked={showSampleData}
-                    onCheckedChange={setShowSampleData}
-                  />
-                </div>
+              {/* Demo mode badge - controlled from Settings */}
+              {!SOCIAL_COMING_SOON && showSampleData && (
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                  <Database className="h-3 w-3 mr-1" />
+                  SAMPLE DATA
+                </Badge>
               )}
             </div>
 
@@ -280,7 +275,7 @@ const Social = () => {
             {!SOCIAL_COMING_SOON && showSampleData && (
               <div className="mb-6 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary flex items-center gap-2">
                 <Database className="h-4 w-4" />
-                Showing sample demo data. Toggle off to view real posts only.
+                Showing sample demo data. Disable Sample Data Mode in Settings to view real data only.
               </div>
             )}
 
