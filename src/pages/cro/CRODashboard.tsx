@@ -19,6 +19,8 @@ import { Progress } from "@/components/ui/progress";
 import NavBar from "@/components/NavBar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { DataModeBanner } from "@/components/DemoModeToggle";
+import { useDataIntegrity } from "@/hooks/useDataIntegrity";
 
 interface DashboardMetrics {
   openPipeline: number;
@@ -45,6 +47,7 @@ interface Deal {
 
 export default function CRODashboard() {
   const { user } = useAuth();
+  const dataIntegrity = useDataIntegrity();
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     openPipeline: 0,
     forecastCommit: 0,
@@ -149,6 +152,15 @@ export default function CRODashboard() {
           <h1 className="text-3xl font-bold">CRO Dashboard</h1>
           <p className="text-muted-foreground mt-1">Revenue operations at a glance</p>
         </div>
+
+        {/* Data Mode Banner */}
+        {dataIntegrity.workspaceId && (
+          <DataModeBanner 
+            workspaceId={dataIntegrity.workspaceId}
+            onConnectStripe={() => {}}
+            onConnectAnalytics={() => {}}
+          />
+        )}
 
         {/* Metrics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

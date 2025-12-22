@@ -4,6 +4,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { supabase } from "@/integrations/supabase/client";
+import { DataModeBanner, SampleDataToggle } from "@/components/DemoModeToggle";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -222,6 +223,15 @@ export default function OSDashboard() {
               </Button>
             </div>
           </div>
+
+          {/* Data Mode Banner */}
+          {workspaceId && (
+            <DataModeBanner 
+              workspaceId={workspaceId}
+              onConnectStripe={() => navigate("/settings/integrations")}
+              onConnectAnalytics={() => navigate("/settings/integrations")}
+            />
+          )}
 
           {/* Stats Grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
