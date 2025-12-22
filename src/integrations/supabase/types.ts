@@ -973,7 +973,7 @@ export type Database = {
           sends: number
           tenant_id: string
           updated_at: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           bounces?: number
@@ -991,7 +991,7 @@ export type Database = {
           sends?: number
           tenant_id: string
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           bounces?: number
@@ -1009,7 +1009,7 @@ export type Database = {
           sends?: number
           tenant_id?: string
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -1534,7 +1534,7 @@ export type Database = {
           spend: number
           tenant_id: string
           updated_at: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           attribution_model?: string
@@ -1553,7 +1553,7 @@ export type Database = {
           spend?: number
           tenant_id: string
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           attribution_model?: string
@@ -1572,7 +1572,7 @@ export type Database = {
           spend?: number
           tenant_id?: string
           updated_at?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
