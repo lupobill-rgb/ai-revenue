@@ -59,7 +59,7 @@ interface Lead {
 interface CRMDashboardProps {
   leads: Lead[];
   showSampleData: boolean;
-  onToggleSampleData: (show: boolean) => void;
+  onToggleSampleData?: (show: boolean) => void;
   workspaceId?: string | null;
 }
 

@@ -28,6 +28,7 @@ import { toast as sonnerToast } from "sonner";
 import WorkspaceSelector from "@/components/WorkspaceSelector";
 import { useTenantSegments } from "@/hooks/useTenantSegments";
 import { SegmentBadge } from "@/components/crm/SegmentBadge";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 interface Lead {
   id: string;
@@ -75,7 +76,8 @@ const CRM = () => {
   const [showScraperDialog, setShowScraperDialog] = useState(false);
   const [importing, setImporting] = useState(false);
   const [scraping, setScraping] = useState(false);
-  const [showSampleData, setShowSampleData] = useState(true);
+  // DEMO MODE: Use centralized workspace demo_mode instead of local toggle
+  const { demoMode: showSampleData } = useDemoMode();
   const [isDragging, setIsDragging] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [campaignMetrics, setCampaignMetrics] = useState<any[]>([]);
@@ -1195,7 +1197,6 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
               <CRMDashboard 
                 leads={leads} 
                 showSampleData={showSampleData}
-                onToggleSampleData={setShowSampleData}
                 workspaceId={workspaceId}
               />
             </TabsContent>

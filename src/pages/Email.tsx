@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -11,9 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Mail, Send, Eye, MousePointer, TrendingUp, Database, Users } from "lucide-react";
+import { Loader2, Mail, Send, Eye, MousePointer, Database, Users } from "lucide-react";
 import AIAssistant from "@/components/AIAssistant";
 import AIPromptCard from "@/components/AIPromptCard";
 
@@ -106,11 +106,12 @@ const verticals = [
 const Email = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  // DEMO MODE: Use centralized workspace demo_mode instead of local toggle
+  const { demoMode: showSampleData } = useDemoMode();
   const [creating, setCreating] = useState(false);
   const [vertical, setVertical] = useState("");
   const [goal, setGoal] = useState("");
   const [recipients, setRecipients] = useState("");
-  const [showSampleData, setShowSampleData] = useState(true);
 
   const handleCreateEmail = async () => {
     if (!vertical) {
@@ -206,23 +207,19 @@ const Email = () => {
                   AI-powered email campaigns for your marketing efforts
                 </p>
               </div>
-              <div className="flex items-center gap-3 bg-muted/50 px-4 py-2 rounded-lg border border-border">
-                <Database className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="sample-data-email" className="text-sm font-medium cursor-pointer">
-                  Demo Data
-                </Label>
-                <Switch
-                  id="sample-data-email"
-                  checked={showSampleData}
-                  onCheckedChange={setShowSampleData}
-                />
-              </div>
+              {/* Demo mode badge - controlled from Settings */}
+              {showSampleData && (
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                  <Database className="h-3 w-3 mr-1" />
+                  SAMPLE DATA
+                </Badge>
+              )}
             </div>
 
             {showSampleData && (
               <div className="mb-6 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary flex items-center gap-2">
                 <Database className="h-4 w-4" />
-                Showing sample demo data. Toggle off to view real emails only.
+                Showing sample demo data. Disable Sample Data Mode in Settings to view real data only.
               </div>
             )}
 

@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -97,7 +97,8 @@ const verticals = [
 
 const Video = () => {
   const navigate = useNavigate();
-  const [showSampleData, setShowSampleData] = useState(true);
+  // DEMO MODE: Use centralized workspace demo_mode instead of local toggle
+  const { demoMode: showSampleData } = useDemoMode();
   const [vertical, setVertical] = useState("");
   const [goal, setGoal] = useState("");
   const [creating, setCreating] = useState(false);
@@ -131,23 +132,19 @@ const Video = () => {
                   AI-powered marketing videos for your campaigns
                 </p>
               </div>
-              <div className="flex items-center gap-3 bg-muted/50 px-4 py-2 rounded-lg border border-border">
-                <Database className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="sample-data-video" className="text-sm font-medium cursor-pointer">
-                  Demo Data
-                </Label>
-                <Switch
-                  id="sample-data-video"
-                  checked={showSampleData}
-                  onCheckedChange={setShowSampleData}
-                />
-              </div>
+              {/* Demo mode badge - controlled from Settings */}
+              {showSampleData && (
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                  <Database className="h-3 w-3 mr-1" />
+                  SAMPLE DATA
+                </Badge>
+              )}
             </div>
 
             {showSampleData && (
               <div className="mb-6 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary flex items-center gap-2">
                 <Database className="h-4 w-4" />
-                Showing sample demo data. Toggle off to view real videos only.
+                Showing sample demo data. Disable Sample Data Mode in Settings to view real data only.
               </div>
             )}
 
