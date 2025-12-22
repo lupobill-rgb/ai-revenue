@@ -9,7 +9,13 @@ interface Workspace {
   slug: string;
   owner_id: string;
   is_default?: boolean | null;
+  demo_mode?: boolean;
+  stripe_connected?: boolean;
+  tenant_id?: string | null;
 }
+
+// Data quality status from gated views
+export type DataQualityStatus = 'LIVE_OK' | 'DEMO_MODE' | 'NO_PROVIDER_CONNECTED' | 'NO_ANALYTICS_CONNECTED' | 'NO_STRIPE_CONNECTED';
 
 interface WorkspaceContextValue {
   workspaceId: string | null;
@@ -18,6 +24,13 @@ interface WorkspaceContextValue {
   isLoading: boolean;
   error: string | null;
   hasWorkspace: boolean;
+  // Demo mode controls
+  demoMode: boolean;
+  stripeConnected: boolean;
+  analyticsConnected: boolean;
+  dataQualityStatus: DataQualityStatus;
+  toggleDemoMode: () => Promise<void>;
+  // Workspace actions
   selectWorkspace: (workspaceId: string) => Promise<void>;
   createWorkspace: (name: string, slug?: string) => Promise<Workspace | null>;
   refreshWorkspaces: () => Promise<void>;
@@ -33,6 +46,30 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Demo mode and integration status
+  const [demoMode, setDemoMode] = useState(false);
+  const [stripeConnected, setStripeConnected] = useState(false);
+  const [analyticsConnected, setAnalyticsConnected] = useState(false);
+
+  // Fetch integration status from gated view
+  const fetchIntegrationStatus = useCallback(async (wsId: string) => {
+    try {
+      const { data } = await supabase
+        .from("v_impressions_clicks_by_workspace")
+        .select("demo_mode, stripe_connected, analytics_connected, data_quality_status")
+        .eq("workspace_id", wsId)
+        .single();
+      
+      if (data) {
+        setDemoMode(data.demo_mode ?? false);
+        setStripeConnected(data.stripe_connected ?? false);
+        setAnalyticsConnected(data.analytics_connected ?? false);
+      }
+    } catch (err) {
+      console.error("Failed to fetch integration status:", err);
+    }
+  }, []);
 
   const fetchWorkspaces = useCallback(async () => {
     try {
@@ -47,10 +84,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Fetch all workspaces user has access to (owned or member)
+      // Fetch all workspaces user has access to (owned or member) with demo_mode and stripe_connected
       const { data: ownedWorkspaces, error: ownedError } = await supabase
         .from("workspaces")
-        .select("id, name, slug, owner_id, is_default")
+        .select("id, name, slug, owner_id, is_default, demo_mode, stripe_connected, tenant_id")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: true });
 
@@ -59,7 +96,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       // Also get workspaces user is a member of
       const { data: memberWorkspaces, error: memberError } = await supabase
         .from("workspace_members")
-        .select("workspace:workspaces(id, name, slug, owner_id, is_default)")
+        .select("workspace:workspaces(id, name, slug, owner_id, is_default, demo_mode, stripe_connected, tenant_id)")
         .eq("user_id", user.id)
         .neq("role", "owner"); // Avoid duplicates with owned
 
@@ -99,7 +136,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       if (selectedWorkspace) {
         setWorkspaceId(selectedWorkspace.id);
         setWorkspace(selectedWorkspace);
+        setDemoMode(selectedWorkspace.demo_mode ?? false);
+        setStripeConnected(selectedWorkspace.stripe_connected ?? false);
         localStorage.setItem(STORAGE_KEY, selectedWorkspace.id);
+        
+        // Fetch full integration status from view
+        fetchIntegrationStatus(selectedWorkspace.id);
         
         // Update last used in DB (fire and forget)
         (async () => {
@@ -122,7 +164,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchIntegrationStatus]);
 
   useEffect(() => {
     fetchWorkspaces();
@@ -151,7 +193,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
     setWorkspaceId(id);
     setWorkspace(selected);
+    setDemoMode(selected.demo_mode ?? false);
+    setStripeConnected(selected.stripe_connected ?? false);
     localStorage.setItem(STORAGE_KEY, id);
+    
+    // Fetch full integration status
+    fetchIntegrationStatus(id);
 
     // Update last used in DB
     const { data: { user } } = await supabase.auth.getUser();
@@ -167,7 +214,38 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
 
     toast.success(`Switched to ${selected.name}`);
-  }, [workspaces]);
+  }, [workspaces, fetchIntegrationStatus]);
+
+  // Toggle demo mode for current workspace
+  const toggleDemoMode = useCallback(async () => {
+    if (!workspaceId) {
+      toast.error("No workspace selected");
+      return;
+    }
+
+    const newDemoMode = !demoMode;
+    
+    const { error } = await supabase
+      .from("workspaces")
+      .update({ demo_mode: newDemoMode })
+      .eq("id", workspaceId);
+
+    if (error) {
+      toast.error("Failed to toggle demo mode");
+      console.error(error);
+      return;
+    }
+
+    setDemoMode(newDemoMode);
+    
+    // Update workspace in state
+    setWorkspace((prev) => prev ? { ...prev, demo_mode: newDemoMode } : null);
+    setWorkspaces((prev) => 
+      prev.map((w) => w.id === workspaceId ? { ...w, demo_mode: newDemoMode } : w)
+    );
+
+    toast.success(newDemoMode ? "Demo mode enabled" : "Live mode enabled");
+  }, [workspaceId, demoMode]);
 
   const createWorkspace = useCallback(async (name: string, slug?: string): Promise<Workspace | null> => {
     try {
@@ -220,6 +298,17 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchWorkspaces, selectWorkspace]);
 
+  // Compute data quality status
+  const dataQualityStatus: DataQualityStatus = demoMode 
+    ? 'DEMO_MODE' 
+    : (!analyticsConnected && !stripeConnected)
+      ? 'NO_PROVIDER_CONNECTED'
+      : !analyticsConnected 
+        ? 'NO_ANALYTICS_CONNECTED'
+        : !stripeConnected 
+          ? 'NO_STRIPE_CONNECTED' 
+          : 'LIVE_OK';
+
   const value: WorkspaceContextValue = {
     workspaceId,
     workspace,
@@ -227,6 +316,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     error,
     hasWorkspace: !!workspaceId,
+    // Demo mode controls
+    demoMode,
+    stripeConnected,
+    analyticsConnected,
+    dataQualityStatus,
+    toggleDemoMode,
+    // Workspace actions
     selectWorkspace,
     createWorkspace,
     refreshWorkspaces: fetchWorkspaces,

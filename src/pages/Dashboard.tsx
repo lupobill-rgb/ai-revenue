@@ -4,10 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useDataIntegrity, validateDataIntegrity } from "@/hooks/useDataIntegrity";
+import { useWorkspaceContext, DataQualityStatus } from "@/contexts/WorkspaceContext";
+import { DemoModeToggle } from "@/components/DemoModeToggle";
 import { TrendingUp, CheckCircle, Clock, Eye, PlayCircle, Mail, Phone, Layout, DollarSign, Target, AlertCircle, Settings, Plus, BarChart3, LineChart, HelpCircle, Activity, ShieldAlert } from "lucide-react";
 import { CampaignRunDetailsDrawer } from "@/components/campaigns/CampaignRunDetailsDrawer";
 import NavBar from "@/components/NavBar";
@@ -47,8 +47,7 @@ interface CampaignPerformance {
   status: string;
 }
 
-// Data quality status from views
-type DataQualityStatus = 'LIVE_OK' | 'DEMO_MODE' | 'NO_PROVIDER_CONNECTED' | 'NO_ANALYTICS_CONNECTED' | 'NO_STRIPE_CONNECTED';
+// Data quality status is now from WorkspaceContext
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -56,6 +55,9 @@ const Dashboard = () => {
   
   // DATA INTEGRITY: Use centralized hook for strict enforcement
   const dataIntegrity = useDataIntegrity();
+  
+  // Demo mode from workspace context (single source of truth)
+  const { demoMode, dataQualityStatus: wsDataQualityStatus } = useWorkspaceContext();
   
   const [metrics, setMetrics] = useState<CampaignMetrics>({
     totalRevenue: 0,
@@ -69,7 +71,6 @@ const Dashboard = () => {
   const [campaigns, setCampaigns] = useState<CampaignPerformance[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasRealData, setHasRealData] = useState(false);
-  const [showDemoData, setShowDemoData] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [selectedCampaignForRun, setSelectedCampaignForRun] = useState<{ id: string; name: string } | null>(null);
@@ -221,10 +222,7 @@ const Dashboard = () => {
       const hasData = (campaignsData?.length || 0) > 0 || (leadCount || 0) > 0;
       setHasRealData(hasData);
       
-      // Only show demo mode toggle if NO real data exists
-      if (!hasData && !showDemoData) {
-        setShowDemoData(false);
-      }
+      // Demo mode is now controlled via WorkspaceContext toggle
       
       setLastRefresh(new Date());
 
@@ -434,7 +432,7 @@ const Dashboard = () => {
                 <AIQuickActions onActionClick={handleAIAction} />
               </div>
 
-              {/* Demo Data Toggle - only show if no real data */}
+              {/* Demo Mode Toggle Card - only show if no real data */}
               {!hasRealData && (
                 <Card className="mb-8 border-border bg-card">
                   <CardHeader>
@@ -442,26 +440,17 @@ const Dashboard = () => {
                       <div>
                         <CardTitle className="text-foreground text-xl">Platform Preview Mode</CardTitle>
                         <CardDescription>
-                          No campaigns deployed yet. Toggle demo data to explore analytics features.
+                          No campaigns deployed yet. Toggle demo mode to explore analytics features.
                         </CardDescription>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <Label htmlFor="demo-data-toggle" className="text-sm font-medium cursor-pointer">
-                          {showDemoData ? "Hide Demo Data" : "Show Demo Data"}
-                        </Label>
-                        <Switch
-                          id="demo-data-toggle"
-                          checked={showDemoData}
-                          onCheckedChange={setShowDemoData}
-                        />
-                      </div>
+                      <DemoModeToggle />
                     </div>
                   </CardHeader>
                 </Card>
               )}
 
               {/* Demo Metrics Graphs - only show if demo mode enabled and no real data */}
-              {showDemoData && !hasRealData && (
+              {demoMode && !hasRealData && (
                 <div className="mb-8 grid gap-6 lg:grid-cols-2">
                   {/* Revenue vs Cost Chart */}
                   <Card className="border-border bg-card">
