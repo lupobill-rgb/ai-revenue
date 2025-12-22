@@ -201,16 +201,25 @@ const Dashboard = () => {
         }
       }
 
-      // Fetch active campaigns count - always from real records
+      // Fetch active campaigns - use gated metrics view for data integrity
       const { data: campaignsData, error: campaignsError } = await supabase
         .from("campaigns")
         .select(`
           *,
-          assets!inner(*),
-          campaign_metrics(*)
+          assets!inner(*)
         `)
         .in("status", ["deployed", "running", "active"])
         .order("deployed_at", { ascending: false });
+      
+      // Fetch gated campaign metrics separately to respect workspace demo_mode
+      const { data: gatedMetrics } = await supabase
+        .from("v_campaign_metrics_gated")
+        .select("*");
+      
+      // Create a map for quick lookup
+      const metricsMap = new Map(
+        (gatedMetrics || []).map((m: any) => [m.campaign_id, m])
+      );
 
       if (campaignsError) throw campaignsError;
 
@@ -232,7 +241,7 @@ const Dashboard = () => {
       let totalCost = 0;
       if (canShowRevenue) {
         campaignsData?.forEach((campaign: any) => {
-          const metrics = campaign.campaign_metrics?.[0];
+          const metrics = metricsMap.get(campaign.id);
           if (metrics) {
             totalCost += parseFloat(metrics.cost || 0);
           }
@@ -254,7 +263,7 @@ const Dashboard = () => {
 
       // Map campaigns with individual metrics - GATED by dataQualityStatus
       const mappedCampaigns = (campaignsData || []).map((c: any) => {
-        const metrics = c.campaign_metrics?.[0];
+        const metrics = metricsMap.get(c.id);
         const asset = c.assets;
         // Zero out revenue/cost if no Stripe connected in live mode
         const revenue = canShowRevenue ? parseFloat(metrics?.revenue || 0) : 0;
