@@ -214,7 +214,8 @@ const Dashboard = () => {
       // Fetch gated campaign metrics separately to respect workspace demo_mode
       const { data: gatedMetrics } = await supabase
         .from("v_campaign_metrics_gated")
-        .select("*");
+        .select("*")
+        .eq("workspace_id", workspaceId);
       
       // Create a map for quick lookup
       const metricsMap = new Map(
