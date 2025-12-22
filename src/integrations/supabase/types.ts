@@ -970,6 +970,7 @@ export type Database = {
           completed_at: string | null
           created_at: string
           created_by: string | null
+          data_mode: Database["public"]["Enums"]["data_mode"]
           error_code: string | null
           error_message: string | null
           id: string
@@ -991,6 +992,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           error_code?: string | null
           error_message?: string | null
           id?: string
@@ -1012,6 +1014,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           error_code?: string | null
           error_message?: string | null
           id?: string
@@ -1113,6 +1116,7 @@ export type Database = {
         Row: {
           channel: string
           created_at: string
+          data_mode: Database["public"]["Enums"]["data_mode"]
           error: string | null
           id: string
           idempotency_key: string
@@ -1134,6 +1138,7 @@ export type Database = {
         Insert: {
           channel: string
           created_at?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           error?: string | null
           id?: string
           idempotency_key: string
@@ -1155,6 +1160,7 @@ export type Database = {
         Update: {
           channel?: string
           created_at?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           error?: string | null
           id?: string
           idempotency_key?: string
@@ -2581,6 +2587,7 @@ export type Database = {
           activity_type: string
           contact_id: string
           created_at: string
+          data_mode: Database["public"]["Enums"]["data_mode"]
           id: string
           lead_id: string | null
           meta: Json
@@ -2590,6 +2597,7 @@ export type Database = {
           activity_type: string
           contact_id: string
           created_at?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           id?: string
           lead_id?: string | null
           meta?: Json
@@ -2599,6 +2607,7 @@ export type Database = {
           activity_type?: string
           contact_id?: string
           created_at?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           id?: string
           lead_id?: string | null
           meta?: Json
@@ -3426,6 +3435,7 @@ export type Database = {
         Row: {
           attempts: number
           created_at: string
+          data_mode: Database["public"]["Enums"]["data_mode"]
           id: string
           job_type: string
           last_error: string | null
@@ -3442,6 +3452,7 @@ export type Database = {
         Insert: {
           attempts?: number
           created_at?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           id?: string
           job_type: string
           last_error?: string | null
@@ -3458,6 +3469,7 @@ export type Database = {
         Update: {
           attempts?: number
           created_at?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           id?: string
           job_type?: string
           last_error?: string | null
@@ -6527,6 +6539,7 @@ export type Database = {
         Returns: {
           attempts: number
           created_at: string
+          data_mode: Database["public"]["Enums"]["data_mode"]
           id: string
           job_type: string
           last_error: string | null
@@ -6846,6 +6859,7 @@ export type Database = {
       app_role: "admin" | "sales" | "manager"
       asset_status: "draft" | "review" | "approved" | "live"
       asset_type: "video" | "email" | "voice" | "landing_page" | "website"
+      data_mode: "live" | "demo"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -6976,6 +6990,7 @@ export const Constants = {
       app_role: ["admin", "sales", "manager"],
       asset_status: ["draft", "review", "approved", "live"],
       asset_type: ["video", "email", "voice", "landing_page", "website"],
+      data_mode: ["live", "demo"],
     },
   },
 } as const
