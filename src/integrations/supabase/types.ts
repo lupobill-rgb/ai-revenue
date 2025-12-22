@@ -872,6 +872,7 @@ export type Database = {
           channel: string
           clicks: number
           created_at: string
+          data_mode: Database["public"]["Enums"]["data_mode"]
           day: string
           deliveries: number
           id: string
@@ -888,6 +889,7 @@ export type Database = {
           channel: string
           clicks?: number
           created_at?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           day: string
           deliveries?: number
           id?: string
@@ -904,6 +906,7 @@ export type Database = {
           channel?: string
           clicks?: number
           created_at?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           day?: string
           deliveries?: number
           id?: string
@@ -1377,6 +1380,7 @@ export type Database = {
           clicks: number
           created_at: string
           currency: string
+          data_mode: Database["public"]["Enums"]["data_mode"]
           date: string
           id: string
           impressions: number
@@ -1394,6 +1398,7 @@ export type Database = {
           clicks?: number
           created_at?: string
           currency?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           date: string
           id?: string
           impressions?: number
@@ -1411,6 +1416,7 @@ export type Database = {
           clicks?: number
           created_at?: string
           currency?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           date?: string
           id?: string
           impressions?: number
@@ -2327,6 +2333,7 @@ export type Database = {
           cost: number | null
           created_at: string
           custom_metrics: Json | null
+          data_mode: Database["public"]["Enums"]["data_mode"]
           engagement_rate: number | null
           id: string
           impressions: number | null
@@ -2346,6 +2353,7 @@ export type Database = {
           cost?: number | null
           created_at?: string
           custom_metrics?: Json | null
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           engagement_rate?: number | null
           id?: string
           impressions?: number | null
@@ -2365,6 +2373,7 @@ export type Database = {
           cost?: number | null
           created_at?: string
           custom_metrics?: Json | null
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           engagement_rate?: number | null
           id?: string
           impressions?: number | null
@@ -6895,6 +6904,23 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      v_impressions_clicks_by_workspace: {
+        Row: {
+          cmo_clicks: number | null
+          cmo_conversions: number | null
+          cmo_impressions: number | null
+          email_clicks: number | null
+          email_opens: number | null
+          email_sends: number | null
+          paid_clicks: number | null
+          paid_impressions: number | null
+          tenant_id: string | null
+          total_clicks: number | null
+          total_impressions: number | null
+          workspace_id: string | null
+        }
+        Relationships: []
       }
       v_revenue_by_workspace: {
         Row: {
