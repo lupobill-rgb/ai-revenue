@@ -81,6 +81,7 @@ const CRM = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [campaignMetrics, setCampaignMetrics] = useState<any[]>([]);
+  const [emailConnected, setEmailConnected] = useState(false);
 
   // Outbound calling state
   const [showCallDialog, setShowCallDialog] = useState(false);
@@ -159,10 +160,12 @@ const CRM = () => {
       fetchLeads();
       fetchCalendarEvents();
       fetchCampaignMetrics();
+      fetchEmailConnectionStatus();
     } else if (workspaceValidated) {
       setLeads([]);
       setCalendarEvents([]);
       setCampaignMetrics([]);
+      setEmailConnected(false);
       setLoading(false);
     }
   }, [workspaceId, workspaceValidated]);
@@ -245,6 +248,21 @@ const CRM = () => {
       }
     } catch (error) {
       console.error("Error fetching campaign metrics:", error);
+    }
+  };
+
+  const fetchEmailConnectionStatus = async () => {
+    if (!workspaceId) return;
+    try {
+      const { data } = await supabase
+        .from("ai_settings_email")
+        .select("is_connected")
+        .eq("tenant_id", workspaceId)
+        .maybeSingle();
+      setEmailConnected(data?.is_connected === true);
+    } catch (error) {
+      console.error("Error fetching email connection status:", error);
+      setEmailConnected(false);
     }
   };
 
@@ -1470,7 +1488,10 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
 
             {/* Email Analytics Tab */}
             <TabsContent value="email_analytics">
-              <EmailAnalyticsDashboard metrics={campaignMetrics} />
+              <EmailAnalyticsDashboard 
+                metrics={campaignMetrics} 
+                canShowMetrics={showSampleData || emailConnected}
+              />
             </TabsContent>
           </Tabs>
 

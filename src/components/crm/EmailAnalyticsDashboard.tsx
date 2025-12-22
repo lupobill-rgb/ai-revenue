@@ -22,6 +22,7 @@ interface CampaignMetric {
 
 interface EmailAnalyticsDashboardProps {
   metrics: CampaignMetric[];
+  canShowMetrics?: boolean;
 }
 
 const CHART_COLORS = {
@@ -34,14 +35,17 @@ const CHART_COLORS = {
   replied: "hsl(160 84% 39%)",
 };
 
-export function EmailAnalyticsDashboard({ metrics }: EmailAnalyticsDashboardProps) {
+export function EmailAnalyticsDashboard({ metrics, canShowMetrics = true }: EmailAnalyticsDashboardProps) {
   const [dateRange, setDateRange] = useState<string>("30");
+  
+  // If providers not connected and not in demo mode, show zeros
+  const gatedMetrics = canShowMetrics ? metrics : [];
 
   const filteredMetrics = useMemo(() => {
     const days = parseInt(dateRange);
     const cutoffDate = subDays(new Date(), days);
-    return metrics.filter((m) => isAfter(parseISO(m.created_at), cutoffDate));
-  }, [metrics, dateRange]);
+    return gatedMetrics.filter((m) => isAfter(parseISO(m.created_at), cutoffDate));
+  }, [gatedMetrics, dateRange]);
 
   // Aggregate stats
   const totals = useMemo(() => {
