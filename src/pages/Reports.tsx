@@ -243,7 +243,7 @@ const Reports = () => {
           asset_id,
           assets!inner(name)
         `)
-        .eq("status", "active");
+        .in("status", ["active", "running", "deployed"]);
 
       // Fetch gated campaign metrics separately to respect workspace demo_mode
       const { data: gatedMetrics } = await supabase
