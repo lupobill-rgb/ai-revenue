@@ -973,6 +973,7 @@ export type Database = {
           sends: number
           tenant_id: string
           updated_at: string
+          workspace_id: string | null
         }
         Insert: {
           bounces?: number
@@ -990,6 +991,7 @@ export type Database = {
           sends?: number
           tenant_id: string
           updated_at?: string
+          workspace_id?: string | null
         }
         Update: {
           bounces?: number
@@ -1007,8 +1009,31 @@ export type Database = {
           sends?: number
           tenant_id?: string
           updated_at?: string
+          workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "campaign_channel_stats_daily_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_impressions_clicks_by_workspace"
+            referencedColumns: ["workspace_id"]
+          },
+          {
+            foreignKeyName: "campaign_channel_stats_daily_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_revenue_by_workspace"
+            referencedColumns: ["workspace_id"]
+          },
+          {
+            foreignKeyName: "campaign_channel_stats_daily_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       campaign_metrics: {
         Row: {
@@ -1509,6 +1534,7 @@ export type Database = {
           spend: number
           tenant_id: string
           updated_at: string
+          workspace_id: string | null
         }
         Insert: {
           attribution_model?: string
@@ -1527,6 +1553,7 @@ export type Database = {
           spend?: number
           tenant_id: string
           updated_at?: string
+          workspace_id?: string | null
         }
         Update: {
           attribution_model?: string
@@ -1545,6 +1572,7 @@ export type Database = {
           spend?: number
           tenant_id?: string
           updated_at?: string
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -1559,6 +1587,27 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_spend_daily_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_impressions_clicks_by_workspace"
+            referencedColumns: ["workspace_id"]
+          },
+          {
+            foreignKeyName: "channel_spend_daily_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_revenue_by_workspace"
+            referencedColumns: ["workspace_id"]
+          },
+          {
+            foreignKeyName: "channel_spend_daily_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
         ]
