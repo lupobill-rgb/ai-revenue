@@ -232,7 +232,7 @@ const Reports = () => {
         }
       }
       
-      // Fetch campaign list for the table (without relying on metrics for totals)
+      // Fetch campaign list - use gated metrics view for data integrity
       const { data: campaignsData, error: campaignsError } = await supabase
         .from("campaigns")
         .select(`
@@ -241,16 +241,19 @@ const Reports = () => {
           status,
           deployed_at,
           asset_id,
-          assets!inner(name),
-          campaign_metrics(
-            impressions,
-            clicks,
-            conversions,
-            revenue,
-            cost
-          )
+          assets!inner(name)
         `)
         .eq("status", "active");
+
+      // Fetch gated campaign metrics separately to respect workspace demo_mode
+      const { data: gatedMetrics } = await supabase
+        .from("v_campaign_metrics_gated")
+        .select("*");
+      
+      // Create a map for quick lookup
+      const metricsMap = new Map(
+        (gatedMetrics || []).map((m: any) => [m.campaign_id, m])
+      );
 
       if (campaignsError) throw campaignsError;
 
@@ -259,7 +262,7 @@ const Reports = () => {
       const canShowImpressions = dataIntegrity.shouldShowImpressions;
 
       const reports: CampaignReport[] = (campaignsData || []).map((campaign: any) => {
-        const metrics = campaign.campaign_metrics?.[0] || {};
+        const metrics = metricsMap.get(campaign.id) || {};
         // Gate individual campaign metrics based on data integrity
         const revenue = canShowRevenue ? (metrics.revenue || 0) : 0;
         const cost = canShowRevenue ? (metrics.cost || 0) : 0;

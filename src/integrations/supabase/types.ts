@@ -1142,6 +1142,7 @@ export type Database = {
           conversions: number | null
           cost: number | null
           created_at: string
+          data_mode: Database["public"]["Enums"]["data_mode"]
           delivered_count: number | null
           engagement_rate: number | null
           id: string
@@ -1166,6 +1167,7 @@ export type Database = {
           conversions?: number | null
           cost?: number | null
           created_at?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           delivered_count?: number | null
           engagement_rate?: number | null
           id?: string
@@ -1190,6 +1192,7 @@ export type Database = {
           conversions?: number | null
           cost?: number | null
           created_at?: string
+          data_mode?: Database["public"]["Enums"]["data_mode"]
           delivered_count?: number | null
           engagement_rate?: number | null
           id?: string
@@ -7661,6 +7664,72 @@ export type Database = {
           },
           {
             foreignKeyName: "campaign_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_campaign_metrics_gated: {
+        Row: {
+          bounce_count: number | null
+          campaign_id: string | null
+          clicks: number | null
+          comments: number | null
+          conversions: number | null
+          cost: number | null
+          created_at: string | null
+          data_mode: Database["public"]["Enums"]["data_mode"] | null
+          delivered_count: number | null
+          engagement_rate: number | null
+          id: string | null
+          impressions: number | null
+          is_visible: boolean | null
+          last_synced_at: string | null
+          likes: number | null
+          open_count: number | null
+          reply_count: number | null
+          revenue: number | null
+          sent_count: number | null
+          shares: number | null
+          unsubscribe_count: number | null
+          updated_at: string | null
+          video_views: number | null
+          workspace_demo_mode: boolean | null
+          workspace_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_metrics_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_metrics_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_cmo_metrics_by_workspace"
+            referencedColumns: ["workspace_id"]
+          },
+          {
+            foreignKeyName: "campaign_metrics_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_impressions_clicks_by_workspace"
+            referencedColumns: ["workspace_id"]
+          },
+          {
+            foreignKeyName: "campaign_metrics_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_revenue_by_workspace"
+            referencedColumns: ["workspace_id"]
+          },
+          {
+            foreignKeyName: "campaign_metrics_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"

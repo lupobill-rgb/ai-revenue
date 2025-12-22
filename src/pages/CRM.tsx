@@ -234,8 +234,9 @@ const CRM = () => {
   const fetchCampaignMetrics = async () => {
     if (!workspaceId) return;
     try {
+      // Use gated view to respect workspace demo_mode
       const { data, error } = await supabase
-        .from("campaign_metrics")
+        .from("v_campaign_metrics_gated")
         .select("*")
         .eq("workspace_id", workspaceId)
         .order("created_at", { ascending: false });
