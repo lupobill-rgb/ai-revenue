@@ -227,6 +227,12 @@ const Reports = () => {
             <DataModeBanner workspaceId={dataIntegrity.workspaceId} onConnectStripe={() => navigate("/settings/integrations")} onConnectAnalytics={() => navigate("/settings/integrations")} />
           )}
 
+          {/* CRM TRUTH GUARDRAIL - Non-negotiable transparency */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground">
+            <Database className="h-3 w-3 flex-shrink-0" />
+            <span>Metrics are driven from CRM deal outcomes. No inferred or estimated revenue.</span>
+          </div>
+
           <Tabs defaultValue="leads" className="space-y-6">
             <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
               <TabsTrigger value="leads">Lead Analytics</TabsTrigger>

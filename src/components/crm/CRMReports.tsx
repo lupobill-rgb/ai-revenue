@@ -232,7 +232,12 @@ export function CRMReports() {
         </Alert>
       ) : null}
 
-      {/* Header */}
+      {/* CRM TRUTH GUARDRAIL - Non-negotiable transparency */}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground">
+        <Database className="h-3 w-3 flex-shrink-0" />
+        <span>Metrics are driven from CRM deal outcomes. No inferred or estimated revenue.</span>
+      </div>
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div>
