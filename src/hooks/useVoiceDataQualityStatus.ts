@@ -44,10 +44,10 @@ export function useVoiceDataQualityStatus(workspaceId?: string | null): VoiceDat
     setError(null);
 
     try {
-      // 1. Fetch workspace demo_mode AND tenant_id (needed for ai_settings_voice lookup)
+      // 1. Fetch workspace demo_mode
       const { data: workspace, error: workspaceError } = await supabase
         .from("workspaces")
-        .select("demo_mode, tenant_id")
+        .select("demo_mode")
         .eq("id", workspaceId)
         .maybeSingle();
 
@@ -59,19 +59,12 @@ export function useVoiceDataQualityStatus(workspaceId?: string | null): VoiceDat
       setIsDemoMode(workspace?.demo_mode === true);
 
       // 2. Check voice provider connectivity from ai_settings_voice
-      // ai_settings_voice is keyed by tenant_id, NOT workspace_id
-      const tenantId = workspace?.tenant_id;
-      if (!tenantId) {
-        console.warn("[useVoiceDataQualityStatus] workspace.tenant_id is null; treating voice as disconnected");
-        // No tenant_id means voice settings won't exist
-        setVoiceConnected(false);
-        return;
-      }
-
+      // IMPORTANT: ai_settings_voice.tenant_id is actually the workspace_id (not workspaces.tenant_id)
+      // This matches how SettingsIntegrations.tsx saves the data
       const { data: voiceSettings, error: voiceError } = await supabase
         .from("ai_settings_voice")
         .select("is_connected, vapi_private_key, elevenlabs_api_key, voice_provider")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", workspaceId) // Use workspaceId directly - that's what's stored
         .maybeSingle();
 
       if (voiceError) {
@@ -80,13 +73,13 @@ export function useVoiceDataQualityStatus(workspaceId?: string | null): VoiceDat
       }
 
       // Voice is connected if:
-      // - is_connected is explicitly true, OR
-      // - vapi_private_key is set, OR
-      // - elevenlabs_api_key is set
+      // - is_connected is explicitly true (primary signal)
+      // - Fallback: check for key presence (migration resilience)
+      const isExplicitlyConnected = voiceSettings?.is_connected === true;
       const hasVapi = !!voiceSettings?.vapi_private_key;
       const hasElevenLabs = !!voiceSettings?.elevenlabs_api_key;
-      const isExplicitlyConnected = voiceSettings?.is_connected === true;
       
+      // Prioritize is_connected, but allow key-presence fallback
       setVoiceConnected(isExplicitlyConnected || hasVapi || hasElevenLabs);
 
     } catch (err) {
