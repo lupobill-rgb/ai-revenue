@@ -3,22 +3,30 @@
  * 
  * HARD RULE: All KPI components must use this hook to determine what to show.
  * 
+ * SOURCE OF TRUTH: The view's data_quality_status field is authoritative.
+ * Context flags are fallbacks only when views haven't loaded yet.
+ * 
  * Returns:
- * - status: The current data quality status
+ * - status: The current data quality status (from view, authoritative)
  * - canShowRevenue: Whether revenue KPIs can show non-zero values
  * - canShowImpressions: Whether impression/click KPIs can show non-zero values
  * - canShowPipeline: Whether pipeline KPIs can show values (always true for CRM)
  * - isDemoMode: Whether demo mode is active
  * - isLiveOK: Whether all systems are connected and live
- * - formatKPI: Gated formatting function that returns 0 if not allowed
  */
 
-import { useMemo } from "react";
-import { usePipelineMetrics } from "./usePipelineMetrics";
-import { useWorkspaceContext, DataQualityStatus } from "@/contexts/WorkspaceContext";
+import { useMemo, useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+export type ViewDataQualityStatus = 
+  | 'DEMO_MODE' 
+  | 'LIVE_OK' 
+  | 'NO_STRIPE_CONNECTED' 
+  | 'NO_ANALYTICS_CONNECTED' 
+  | 'NO_PROVIDER_CONNECTED';
 
 export interface DataQualityState {
-  status: DataQualityStatus;
+  status: ViewDataQualityStatus;
   isDemoMode: boolean;
   isLiveOK: boolean;
   canShowRevenue: boolean;
@@ -34,38 +42,79 @@ export interface DataQualityState {
   formatPercentage: (value: number | null | undefined) => string;
 }
 
+/**
+ * SOURCE OF TRUTH: Queries v_impressions_clicks_by_workspace directly for status.
+ * Does NOT use context - the view is the authority.
+ */
 export function useDataQualityStatus(workspaceId?: string | null): DataQualityState {
-  const { 
-    demoMode, 
-    stripeConnected, 
-    analyticsConnected, 
-    dataQualityStatus,
-    isLoading: contextLoading 
-  } = useWorkspaceContext();
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<ViewDataQualityStatus>('LIVE_OK');
+  const [stripeConnected, setStripeConnected] = useState(false);
+  const [analyticsConnected, setAnalyticsConnected] = useState(false);
   
-  const { metrics, dataQuality, loading: metricsLoading } = usePipelineMetrics(workspaceId ?? null);
-  
-  const loading = contextLoading || metricsLoading;
-  
-  // Derive the authoritative status
-  const status: DataQualityStatus = useMemo(() => {
-    // Use metrics view status if available, otherwise use context
-    if (metrics?.data_quality_status) {
-      return metrics.data_quality_status as DataQualityStatus;
+  const fetchViewStatus = useCallback(async () => {
+    if (!workspaceId) {
+      setLoading(false);
+      return;
     }
-    return dataQualityStatus;
-  }, [metrics?.data_quality_status, dataQualityStatus]);
+    
+    setLoading(true);
+    
+    try {
+      // AUTHORITATIVE SOURCE: Query the view directly
+      const { data: impressionsData } = await supabase
+        .from('v_impressions_clicks_by_workspace' as any)
+        .select('demo_mode, analytics_connected, stripe_connected, data_quality_status')
+        .eq('workspace_id', workspaceId)
+        .maybeSingle() as { data: any };
+      
+      if (impressionsData) {
+        // View's data_quality_status is the source of truth
+        const viewStatus = impressionsData.data_quality_status as ViewDataQualityStatus;
+        setStatus(viewStatus || 'LIVE_OK');
+        setAnalyticsConnected(impressionsData.analytics_connected === true);
+        setStripeConnected(impressionsData.stripe_connected === true);
+      } else {
+        // No data = fresh workspace, default to checking revenue view
+        const { data: revenueData } = await supabase
+          .from('v_revenue_by_workspace' as any)
+          .select('stripe_connected, data_quality_status')
+          .eq('workspace_id', workspaceId)
+          .maybeSingle() as { data: any };
+        
+        if (revenueData) {
+          setStripeConnected(revenueData.stripe_connected === true);
+          setStatus((revenueData.data_quality_status as ViewDataQualityStatus) || 'LIVE_OK');
+        }
+      }
+    } catch (err) {
+      console.error('[useDataQualityStatus] Error fetching view status:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId]);
   
-  const isDemoMode = status === 'DEMO_MODE' || demoMode;
+  useEffect(() => {
+    fetchViewStatus();
+  }, [fetchViewStatus]);
+  
+  // Derived from VIEW status only
+  const isDemoMode = status === 'DEMO_MODE';
   const isLiveOK = status === 'LIVE_OK';
   
-  // Gating rules
-  const canShowRevenue = isDemoMode || isLiveOK || stripeConnected;
-  const canShowImpressions = isDemoMode || isLiveOK || analyticsConnected;
+  // Gating rules derived from view status
+  const canShowRevenue = useMemo(() => {
+    return isDemoMode || isLiveOK || stripeConnected;
+  }, [isDemoMode, isLiveOK, stripeConnected]);
+  
+  const canShowImpressions = useMemo(() => {
+    return isDemoMode || isLiveOK || analyticsConnected;
+  }, [isDemoMode, isLiveOK, analyticsConnected]);
+  
   const canShowPipeline = true; // Pipeline data always comes from CRM
   
   // Utility: gate a numeric value based on KPI type
-  const gateValue = (value: number | null | undefined, kpiType: 'revenue' | 'impressions' | 'pipeline'): number => {
+  const gateValue = useCallback((value: number | null | undefined, kpiType: 'revenue' | 'impressions' | 'pipeline'): number => {
     if (value === null || value === undefined) return 0;
     
     switch (kpiType) {
@@ -78,10 +127,10 @@ export function useDataQualityStatus(workspaceId?: string | null): DataQualitySt
       default:
         return 0;
     }
-  };
+  }, [canShowRevenue, canShowImpressions]);
   
   // Utility: format revenue with gating
-  const formatRevenue = (value: number | null | undefined): string => {
+  const formatRevenue = useCallback((value: number | null | undefined): string => {
     const gatedValue = gateValue(value, 'revenue');
     return new Intl.NumberFormat('en-US', { 
       style: 'currency', 
@@ -89,19 +138,19 @@ export function useDataQualityStatus(workspaceId?: string | null): DataQualitySt
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(gatedValue);
-  };
+  }, [gateValue]);
   
-  // Utility: format number with gating (for impressions/clicks)
-  const formatNumber = (value: number | null | undefined): string => {
+  // Utility: format number (for impressions/clicks) - no gating here, use gateValue first
+  const formatNumber = useCallback((value: number | null | undefined): string => {
     if (value === null || value === undefined) return '0';
     return new Intl.NumberFormat('en-US').format(value);
-  };
+  }, []);
   
   // Utility: format percentage
-  const formatPercentage = (value: number | null | undefined): string => {
+  const formatPercentage = useCallback((value: number | null | undefined): string => {
     if (value === null || value === undefined) return '0%';
     return `${value.toFixed(1)}%`;
-  };
+  }, []);
   
   return {
     status,
