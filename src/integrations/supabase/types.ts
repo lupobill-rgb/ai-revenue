@@ -10072,6 +10072,13 @@ export type Database = {
         Args: { _email: string; _user_id: string }
         Returns: Json
       }
+      admin_cleanup_nonuser_deals: {
+        Args: { p_workspace_id?: string }
+        Returns: {
+          deleted_count: number
+          workspace_id: string
+        }[]
+      }
       advance_rollout_phase: { Args: { p_phase_id: string }; Returns: Json }
       asset_approval_workspace_access: {
         Args: { approval_asset_id: string }

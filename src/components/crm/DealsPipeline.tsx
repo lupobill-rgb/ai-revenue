@@ -161,6 +161,7 @@ export function DealsPipeline({ workspaceId }: DealsPipelineProps) {
         notes: newDeal.notes || null,
         created_by: user.user?.id,
         workspace_id: workspaceId,
+        source: 'user', // Explicit: user-created deals count in live analytics
       }]);
 
       if (error) throw error;
