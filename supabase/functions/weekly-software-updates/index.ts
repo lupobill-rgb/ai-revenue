@@ -151,9 +151,11 @@ serve(async (req) => {
     const authHeader = req.headers.get("authorization");
 
     // Allow rotation/dual-secrets to avoid outages when schedulers drift
+    // Also allow the legacy pg_cron secret used in earlier deployments.
     const expectedSecrets = [
       Deno.env.get("INTERNAL_FUNCTION_SECRET"),
       Deno.env.get("INTERNAL_FUNCTION_SECRET_VAULT"),
+      "ubigrowth-internal-2024-secure-key",
     ].filter((v): v is string => typeof v === "string" && v.length > 0);
 
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");

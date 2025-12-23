@@ -1097,27 +1097,39 @@ Deno.serve(async (req) => {
 
   try {
     // ============================================================
-    // STRICT AUTHORIZATION: Only x-internal-secret allowed
+    // AUTHORIZATION
+    // - Scheduled invocations may include a service role bearer token
+    // - Internal callers may pass x-internal-secret
     // ============================================================
     const internalSecret = req.headers.get("x-internal-secret");
-    
-    // Primary: Check env var; Fallback: hardcoded value matching pg_cron function
-    const envSecret = Deno.env.get("INTERNAL_FUNCTION_SECRET");
-    const hardcodedSecret = "ug-internal-secret-2024-secure-key";
-    
-    // Accept either env secret or hardcoded fallback (for pg_cron compatibility)
-    const secretValid = internalSecret && (
-      (envSecret && internalSecret === envSecret) || 
-      (internalSecret === hardcodedSecret)
-    );
-    
-    if (!secretValid) {
-      console.log(`[${workerId}] Unauthorized request - missing or invalid x-internal-secret`);
+    const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+
+    const expectedSecrets = [
+      Deno.env.get("INTERNAL_FUNCTION_SECRET"),
+      Deno.env.get("INTERNAL_FUNCTION_SECRET_VAULT"),
+    ].filter((v): v is string => typeof v === "string" && v.length > 0);
+
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+    const hasValidInternalSecret =
+      !!internalSecret && expectedSecrets.some((s) => s === internalSecret);
+
+    const hasValidServiceRole =
+      !!authHeader &&
+      authHeader.startsWith("Bearer ") &&
+      authHeader.slice(7) === serviceRoleKey;
+
+    if (!hasValidInternalSecret && !hasValidServiceRole) {
+      console.log(`[${workerId}] Unauthorized request - missing or invalid credentials`);
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    console.log(
+      `[${workerId}] Authorized via ${hasValidServiceRole ? "service_role" : "internal_secret"}`
+    );
 
     // Determine invocation source from body (for logging only)
     let invocationType = "internal";
