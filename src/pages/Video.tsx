@@ -113,8 +113,11 @@ const Video = () => {
     return colors[status] || colors.draft;
   };
 
-  const totalViews = SAMPLE_VIDEOS.reduce((acc, v) => acc + v.views, 0);
-  const avgEngagement = (SAMPLE_VIDEOS.filter(v => v.engagement > 0).reduce((acc, v) => acc + v.engagement, 0) / SAMPLE_VIDEOS.filter(v => v.engagement > 0).length).toFixed(1);
+  // GATING: Only show sample KPIs when in demo mode
+  const totalViews = showSampleData ? SAMPLE_VIDEOS.reduce((acc, v) => acc + v.views, 0) : 0;
+  const avgEngagement = showSampleData 
+    ? (SAMPLE_VIDEOS.filter(v => v.engagement > 0).reduce((acc, v) => acc + v.engagement, 0) / SAMPLE_VIDEOS.filter(v => v.engagement > 0).length).toFixed(1)
+    : "0";
 
   return (
     <ProtectedRoute>

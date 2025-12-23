@@ -5,10 +5,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Plus, Video, Mail, Phone, Layout, Search, Download, FolderDown, Sparkles, Database } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -20,6 +20,8 @@ import { SAMPLE_ASSETS } from "@/lib/sampleData";
 const AssetCatalog = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  // DEMO MODE: Use centralized workspace demo_mode
+  const { demoMode: showSampleData } = useDemoMode();
   const [assets, setAssets] = useState<any[]>([]);
   const [filteredAssets, setFilteredAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,6 @@ const AssetCatalog = () => {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [bulkImportDialogOpen, setBulkImportDialogOpen] = useState(false);
   const [generatingImages, setGeneratingImages] = useState(false);
-  const [showSampleData, setShowSampleData] = useState(true);
 
   useEffect(() => {
     fetchAssets();
@@ -151,17 +152,12 @@ const AssetCatalog = () => {
                 Browse and manage all marketing assets
               </p>
             </div>
-            <div className="flex items-center gap-3 bg-muted/50 px-4 py-2 rounded-lg border border-border">
-              <Database className="h-4 w-4 text-muted-foreground" />
-              <Label htmlFor="sample-data-assets" className="text-sm font-medium cursor-pointer">
-                Demo Data
-              </Label>
-              <Switch
-                id="sample-data-assets"
-                checked={showSampleData}
-                onCheckedChange={setShowSampleData}
-              />
-            </div>
+            {showSampleData && (
+              <div className="flex items-center gap-2 bg-primary/10 px-4 py-2 rounded-lg border border-primary/20">
+                <Database className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-primary">DEMO MODE</span>
+              </div>
+            )}
           </div>
 
           {showSampleData && assets.length === 0 && (

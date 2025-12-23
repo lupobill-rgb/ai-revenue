@@ -204,9 +204,12 @@ const Social = () => {
     return colors[status] || colors.draft;
   };
 
-  const totalImpressions = SAMPLE_POSTS.reduce((acc, p) => acc + p.impressions, 0);
-  const totalEngagement = SAMPLE_POSTS.reduce((acc, p) => acc + p.likes + p.comments + p.shares, 0);
-  const avgEngagement = (SAMPLE_POSTS.filter(p => p.engagement > 0).reduce((acc, p) => acc + p.engagement, 0) / SAMPLE_POSTS.filter(p => p.engagement > 0).length).toFixed(1);
+  // GATING: Only show sample KPIs when in demo mode (showSampleData from line 131)
+  const totalImpressions = showSampleData ? SAMPLE_POSTS.reduce((acc, p) => acc + p.impressions, 0) : 0;
+  const totalEngagement = showSampleData ? SAMPLE_POSTS.reduce((acc, p) => acc + p.likes + p.comments + p.shares, 0) : 0;
+  const avgEngagement = showSampleData 
+    ? (SAMPLE_POSTS.filter(p => p.engagement > 0).reduce((acc, p) => acc + p.engagement, 0) / SAMPLE_POSTS.filter(p => p.engagement > 0).length).toFixed(1)
+    : "0";
 
   return (
     <ProtectedRoute>
