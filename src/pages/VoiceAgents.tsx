@@ -366,17 +366,12 @@ const VoiceAgents = () => {
   // GATING RULES (NON-NEGOTIABLE):
   // - demoMode = false: NEVER use SAMPLE_* under any condition
   // - demoMode = true: SAMPLE_* allowed only when real arrays are empty
-  const displayAssistants = demoMode ? (assistants.length ? assistants : SAMPLE_ASSISTANTS) : assistants;
-  const displayPhoneNumbers = demoMode ? (phoneNumbers.length ? phoneNumbers : SAMPLE_PHONE_NUMBERS) : phoneNumbers;
-  const displayCalls = demoMode ? (calls.length ? calls : SAMPLE_CALLS) : calls;
-  
-  // ANALYTICS GATING (HARDENED): Zero out analytics if not demo AND no voice provider
+  const showSamples = demoMode === true;
+
   const displayAnalytics: VapiAnalytics | null = useMemo(() => {
-    // Demo mode: use sample data as fallback
-    if (demoMode) {
-      return analytics ?? SAMPLE_ANALYTICS;
-    }
-    // Live mode + no voice provider: show zeros
+    if (showSamples) return analytics ?? SAMPLE_ANALYTICS;
+
+    // Live mode: if no connected voice provider, KPIs must show zeros
     if (!voiceConnected) {
       return {
         totalCalls: 0,
@@ -387,9 +382,22 @@ const VoiceAgents = () => {
         callsByStatus: {},
       };
     }
-    // Live mode + connected: show real data or null
+
+    // Live mode + connected: real data only (no sample fallback)
     return analytics;
-  }, [demoMode, voiceConnected, analytics]);
+  }, [showSamples, voiceConnected, analytics]);
+
+  const displayCalls = showSamples
+    ? (calls.length ? calls : SAMPLE_CALLS)
+    : (voiceConnected ? calls : []);
+
+  const displayAssistants = showSamples
+    ? (assistants.length ? assistants : SAMPLE_ASSISTANTS)
+    : (voiceConnected ? assistants : []);
+
+  const displayPhoneNumbers = showSamples
+    ? (phoneNumbers.length ? phoneNumbers : SAMPLE_PHONE_NUMBERS)
+    : (voiceConnected ? phoneNumbers : []);
 
   // Create assistant dialog
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -721,7 +729,7 @@ const VoiceAgents = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const selectedAssistant = assistants.find(a => a.id === selectedAssistantId);
+  const selectedAssistant = displayAssistants.find(a => a.id === selectedAssistantId);
 
   // Bulk calling functions
   const toggleLeadSelection = (leadId: string) => {
@@ -933,15 +941,15 @@ const VoiceAgents = () => {
               </TabsTrigger>
               <TabsTrigger value="agents" className="gap-2">
                 <Users className="h-4 w-4" />
-                Agents ({assistants.length})
+                Agents ({displayAssistants.length})
               </TabsTrigger>
               <TabsTrigger value="phones" className="gap-2">
                 <Phone className="h-4 w-4" />
-                Numbers ({phoneNumbers.length})
+                Numbers ({displayPhoneNumbers.length})
               </TabsTrigger>
               <TabsTrigger value="history" className="gap-2">
                 <Clock className="h-4 w-4" />
-                History ({calls.length})
+                History ({displayCalls.length})
               </TabsTrigger>
               <TabsTrigger value="analytics" className="gap-2">
                 <BarChart3 className="h-4 w-4" />
@@ -979,7 +987,7 @@ const VoiceAgents = () => {
                               <SelectValue placeholder="Select an agent" />
                             </SelectTrigger>
                             <SelectContent>
-                              {assistants.map((a) => (
+                              {displayAssistants.map((a) => (
                                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                               ))}
                             </SelectContent>
@@ -992,7 +1000,7 @@ const VoiceAgents = () => {
                               <SelectValue placeholder="Use default number" />
                             </SelectTrigger>
                             <SelectContent>
-                              {phoneNumbers.map((p) => (
+                              {displayPhoneNumbers.map((p) => (
                                 <SelectItem key={p.id} value={p.id}>{p.number} ({p.name})</SelectItem>
                               ))}
                             </SelectContent>
@@ -1098,7 +1106,7 @@ const VoiceAgents = () => {
                           <SelectValue placeholder="Select an agent" />
                         </SelectTrigger>
                         <SelectContent>
-                          {assistants.map((a) => (
+                          {displayAssistants.map((a) => (
                             <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                           ))}
                         </SelectContent>
@@ -1318,11 +1326,11 @@ const VoiceAgents = () => {
                 <CardContent>
                   {isLoading ? (
                     <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                  ) : assistants.length === 0 ? (
+                  ) : displayAssistants.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8">No agents yet. Create your first one!</p>
                   ) : (
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      {assistants.map((a) => (
+                      {displayAssistants.map((a) => (
                         <Card key={a.id} className={`cursor-pointer transition-all hover:border-primary ${selectedAssistantId === a.id ? 'border-primary bg-primary/5' : ''}`}>
                           <CardContent className="p-4">
                             <div className="flex items-start justify-between">
@@ -1360,11 +1368,11 @@ const VoiceAgents = () => {
                   <CardDescription>Your configured phone numbers for outbound calls</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {phoneNumbers.length === 0 ? (
+                  {displayPhoneNumbers.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8">No phone numbers configured. Contact support to add numbers.</p>
                   ) : (
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      {phoneNumbers.map((p) => (
+                      {displayPhoneNumbers.map((p) => (
                         <Card key={p.id}>
                           <CardContent className="p-4">
                             <div className="flex items-center gap-3">
@@ -1462,7 +1470,7 @@ const VoiceAgents = () => {
                           <SelectValue placeholder="Select an agent" />
                         </SelectTrigger>
                         <SelectContent>
-                          {assistants.map((a) => (
+                          {displayAssistants.map((a) => (
                             <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                           ))}
                         </SelectContent>
@@ -1476,7 +1484,7 @@ const VoiceAgents = () => {
                           <SelectValue placeholder="Select a phone number" />
                         </SelectTrigger>
                         <SelectContent>
-                          {phoneNumbers.map((p) => (
+                          {displayPhoneNumbers.map((p) => (
                             <SelectItem key={p.id} value={p.id}>{p.number}</SelectItem>
                           ))}
                         </SelectContent>
@@ -1539,11 +1547,11 @@ const VoiceAgents = () => {
                   <CardDescription>Recent voice agent calls - click a row to view transcript</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {calls.length === 0 ? (
+                  {displayCalls.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8">No calls yet</p>
                   ) : (
                     <div className="space-y-2">
-                      {calls.map((call) => (
+                      {displayCalls.map((call) => (
                         <Collapsible
                           key={call.id}
                           open={expandedCallIds.has(call.id)}

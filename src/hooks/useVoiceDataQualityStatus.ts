@@ -62,6 +62,7 @@ export function useVoiceDataQualityStatus(workspaceId?: string | null): VoiceDat
       // ai_settings_voice is keyed by tenant_id, NOT workspace_id
       const tenantId = workspace?.tenant_id;
       if (!tenantId) {
+        console.warn("[useVoiceDataQualityStatus] workspace.tenant_id is null; treating voice as disconnected");
         // No tenant_id means voice settings won't exist
         setVoiceConnected(false);
         return;
