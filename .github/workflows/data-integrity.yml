@@ -32,13 +32,21 @@ jobs:
       - name: Run AI Settings Tenant Invariant Tests
         run: npx vitest run src/test/ai-settings-tenant-invariant.test.ts --reporter=verbose
 
+      - name: Run Voice 402 Upgrade Banner Tests
+        run: npx vitest run src/test/voice-402-upgrade-banner.test.ts --reporter=verbose
+
+      - name: Run Normalize Error Tests
+        run: npx vitest run src/test/normalize-error.test.ts --reporter=verbose
+
       - name: Verify Test Coverage
         run: |
           echo "✅ Voice Data Quality Tests verify:"
           echo "   - No SAMPLE_* values appear when demoMode=false"
           echo "   - ai_settings_voice.tenant_id = workspace.id (NOT workspace.tenant_id)"
           echo "   - Voice connectivity detection uses correct join pattern"
-          echo "   - Banner behavior matches spec (NO_VOICE_PROVIDER_CONNECTED vs DEMO_MODE)"
+          echo "   - Banner behavior matches spec (DEMO_MODE > UPGRADE_REQUIRED > NO_VOICE_PROVIDER_CONNECTED)"
+          echo "   - 402/paywall errors show upgrade banner with CTAs"
+          echo "   - Error objects never crash React rendering"
 
   # Unit tests always run - no external dependencies needed
   unit-tests:

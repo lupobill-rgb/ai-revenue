@@ -25,6 +25,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from "recharts";
 import { normalizeError } from "@/lib/normalizeError";
+import { getVoiceBannerType, shouldDisableVoiceActions, type VoiceBannerInput } from "@/lib/voiceBannerLogic";
 
 const VAPI_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY || "";
 
@@ -356,6 +357,8 @@ const VoiceAgents = () => {
   
   // Track paywall/upgrade-required errors separately for first-class UI
   const [upgradeRequired, setUpgradeRequired] = useState(false);
+  // Track statusCode for banner logic
+  const [errorStatusCode, setErrorStatusCode] = useState<number | null>(null);
   
   // CANONICAL VOICE DATA QUALITY GATING (uses dedicated hook)
   const { workspaceId, toggleDemoMode } = useWorkspaceContext();
@@ -366,11 +369,22 @@ const VoiceAgents = () => {
     canShowVoiceMetrics: canShowVoiceKPIs 
   } = useVoiceDataQualityStatus(workspaceId);
 
+  // Banner logic using pure helper function
+  const bannerInput: VoiceBannerInput = {
+    demoMode,
+    voiceConnected,
+    statusCode: errorStatusCode,
+  };
+  const bannerType = getVoiceBannerType(bannerInput);
+  const voiceActionsDisabled = shouldDisableVoiceActions(bannerInput);
 
   // GATING RULES (NON-NEGOTIABLE):
   // - demoMode = false: NEVER use SAMPLE_* under any condition
   // - demoMode = true: SAMPLE_* allowed only when real data is absent
   const showSamples = demoMode === true;
+
+  // When upgrade required in live mode, also show zeros/empty
+  const effectiveVoiceConnected = voiceConnected && !upgradeRequired;
 
   const ZERO_ANALYTICS: VapiAnalytics = {
     totalCalls: 0,
@@ -385,26 +399,26 @@ const VoiceAgents = () => {
     // Demo mode: sample only if analytics is null/undefined
     if (showSamples) return analytics ?? SAMPLE_ANALYTICS;
 
-    // Live mode: disconnected => zeros
-    if (!voiceConnected) return ZERO_ANALYTICS;
+    // Live mode: disconnected or upgrade required => zeros
+    if (!effectiveVoiceConnected) return ZERO_ANALYTICS;
 
     // Live mode + connected: real only, but never null in UI
     return analytics ?? ZERO_ANALYTICS;
-  }, [showSamples, voiceConnected, analytics]);
+  }, [showSamples, effectiveVoiceConnected, analytics]);
 
   const displayCalls = showSamples
     ? (calls.length ? calls : SAMPLE_CALLS)
-    : (voiceConnected ? calls : []);
+    : (effectiveVoiceConnected ? calls : []);
 
   const displayAssistants = showSamples
     ? (assistants.length ? assistants : SAMPLE_ASSISTANTS)
-    : (voiceConnected ? assistants : []);
+    : (effectiveVoiceConnected ? assistants : []);
 
   const displayPhoneNumbers = showSamples
     ? (phoneNumbers.length ? phoneNumbers : SAMPLE_PHONE_NUMBERS)
-    : (voiceConnected ? phoneNumbers : []);
+    : (effectiveVoiceConnected ? phoneNumbers : []);
 
-  // Banner trigger: show setup banner only in live mode when no voice provider
+  // Legacy banner trigger (kept for reference, now using bannerType)
   const showVoiceSetupBanner = !demoMode && !voiceConnected;
 
   // Create assistant dialog
@@ -505,14 +519,17 @@ const VoiceAgents = () => {
     setVolume,
   } = useVapiConversation({
     publicKey: VAPI_PUBLIC_KEY,
-    onError: (err) => {
-      // Check for 402/paywall errors
-      const isPaywall = err?.statusCode === 402 || 
-                        normalizeError(err).toLowerCase().includes('upgrade');
-      if (isPaywall) {
+    onError: (message) => {
+      // onError now receives string only - safe for toast
+      if (!message.toLowerCase().includes('upgrade')) {
+        toast.error(message);
+      }
+    },
+    onErrorPayload: (payload) => {
+      // Structured payload for 402/paywall detection
+      setErrorStatusCode(payload.statusCode);
+      if (payload.statusCode === 402) {
         setUpgradeRequired(true);
-      } else {
-        toast.error(normalizeError(err));
       }
     },
   });
@@ -520,6 +537,7 @@ const VoiceAgents = () => {
   const fetchAllData = async () => {
     setIsLoading(true);
     setUpgradeRequired(false); // Reset on refetch
+    setErrorStatusCode(null); // Reset status code
     try {
       const [assistantsRes, phoneNumbersRes, callsRes, analyticsRes, leadsRes, campaignsRes] = await Promise.all([
         supabase.functions.invoke('vapi-list-assistants'),
@@ -531,12 +549,13 @@ const VoiceAgents = () => {
       ]);
 
       // Check for 402/paywall errors in any response
-      const checkPaywall = (res: any) => {
-        if (res?.error?.statusCode === 402 || res?.data?.statusCode === 402) {
+      const checkPaywall = (res: any): number | null => {
+        const code = res?.error?.statusCode ?? res?.data?.statusCode ?? null;
+        if (code === 402) {
           setUpgradeRequired(true);
-          return true;
+          setErrorStatusCode(402);
         }
-        return false;
+        return code;
       };
 
       // Check all responses for paywall
@@ -568,9 +587,13 @@ const VoiceAgents = () => {
       }
     } catch (error: any) {
       console.error('Error fetching Vapi data:', error);
+      const statusCode = error?.statusCode ?? null;
+      setErrorStatusCode(statusCode);
+      
       // Check if catch block error is 402
-      if (error?.statusCode === 402 || normalizeError(error).toLowerCase().includes('upgrade')) {
+      if (statusCode === 402 || normalizeError(error).toLowerCase().includes('upgrade')) {
         setUpgradeRequired(true);
+        setErrorStatusCode(402);
       } else {
         toast.error('Failed to load voice agent data');
       }
@@ -950,13 +973,13 @@ const VoiceAgents = () => {
             </div>
           </div>
 
-          {/* Upgrade Required Banner (402/Paywall) - First-class UI */}
-          {upgradeRequired && (
+          {/* Banner rendering using pure helper logic */}
+          {bannerType === 'UPGRADE_REQUIRED' && (
             <Alert className="mb-6 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
               <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-800 dark:text-amber-200">Upgrade Required</AlertTitle>
               <AlertDescription className="text-amber-700 dark:text-amber-300">
-                <p className="mb-3">Voice features require an upgraded plan or provider configuration.</p>
+                <p className="mb-3">Your plan doesn't include Voice Agents or you hit a usage limit.</p>
                 <div className="flex gap-2">
                   <Button 
                     size="sm" 
@@ -980,19 +1003,20 @@ const VoiceAgents = () => {
           )}
 
           {/* Generic error alert (non-402 errors) */}
-          {error && !upgradeRequired && (
+          {error && bannerType !== 'UPGRADE_REQUIRED' && (
             <Alert variant="destructive" className="mb-6">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{normalizeError(error)}</AlertDescription>
+              <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
-          {/* Voice Data Quality Banner */}
-          {demoMode ? (
+          {/* Voice Data Quality Banner - using bannerType */}
+          {bannerType === 'DEMO_MODE' && (
             <DataQualityBanner status="DEMO_MODE" />
-          ) : showVoiceSetupBanner ? (
+          )}
+          {bannerType === 'NO_VOICE_PROVIDER_CONNECTED' && (
             <DataQualityBanner status="NO_VOICE_PROVIDER_CONNECTED" />
-          ) : null}
+          )}
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-7">

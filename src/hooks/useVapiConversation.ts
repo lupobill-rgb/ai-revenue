@@ -1,20 +1,51 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Vapi from '@vapi-ai/web';
+import { normalizeError } from '@/lib/normalizeError';
+
+// Structured error payload for 402/paywall detection
+export interface VapiErrorPayload {
+  statusCode: number | null;
+  subscriptionLimits: Record<string, unknown> | null;
+  raw: unknown;
+}
 
 interface UseVapiConversationOptions {
   publicKey: string;
   onMessage?: (message: any) => void;
-  onError?: (error: any) => void;
+  onError?: (message: string) => void; // Always receives string
+  onErrorPayload?: (payload: VapiErrorPayload) => void; // Structured payload for 402 detection
 }
 
 interface ConversationState {
   status: 'idle' | 'connecting' | 'connected' | 'disconnected';
   isSpeaking: boolean;
   transcript: string[];
-  error: string | null;
+  error: string | null; // INVARIANT: Always string | null, never object
 }
 
-export const useVapiConversation = ({ publicKey, onMessage, onError }: UseVapiConversationOptions) => {
+/**
+ * Extract structured error info from any error shape
+ */
+function extractErrorPayload(error: unknown): VapiErrorPayload {
+  if (!error || typeof error !== 'object') {
+    return { statusCode: null, subscriptionLimits: null, raw: error };
+  }
+  
+  const anyE = error as Record<string, unknown>;
+  const statusCode = (anyE.statusCode as number) ?? 
+                     (anyE.error as Record<string, unknown>)?.statusCode as number ?? 
+                     null;
+  const subscriptionLimits = (anyE.subscriptionLimits as Record<string, unknown>) ?? null;
+  
+  return { statusCode, subscriptionLimits, raw: error };
+}
+
+export const useVapiConversation = ({ 
+  publicKey, 
+  onMessage, 
+  onError,
+  onErrorPayload 
+}: UseVapiConversationOptions) => {
   const [state, setState] = useState<ConversationState>({
     status: 'idle',
     isSpeaking: false,
@@ -26,12 +57,29 @@ export const useVapiConversation = ({ publicKey, onMessage, onError }: UseVapiCo
   const isInitializedRef = useRef(false);
   const onMessageRef = useRef(onMessage);
   const onErrorRef = useRef(onError);
+  const onErrorPayloadRef = useRef(onErrorPayload);
 
   // Update refs when callbacks change
   useEffect(() => {
     onMessageRef.current = onMessage;
     onErrorRef.current = onError;
-  }, [onMessage, onError]);
+    onErrorPayloadRef.current = onErrorPayload;
+  }, [onMessage, onError, onErrorPayload]);
+
+  /**
+   * Unified error handler - ensures state.error is always a string
+   */
+  const handleError = useCallback((error: unknown, fallbackMessage: string) => {
+    const message = normalizeError(error) || fallbackMessage;
+    const payload = extractErrorPayload(error);
+    
+    // State always gets string
+    setState(prev => ({ ...prev, error: message, status: 'disconnected' }));
+    
+    // Callbacks: string for onError, structured for onErrorPayload
+    onErrorRef.current?.(message);
+    onErrorPayloadRef.current?.(payload);
+  }, []);
 
   useEffect(() => {
     if (!publicKey || isInitializedRef.current) return;
@@ -75,13 +123,12 @@ export const useVapiConversation = ({ publicKey, onMessage, onError }: UseVapiCo
 
     vapi.on('error', (error: any) => {
       console.error('Vapi error:', error);
-      // HARDENED: Always extract string message, never store raw object
-      const errorMessage = typeof error === 'string' 
-        ? error 
-        : error?.message || error?.error?.message || 'Connection error';
-      setState(prev => ({ ...prev, error: errorMessage, status: 'disconnected' }));
-      // Pass normalized error to callback, but also include raw for statusCode checks
-      onErrorRef.current?.(error);
+      const message = normalizeError(error) || 'Connection error';
+      const payload = extractErrorPayload(error);
+      
+      setState(prev => ({ ...prev, error: message, status: 'disconnected' }));
+      onErrorRef.current?.(message);
+      onErrorPayloadRef.current?.(payload);
     });
 
     // Only cleanup on unmount, not on re-renders
@@ -117,13 +164,14 @@ export const useVapiConversation = ({ publicKey, onMessage, onError }: UseVapiCo
       console.log('Calling vapi.start()...');
       await vapiRef.current.start(assistantId, assistantOverrides);
       console.log('vapi.start() completed');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to start call:', error);
-      setState(prev => ({ 
-        ...prev, 
-        status: 'disconnected', 
-        error: error?.message || 'Failed to start call' 
-      }));
+      const message = normalizeError(error) || 'Failed to start call';
+      const payload = extractErrorPayload(error);
+      
+      setState(prev => ({ ...prev, status: 'disconnected', error: message }));
+      onErrorRef.current?.(message);
+      onErrorPayloadRef.current?.(payload);
     }
   }, []);
 
