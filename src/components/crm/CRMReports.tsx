@@ -8,16 +8,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
-  Legend, CartesianGrid
+  PieChart, Pie, Cell, AreaChart, Area, CartesianGrid, Legend
 } from "recharts";
 import { 
-  TrendingUp, TrendingDown, Users, DollarSign, Target, 
-  Calendar, Award, Loader2, ArrowUpRight, ArrowDownRight, AlertCircle, Zap, Database, Upload
+  TrendingUp, Users, DollarSign, Target, 
+  Award, Loader2, AlertCircle, Zap, Database, Upload, Clock
 } from "lucide-react";
-import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from "date-fns";
+import { format, subDays, parseISO } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useDataIntegrity } from "@/hooks/useDataIntegrity";
+import { usePipelineMetrics, formatPipelineMetric } from "@/hooks/usePipelineMetrics";
 
 interface Lead {
   id: string;
@@ -43,172 +43,133 @@ const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3
 export function CRMReports() {
   const navigate = useNavigate();
   
-  // SINGLE SOURCE OF TRUTH: Use centralized data integrity hook
+  // SINGLE SOURCE OF TRUTH: Use centralized hooks for CRM truth
   const dataIntegrity = useDataIntegrity();
   
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
+  // CRM AUTHORITATIVE VIEW: All pipeline metrics come from v_pipeline_metrics_by_workspace
+  // This is the ONLY source of truth for leads, won/lost, conversion rates, etc.
+  const { metrics: pipelineMetrics, dataQuality, loading, error } = usePipelineMetrics(dataIntegrity.workspaceId);
+  
+  // For chart visualizations only (not KPIs) - fetch raw data for trend charts
+  const [leadTrendRaw, setLeadTrendRaw] = useState<Lead[]>([]);
   const [dateRange, setDateRange] = useState("30");
 
   useEffect(() => {
-    fetchData();
-  }, [dataIntegrity.workspaceId]);
-
-  const fetchData = async () => {
-    if (!dataIntegrity.workspaceId) {
-      setLeads([]);
-      setDeals([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const [leadsRes, dealsRes] = await Promise.all([
-        supabase.from("leads").select("*").eq("workspace_id", dataIntegrity.workspaceId).order("created_at", { ascending: false }),
-        supabase.from("deals").select("*").eq("workspace_id", dataIntegrity.workspaceId).order("created_at", { ascending: false }),
-      ]);
-
-      if (leadsRes.error) throw leadsRes.error;
-      if (dealsRes.error) throw dealsRes.error;
-
-      setLeads(leadsRes.data || []);
-      setDeals(dealsRes.data || []);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      toast.error("Failed to load report data");
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Only fetch raw leads for trend visualization - NOT for KPI computation
+    const fetchTrendData = async () => {
+      if (!dataIntegrity.workspaceId) return;
+      
+      const cutoff = subDays(new Date(), parseInt(dateRange));
+      const { data } = await supabase
+        .from("leads")
+        .select("id, status, source, vertical, score, created_at")
+        .eq("workspace_id", dataIntegrity.workspaceId)
+        .gte("created_at", cutoff.toISOString())
+        .order("created_at", { ascending: false });
+      
+      setLeadTrendRaw(data || []);
+    };
+    
+    fetchTrendData();
+  }, [dataIntegrity.workspaceId, dateRange]);
 
   // CRM-SPECIFIC STRICTER RULES (no demo carryover, no inference)
-  // A "Won" deal requires: deal.status = 'won' AND (Stripe connected OR manual override)
-  // CRM is the source of truth for revenue reality - stricter than marketing dashboards
-  const isStripeConnected = dataIntegrity.integrations.stripe;
+  // Data quality status determines what we can show
+  const isStripeConnected = dataQuality?.stripe_connected === true;
+  const isDemoMode = pipelineMetrics?.demo_mode === true;
   
-  // CRM gate: Only show CRM-derived metrics if Stripe is connected (no demo fallback)
-  // This is stricter than canShowLiveMetrics because CRM cannot rely on demo data
-  const canShowCRMMetrics = isStripeConnected;
+  // CRM gate: Only show CRM-derived metrics if Stripe is connected OR demo mode
+  // In live mode without Stripe, all revenue/win metrics must be "—"
+  const canShowCRMMetrics = isDemoMode || isStripeConnected;
 
-  const dateFilteredLeads = useMemo(() => {
-    const cutoff = subDays(new Date(), parseInt(dateRange));
-    return leads.filter(l => new Date(l.created_at) >= cutoff);
-  }, [leads, dateRange]);
-
-  const dateFilteredDeals = useMemo(() => {
-    const cutoff = subDays(new Date(), parseInt(dateRange));
-    return deals.filter(d => new Date(d.created_at) >= cutoff);
-  }, [deals, dateRange]);
-
-  // KPI Metrics - Lead counts are always real (no demo inflation)
-  const totalLeads = dateFilteredLeads.length;
+  // ALL KPIs come from the authoritative view - NO local computation
+  const totalLeads = pipelineMetrics?.total_leads ?? 0;
+  const contacted = pipelineMetrics?.contacted ?? 0;
+  const qualified = pipelineMetrics?.qualified ?? 0;
+  const converted = pipelineMetrics?.converted ?? 0;
+  const wonDealsCount = pipelineMetrics?.won ?? 0;
+  const lostDealsCount = pipelineMetrics?.lost ?? 0;
   
-  // CRM STRICT RULE: Converted leads require Stripe to verify revenue
-  const convertedLeads = canShowCRMMetrics 
-    ? dateFilteredLeads.filter(l => l.status === "converted").length 
-    : 0;
-  const conversionRate = canShowCRMMetrics && totalLeads > 0 
-    ? (convertedLeads / totalLeads) * 100 
-    : 0;
-  const avgScore = dateFilteredLeads.length > 0 
-    ? Math.round(dateFilteredLeads.reduce((sum, l) => sum + (l.score || 0), 0) / dateFilteredLeads.length)
-    : 0;
+  // Gated metrics - require Stripe connection or demo mode
+  const conversionRate = canShowCRMMetrics ? (pipelineMetrics?.conversion_rate ?? 0) : 0;
+  const winRate = canShowCRMMetrics ? (pipelineMetrics?.win_rate ?? null) : null;
+  const avgConversionDays = canShowCRMMetrics ? pipelineMetrics?.avg_conversion_time_days : null;
+  const verifiedRevenue = canShowCRMMetrics ? (pipelineMetrics?.verified_revenue ?? 0) : 0;
 
-  // CRM STRICT RULE: Pipeline/Revenue values require Stripe
-  const totalPipelineValue = canShowCRMMetrics
-    ? dateFilteredDeals
-        .filter(d => !["closed_won", "closed_lost"].includes(d.stage))
-        .reduce((sum, d) => sum + (d.value || 0), 0)
-    : 0;
-  
-  // CRM STRICT RULE: Won deals require Stripe connected (no demo carryover)
-  const wonDeals = canShowCRMMetrics 
-    ? dateFilteredDeals.filter(d => d.stage === "closed_won")
-    : [];
-  const wonDealsCount = wonDeals.length;
-  const wonDealsValue = wonDeals.reduce((sum, d) => sum + (d.value || 0), 0);
-  
-  // CRM STRICT RULE: Win rate requires Stripe (otherwise "—")
-  const lostDeals = canShowCRMMetrics 
-    ? dateFilteredDeals.filter(d => d.stage === "closed_lost").length 
-    : 0;
-  const winRate = canShowCRMMetrics && (wonDealsCount + lostDeals) > 0
-    ? (wonDealsCount / (wonDealsCount + lostDeals)) * 100
-    : null; // null = show "—"
-
-  // Lead trend data
+  // Lead trend data - uses raw lead data for visualization only
   const leadTrendData = useMemo(() => {
     const days = parseInt(dateRange);
     const data = [];
     for (let i = days - 1; i >= 0; i--) {
       const date = subDays(new Date(), i);
       const dateStr = format(date, "yyyy-MM-dd");
-      const dayLeads = leads.filter(l => format(parseISO(l.created_at), "yyyy-MM-dd") === dateStr);
+      const dayLeads = leadTrendRaw.filter(l => format(parseISO(l.created_at), "yyyy-MM-dd") === dateStr);
       data.push({
         date: format(date, "MMM d"),
         leads: dayLeads.length,
-        converted: dayLeads.filter(l => l.status === "converted").length,
+        converted: canShowCRMMetrics ? dayLeads.filter(l => l.status === "converted").length : 0,
       });
     }
     return data;
-  }, [leads, dateRange]);
+  }, [leadTrendRaw, dateRange, canShowCRMMetrics]);
 
-  // Lead source breakdown
+  // Lead source breakdown - for visualization
   const sourceData = useMemo(() => {
     const sources: Record<string, number> = {};
-    dateFilteredLeads.forEach(l => {
+    leadTrendRaw.forEach(l => {
       sources[l.source] = (sources[l.source] || 0) + 1;
     });
     return Object.entries(sources)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [dateFilteredLeads]);
+  }, [leadTrendRaw]);
 
-  // Lead status breakdown
+  // Lead status breakdown - for visualization
   const statusData = useMemo(() => {
     const statuses: Record<string, number> = {};
-    dateFilteredLeads.forEach(l => {
+    leadTrendRaw.forEach(l => {
       statuses[l.status] = (statuses[l.status] || 0) + 1;
     });
     return Object.entries(statuses).map(([name, value]) => ({ name, value }));
-  }, [dateFilteredLeads]);
+  }, [leadTrendRaw]);
 
-  // Deal stage breakdown
-  const dealStageData = useMemo(() => {
-    const stages: Record<string, { count: number; value: number }> = {};
-    dateFilteredDeals.forEach(d => {
-      if (!stages[d.stage]) stages[d.stage] = { count: 0, value: 0 };
-      stages[d.stage].count += 1;
-      stages[d.stage].value += d.value || 0;
-    });
-    return Object.entries(stages).map(([name, data]) => ({ 
-      name: name.replace("_", " "), 
-      deals: data.count, 
-      value: data.value 
-    }));
-  }, [dateFilteredDeals]);
+  // Pipeline stage data from authoritative view
+  const pipelineStageData = useMemo(() => {
+    if (!pipelineMetrics) return [];
+    
+    const newCount = Math.max(0, totalLeads - contacted);
+    const contactedCount = Math.max(0, contacted - qualified);
+    const qualifiedCount = Math.max(0, qualified - converted);
+    
+    return [
+      { name: "New", deals: newCount, value: 0 },
+      { name: "Contacted", deals: contactedCount, value: 0 },
+      { name: "Qualified", deals: qualifiedCount, value: 0 },
+      { name: "Won", deals: canShowCRMMetrics ? wonDealsCount : 0, value: canShowCRMMetrics ? verifiedRevenue : 0 },
+      { name: "Lost", deals: canShowCRMMetrics ? lostDealsCount : 0, value: 0 },
+    ];
+  }, [pipelineMetrics, totalLeads, contacted, qualified, converted, wonDealsCount, lostDealsCount, verifiedRevenue, canShowCRMMetrics]);
 
-  // Vertical performance
+  // Vertical performance - for visualization
   const verticalData = useMemo(() => {
     const verticals: Record<string, { total: number; converted: number }> = {};
-    dateFilteredLeads.forEach(l => {
+    leadTrendRaw.forEach(l => {
       const v = l.vertical || "Unknown";
       if (!verticals[v]) verticals[v] = { total: 0, converted: 0 };
       verticals[v].total += 1;
-      if (l.status === "converted") verticals[v].converted += 1;
+      if (canShowCRMMetrics && l.status === "converted") verticals[v].converted += 1;
     });
     return Object.entries(verticals)
       .map(([name, data]) => ({ 
         name: name.length > 15 ? name.substring(0, 15) + "..." : name,
         total: data.total,
         converted: data.converted,
-        rate: data.total > 0 ? Math.round((data.converted / data.total) * 100) : 0
+        rate: canShowCRMMetrics && data.total > 0 ? Math.round((data.converted / data.total) * 100) : 0
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 6);
-  }, [dateFilteredLeads]);
+  }, [leadTrendRaw, canShowCRMMetrics]);
 
   if (loading) {
     return (
@@ -218,13 +179,12 @@ export function CRMReports() {
     );
   }
 
-  // Gated KPI values - CRM uses stricter canShowCRMMetrics (Stripe required, no demo)
-  const gatedConversionRate = canShowCRMMetrics ? conversionRate : 0;
-  const gatedPipelineValue = canShowCRMMetrics ? totalPipelineValue : 0;
-  const gatedWonValue = canShowCRMMetrics ? wonDealsValue : 0;
-  const gatedLeadTrendData = canShowCRMMetrics ? leadTrendData : leadTrendData.map(d => ({ ...d, converted: 0 }));
-  const gatedVerticalData = canShowCRMMetrics ? verticalData : verticalData.map(d => ({ ...d, converted: 0, rate: 0 }));
-  const gatedDealStageData = canShowCRMMetrics ? dealStageData : dealStageData.map(d => ({ ...d, value: 0 }));
+  // Display values - all derived from authoritative view
+  const gatedConversionRate = conversionRate;
+  const gatedWonValue = verifiedRevenue;
+  const gatedLeadTrendData = leadTrendData;
+  const gatedVerticalData = verticalData;
+  const gatedDealStageData = pipelineStageData;
 
   return (
     <div className="space-y-6">
@@ -340,10 +300,10 @@ export function CRMReports() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Pipeline Value</p>
-                <p className="text-3xl font-bold">{canShowCRMMetrics ? `$${(gatedPipelineValue / 1000).toFixed(0)}K` : "—"}</p>
+                <p className="text-sm text-muted-foreground">Avg. Conversion Time</p>
+                <p className="text-3xl font-bold">{avgConversionDays != null ? `${avgConversionDays.toFixed(1)} days` : "—"}</p>
               </div>
-              <DollarSign className="h-8 w-8 text-blue-500 opacity-50" />
+              <Clock className="h-8 w-8 text-blue-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
