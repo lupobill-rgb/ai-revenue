@@ -258,8 +258,8 @@ function getStatusConfig(status: DataQualityStatus) {
         badgeClass: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
         alertClass: 'border-orange-500/50 bg-orange-500/10',
         iconClass: 'text-orange-500',
-        alertTitle: 'Voice Provider Not Connected',
-        alertDescription: 'Connect VAPI or another voice provider to track calls and analytics. All voice KPIs show 0 until connected.',
+        alertTitle: 'Setup Required',
+        alertDescription: 'Connect Vapi or ElevenLabs to enable live call analytics. Until connected, voice KPIs show 0.',
       };
     case 'EMPTY_CRM':
       return {
