@@ -27,7 +27,8 @@ interface PendingAsset {
   preview_url: string | null;
   content: any;
   goal: string | null;
-  campaign_id?: string; // Added for run details
+  campaign_id?: string;
+  workspace_id?: string;
 }
 
 interface BusinessProfile {
@@ -148,6 +149,7 @@ const Approvals = () => {
         content: a.content,
         goal: a.goal,
         campaign_id: a.campaigns?.[0]?.id || null,
+        workspace_id: a.workspace_id,
       }));
 
       setPendingAssets(pending);
@@ -969,7 +971,7 @@ const Approvals = () => {
             open={testEmailOpen}
             onOpenChange={setTestEmailOpen}
             asset={selectedAssetForTest}
-            workspaceId={workspaceId || undefined}
+            workspaceId={selectedAssetForTest.workspace_id || workspaceId || undefined}
           />
         )}
       </div>
