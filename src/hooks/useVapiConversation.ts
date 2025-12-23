@@ -75,8 +75,12 @@ export const useVapiConversation = ({ publicKey, onMessage, onError }: UseVapiCo
 
     vapi.on('error', (error: any) => {
       console.error('Vapi error:', error);
-      const errorMessage = error?.message || error?.error?.message || 'Connection error';
+      // HARDENED: Always extract string message, never store raw object
+      const errorMessage = typeof error === 'string' 
+        ? error 
+        : error?.message || error?.error?.message || 'Connection error';
       setState(prev => ({ ...prev, error: errorMessage, status: 'disconnected' }));
+      // Pass normalized error to callback, but also include raw for statusCode checks
       onErrorRef.current?.(error);
     });
 
