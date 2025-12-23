@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -11,7 +13,7 @@ import {
 } from "recharts";
 import { 
   TrendingUp, TrendingDown, Users, DollarSign, Target, 
-  Calendar, Award, Loader2, ArrowUpRight, ArrowDownRight, AlertCircle
+  Calendar, Award, Loader2, ArrowUpRight, ArrowDownRight, AlertCircle, Zap, Database, Upload
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -39,6 +41,8 @@ interface Deal {
 const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
 
 export function CRMReports() {
+  const navigate = useNavigate();
+  
   // SINGLE SOURCE OF TRUTH: Use centralized data integrity hook
   const dataIntegrity = useDataIntegrity();
   
@@ -224,22 +228,65 @@ export function CRMReports() {
 
   return (
     <div className="space-y-6">
-      {/* CRM-specific data quality warning banner */}
-      {!canShowCRMMetrics && (
-        <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
-          <AlertCircle className="h-4 w-4 text-amber-500" />
-          <AlertTitle className="text-amber-600">Revenue Data Unavailable</AlertTitle>
-          <AlertDescription className="text-amber-600/80">
-            Connect Stripe to see accurate Won deals, Win rate, and Revenue metrics. CRM requires verified payment data — demo mode is not supported for revenue KPIs.
+      {/* CRM DATA MODE BANNER - Explicit messaging for demo vs live */}
+      {dataIntegrity.isDemoMode ? (
+        <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+          <Database className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-amber-800 dark:text-amber-200 flex items-center gap-2">
+            <Badge className="bg-amber-500 text-white text-xs px-2 py-0.5">Demo Data</Badge>
+            CRM Preview Mode
+          </AlertTitle>
+          <AlertDescription className="text-amber-700 dark:text-amber-300">
+            <p className="mb-2 font-medium">These metrics are simulated to show potential outcomes.</p>
+            <p className="text-sm">Revenue KPIs require Stripe for verification. Connect providers and import real deals to see live results.</p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <Button size="sm" variant="outline" onClick={() => navigate("/settings/integrations")}>
+                <Zap className="h-3 w-3 mr-1" />
+                Connect Stripe
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => navigate("/crm")}>
+                <Upload className="h-3 w-3 mr-1" />
+                Import Deals
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
-      )}
+      ) : !canShowCRMMetrics ? (
+        <Alert className="border-orange-500/50 bg-orange-50 dark:bg-orange-950/20">
+          <AlertCircle className="h-4 w-4 text-orange-600" />
+          <AlertTitle className="text-orange-800 dark:text-orange-200">Setup Required</AlertTitle>
+          <AlertDescription className="text-orange-700 dark:text-orange-300">
+            <p className="mb-2 font-medium">Revenue metrics are zeroed because Stripe is not connected.</p>
+            <p className="text-sm">CRM requires verified payment data — Win rate, Pipeline value, and Won revenue will show "—" until Stripe is connected.</p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <Button size="sm" variant="default" onClick={() => navigate("/settings/integrations")}>
+                <Zap className="h-3 w-3 mr-1" />
+                Connect Stripe
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => navigate("/crm")}>
+                <Upload className="h-3 w-3 mr-1" />
+                Import Deals
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">CRM Analytics</h2>
-          <p className="text-muted-foreground">Performance insights and metrics</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h2 className="text-2xl font-bold">CRM Analytics</h2>
+            <p className="text-muted-foreground">Performance insights and metrics</p>
+          </div>
+          {/* DATA MODE BADGE */}
+          {dataIntegrity.isDemoMode ? (
+            <Badge className="bg-amber-500 text-white text-xs px-2 py-1">Demo Data</Badge>
+          ) : canShowCRMMetrics ? (
+            <Badge className="bg-green-500 text-white text-xs px-2 py-1">Live Data</Badge>
+          ) : (
+            <Badge variant="destructive" className="text-xs px-2 py-1">Setup Required</Badge>
+          )}
         </div>
         <Select value={dateRange} onValueChange={setDateRange}>
           <SelectTrigger className="w-[150px]">

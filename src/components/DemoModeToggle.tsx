@@ -267,9 +267,13 @@ export function DataModeBanner({ workspaceId, onConnectStripe, onConnectAnalytic
     return (
       <Alert className="mb-6 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
         <Database className="h-4 w-4 text-amber-600" />
-        <AlertTitle className="text-amber-800 dark:text-amber-200">Sample Data Mode</AlertTitle>
+        <AlertTitle className="text-amber-800 dark:text-amber-200 flex items-center gap-2">
+          <Badge className="bg-amber-500 text-white text-xs px-2 py-0.5">Demo Data</Badge>
+          Preview Mode
+        </AlertTitle>
         <AlertDescription className="text-amber-700 dark:text-amber-300">
-          You're viewing illustrative metrics to preview reporting. Connect providers (Stripe + Analytics) and run real campaigns to see live results.
+          <p className="mb-2 font-medium">These metrics are simulated to show potential outcomes.</p>
+          <p className="text-sm">KPIs below are projections based on sample data. Connect providers and run real campaigns to see live results.</p>
           <div className="flex flex-wrap gap-2 mt-3">
             {onConnectStripe && (
               <Button size="sm" variant="outline" onClick={onConnectStripe}>
@@ -283,7 +287,7 @@ export function DataModeBanner({ workspaceId, onConnectStripe, onConnectAnalytic
             )}
             <Button size="sm" variant="secondary" onClick={onDisableSampleData} disabled={saving}>
               {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-              Disable Sample Data
+              Exit Demo Mode
             </Button>
           </div>
         </AlertDescription>
@@ -308,19 +312,19 @@ export function DataModeBanner({ workspaceId, onConnectStripe, onConnectAnalytic
     return (
       <Alert className="mb-6 border-orange-500/50 bg-orange-50 dark:bg-orange-950/20">
         <AlertTriangle className="h-4 w-4 text-orange-600" />
-        <AlertTitle className="text-orange-800 dark:text-orange-200">Live Data Not Connected</AlertTitle>
+        <AlertTitle className="text-orange-800 dark:text-orange-200">Setup Required</AlertTitle>
         <AlertDescription className="text-orange-700 dark:text-orange-300">
-          This dashboard is in Live Mode. Metrics will remain zero until you connect providers and run activity.
-          <span className="block mt-1">{providerMessage}</span>
+          <p className="mb-2 font-medium">Metrics are zeroed because providers are not connected.</p>
+          <p className="text-sm">{providerMessage}</p>
           <div className="flex flex-wrap gap-2 mt-3">
             {missingStripe && onConnectStripe && (
-              <Button size="sm" variant="outline" onClick={onConnectStripe}>
+              <Button size="sm" variant="default" onClick={onConnectStripe}>
                 <Zap className="h-3 w-3 mr-1" />
                 Connect Stripe
               </Button>
             )}
             {missingAnalytics && onConnectAnalytics && (
-              <Button size="sm" variant="outline" onClick={onConnectAnalytics}>
+              <Button size="sm" variant="default" onClick={onConnectAnalytics}>
                 Connect Analytics
               </Button>
             )}
