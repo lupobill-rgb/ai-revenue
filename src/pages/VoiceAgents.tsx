@@ -358,16 +358,22 @@ const VoiceAgents = () => {
   const { workspaceId, toggleDemoMode } = useWorkspaceContext();
   const [voiceConnected, setVoiceConnected] = useState(false);
 
-  // Fetch voice provider connection status
+  // Fetch voice provider connection status (VAPI or ElevenLabs)
   const fetchVoiceConnectionStatus = useCallback(async () => {
     if (!workspaceId) return;
     try {
       const { data } = await supabase
         .from("ai_settings_voice")
-        .select("is_connected")
+        .select("is_connected, vapi_private_key, elevenlabs_api_key, voice_provider")
         .eq("tenant_id", workspaceId)
         .maybeSingle();
-      setVoiceConnected(data?.is_connected === true);
+      
+      // Connected if explicitly marked OR if either provider has an API key configured
+      const hasVapi = !!data?.vapi_private_key;
+      const hasElevenLabs = !!data?.elevenlabs_api_key;
+      const isConnected = data?.is_connected === true || hasVapi || hasElevenLabs;
+      
+      setVoiceConnected(isConnected);
     } catch (err) {
       console.error("Failed to fetch voice connection status:", err);
     }
