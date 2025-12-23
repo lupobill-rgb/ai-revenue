@@ -11,9 +11,10 @@ import {
 } from "recharts";
 import { 
   TrendingUp, TrendingDown, Users, DollarSign, Target, 
-  Calendar, Award, Loader2, ArrowUpRight, ArrowDownRight
+  Calendar, Award, Loader2, ArrowUpRight, ArrowDownRight, AlertCircle
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from "date-fns";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Lead {
   id: string;
@@ -34,23 +35,37 @@ interface Deal {
   actual_close_date: string | null;
 }
 
+interface CRMReportsProps {
+  workspaceId?: string | null;
+  demoMode?: boolean;
+}
+
 const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
 
-export function CRMReports() {
+export function CRMReports({ workspaceId, demoMode = false }: CRMReportsProps) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState("30");
+  const [stripeConnected, setStripeConnected] = useState(false);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [workspaceId]);
 
   const fetchData = async () => {
+    if (!workspaceId) {
+      setLeads([]);
+      setDeals([]);
+      setLoading(false);
+      return;
+    }
+
     try {
-      const [leadsRes, dealsRes] = await Promise.all([
-        supabase.from("leads").select("*").order("created_at", { ascending: false }),
-        supabase.from("deals").select("*").order("created_at", { ascending: false }),
+      const [leadsRes, dealsRes, stripeRes] = await Promise.all([
+        supabase.from("leads").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: false }),
+        supabase.from("deals").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: false }),
+        supabase.from("ai_settings_stripe").select("is_connected").eq("tenant_id", workspaceId).maybeSingle(),
       ]);
 
       if (leadsRes.error) throw leadsRes.error;
@@ -58,6 +73,7 @@ export function CRMReports() {
 
       setLeads(leadsRes.data || []);
       setDeals(dealsRes.data || []);
+      setStripeConnected(stripeRes.data?.is_connected === true);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Failed to load report data");
@@ -65,6 +81,9 @@ export function CRMReports() {
       setLoading(false);
     }
   };
+
+  // Data quality gate: only show derived KPIs if demoMode OR providers connected
+  const canShowKPIs = demoMode || stripeConnected;
 
   const dateFilteredLeads = useMemo(() => {
     const cutoff = subDays(new Date(), parseInt(dateRange));
@@ -173,8 +192,27 @@ export function CRMReports() {
     );
   }
 
+  // Gated KPI values - show 0 if not authorized to display
+  const gatedConversionRate = canShowKPIs ? conversionRate : 0;
+  const gatedPipelineValue = canShowKPIs ? totalPipelineValue : 0;
+  const gatedWonValue = canShowKPIs ? wonDealsValue : 0;
+  const gatedLeadTrendData = canShowKPIs ? leadTrendData : leadTrendData.map(d => ({ ...d, converted: 0 }));
+  const gatedVerticalData = canShowKPIs ? verticalData : verticalData.map(d => ({ ...d, converted: 0, rate: 0 }));
+  const gatedDealStageData = canShowKPIs ? dealStageData : dealStageData.map(d => ({ ...d, value: 0 }));
+
   return (
     <div className="space-y-6">
+      {/* Data quality warning banner */}
+      {!canShowKPIs && (
+        <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
+          <AlertCircle className="h-4 w-4 text-amber-500" />
+          <AlertTitle className="text-amber-600">Limited Analytics</AlertTitle>
+          <AlertDescription className="text-amber-600/80">
+            Connect your payment provider (Stripe) to see accurate conversion and revenue metrics. Currently showing lead counts only.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -212,7 +250,7 @@ export function CRMReports() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Conversion Rate</p>
-                <p className="text-3xl font-bold">{conversionRate.toFixed(1)}%</p>
+                <p className="text-3xl font-bold">{canShowKPIs ? `${gatedConversionRate.toFixed(1)}%` : "—"}</p>
               </div>
               <Target className="h-8 w-8 text-green-500 opacity-50" />
             </div>
@@ -223,7 +261,7 @@ export function CRMReports() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Pipeline Value</p>
-                <p className="text-3xl font-bold">${(totalPipelineValue / 1000).toFixed(0)}K</p>
+                <p className="text-3xl font-bold">{canShowKPIs ? `$${(gatedPipelineValue / 1000).toFixed(0)}K` : "—"}</p>
               </div>
               <DollarSign className="h-8 w-8 text-blue-500 opacity-50" />
             </div>
@@ -234,7 +272,7 @@ export function CRMReports() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Won Revenue</p>
-                <p className="text-3xl font-bold">${(wonDealsValue / 1000).toFixed(0)}K</p>
+                <p className="text-3xl font-bold">{canShowKPIs ? `$${(gatedWonValue / 1000).toFixed(0)}K` : "—"}</p>
               </div>
               <Award className="h-8 w-8 text-amber-500 opacity-50" />
             </div>
@@ -313,7 +351,7 @@ export function CRMReports() {
           <CardContent>
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dealStageData} layout="vertical">
+                <BarChart data={gatedDealStageData} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis type="number" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
                   <YAxis dataKey="name" type="category" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} width={100} />
@@ -338,7 +376,7 @@ export function CRMReports() {
           <CardContent>
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={verticalData}>
+                <BarChart data={gatedVerticalData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
                   <YAxis tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
