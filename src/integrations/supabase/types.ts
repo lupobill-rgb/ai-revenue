@@ -5135,6 +5135,7 @@ export type Database = {
           owner_id: string | null
           probability: number | null
           revenue_verified: boolean
+          source: string
           stage: string
           status: string | null
           stripe_payment_id: string | null
@@ -5159,6 +5160,7 @@ export type Database = {
           owner_id?: string | null
           probability?: number | null
           revenue_verified?: boolean
+          source?: string
           stage?: string
           status?: string | null
           stripe_payment_id?: string | null
@@ -5183,6 +5185,7 @@ export type Database = {
           owner_id?: string | null
           probability?: number | null
           revenue_verified?: boolean
+          source?: string
           stage?: string
           status?: string | null
           stripe_payment_id?: string | null
