@@ -54,7 +54,7 @@ serve(async (req) => {
   }
 
   try {
-    const { assetId } = await req.json();
+    const { assetId, segmentCodes } = await req.json();
 
     if (!assetId) {
       throw new Error("Asset ID is required");
@@ -153,16 +153,25 @@ serve(async (req) => {
       console.log(`Using ${recipientList.length} emails from linked CRM leads`);
     }
 
-    // If still no recipients, fetch all leads from the workspace with email addresses
+    // If still no recipients, fetch leads from the workspace with email addresses
+    // Filter by segment codes if provided
     if (recipientList.length === 0 && asset.workspace_id) {
-      console.log(`No recipients specified, fetching leads from workspace ${asset.workspace_id}`);
+      const hasSegmentFilter = segmentCodes && Array.isArray(segmentCodes) && segmentCodes.length > 0;
+      console.log(`No recipients specified, fetching leads from workspace ${asset.workspace_id}${hasSegmentFilter ? ` with segments: ${segmentCodes.join(', ')}` : ''}`);
       
-      const { data: workspaceLeads, error: leadsError } = await supabaseClient
+      let leadsQuery = supabaseClient
         .from("leads")
-        .select("id, first_name, last_name, email, company, industry, job_title, phone, status")
+        .select("id, first_name, last_name, email, company, industry, job_title, phone, status, segment_code")
         .eq("workspace_id", asset.workspace_id)
         .not("email", "is", null)
         .in("status", ["new", "contacted", "qualified"]); // Only send to active leads
+      
+      // Apply segment filter if provided
+      if (hasSegmentFilter) {
+        leadsQuery = leadsQuery.in("segment_code", segmentCodes);
+      }
+      
+      const { data: workspaceLeads, error: leadsError } = await leadsQuery;
 
       if (leadsError) {
         console.error("Error fetching workspace leads:", leadsError);
@@ -171,7 +180,7 @@ serve(async (req) => {
         recipientList = workspaceLeads
           .filter((lead: any) => lead.email)
           .map((lead: any) => lead.email);
-        console.log(`Found ${recipientList.length} leads with emails in workspace`);
+        console.log(`Found ${recipientList.length} leads with emails in workspace${hasSegmentFilter ? ` (filtered by ${segmentCodes.length} segment(s))` : ''}`);
       }
     }
 

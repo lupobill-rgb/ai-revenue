@@ -20,6 +20,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import AssetPreview from "@/components/AssetPreview";
 import AIAssistant from "@/components/AIAssistant";
 import { MultiSegmentSelector } from "@/components/MultiSegmentSelector";
+import { SegmentSelector } from "@/components/SegmentSelector";
 import { z } from "zod";
 
 const assetSchema = z.object({
@@ -45,6 +46,8 @@ const AssetDetail = () => {
   const [generatingImage, setGeneratingImage] = useState(false);
   const [generatingVideo, setGeneratingVideo] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [deploySegmentCodes, setDeploySegmentCodes] = useState<string[]>([]);
+  const [deployLeadCount, setDeployLeadCount] = useState<number>(0);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [justSaved, setJustSaved] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -357,22 +360,51 @@ const AssetDetail = () => {
     }
   };
 
+  // Fetch lead count when segment selection changes
+  useEffect(() => {
+    const fetchLeadCount = async () => {
+      if (!asset?.workspace_id) return;
+      
+      let query = supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", asset.workspace_id)
+        .not("email", "is", null)
+        .in("status", ["new", "contacted", "qualified"]);
+      
+      // Filter by segment codes if selected
+      if (deploySegmentCodes.length > 0) {
+        query = query.in("segment_code", deploySegmentCodes);
+      }
+      
+      const { count } = await query;
+      setDeployLeadCount(count || 0);
+    };
+    
+    fetchLeadCount();
+  }, [deploySegmentCodes, asset?.workspace_id]);
+
   const handleDeployEmail = async () => {
     setDeploying(true);
     try {
       const { data, error } = await supabase.functions.invoke('email-deploy', {
-        body: { assetId: id }
+        body: { 
+          assetId: id,
+          segmentCodes: deploySegmentCodes.length > 0 ? deploySegmentCodes : undefined
+        }
       });
 
       if (error) throw error;
 
       toast({
         title: "Success",
-        description: `Email campaign deployed! ${data.sentCount} emails sent.`,
+        description: `Email campaign deployed! ${data.sentCount} emails sent${data.skippedCount > 0 ? ` (${data.skippedCount} skipped as duplicates)` : ''}.`,
       });
 
       // Refresh asset to show updated status
       await fetchAsset();
+      // Reset segment selection
+      setDeploySegmentCodes([]);
     } catch (error) {
       console.error("Error deploying email:", error);
       toast({
@@ -1404,18 +1436,39 @@ const AssetDetail = () => {
 
                         {/* Deploy Email Campaign Button */}
                         {asset.type === "email" && (asset.status === "approved" || asset.status === "live") && (
-                          <div className="border-t border-border pt-4">
-                            <h3 className="text-lg font-medium text-foreground mb-2">Deploy Email Campaign</h3>
-                            <p className="text-sm text-muted-foreground mb-4">
-                              Send this email campaign to the specified recipients. Make sure recipients are configured in the email content.
-                            </p>
+                          <div className="border-t border-border pt-4 space-y-4">
+                            <div>
+                              <h3 className="text-lg font-medium text-foreground mb-2">Deploy Email Campaign</h3>
+                              <p className="text-sm text-muted-foreground mb-4">
+                                Select segments to target specific contacts, or leave empty to send to all leads.
+                              </p>
+                            </div>
+                            
+                            {/* Segment Selector for targeting */}
+                            <div className="space-y-2">
+                              <Label className="text-sm font-medium">Target Segments (Optional)</Label>
+                              <SegmentSelector
+                                selectedCodes={deploySegmentCodes}
+                                onSelectionChange={setDeploySegmentCodes}
+                                workspaceId={asset.workspace_id}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                {deployLeadCount > 0 
+                                  ? `${deployLeadCount} contact${deployLeadCount !== 1 ? 's' : ''} will receive this email`
+                                  : deploySegmentCodes.length > 0 
+                                    ? "No contacts found in selected segments"
+                                    : "All leads with email addresses will receive this email"
+                                }
+                              </p>
+                            </div>
+
                             <Button
                               onClick={handleDeployEmail}
-                              disabled={deploying}
+                              disabled={deploying || (deploySegmentCodes.length > 0 && deployLeadCount === 0)}
                               className="w-full bg-green-600 text-white hover:bg-green-700"
                             >
                               <Send className="mr-2 h-4 w-4" />
-                              {deploying ? "Deploying..." : "Deploy Email Campaign"}
+                              {deploying ? "Deploying..." : `Deploy to ${deployLeadCount > 0 ? deployLeadCount : 'All'} Contact${deployLeadCount !== 1 ? 's' : ''}`}
                             </Button>
                           </div>
                         )}
