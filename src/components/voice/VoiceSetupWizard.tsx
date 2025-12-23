@@ -64,7 +64,7 @@ export function VoiceSetupWizard({ onAddNumber, isAdding }: VoiceSetupWizardProp
                   <div className="flex-1">
                     <h4 className="font-medium">I have a phone number</h4>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Add an existing VAPI or Twilio number
+                      Add an existing VAPI, Twilio, or ElevenLabs number
                     </p>
                   </div>
                   <ArrowRight className="h-5 w-5 text-muted-foreground" />

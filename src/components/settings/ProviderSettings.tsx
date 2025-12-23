@@ -127,6 +127,37 @@ export function ProviderSettings({ workspaceId, onUpdate }: ProviderSettingsProp
     }
   };
 
+  const saveVoiceProvider = async (provider: string) => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("ai_settings_voice")
+        .upsert(
+          {
+            tenant_id: workspaceId,
+            voice_provider: provider,
+            is_connected: false, // Reset connection status when changing provider
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "tenant_id" }
+        );
+
+      if (error) throw error;
+
+      setSelectedVoiceProvider(provider);
+      setVoiceSettings((prev) =>
+        prev ? { ...prev, voice_provider: provider, is_connected: false } : null
+      );
+      toast.success(`Voice provider set to ${provider}`);
+      onUpdate?.();
+    } catch (error) {
+      console.error("Error saving voice provider:", error);
+      toast.error("Failed to save voice provider");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const testEmailConnection = async () => {
     setTestingEmail(true);
     try {
@@ -181,15 +212,28 @@ export function ProviderSettings({ workspaceId, onUpdate }: ProviderSettingsProp
   const testVoiceConnection = async () => {
     setTestingVoice(true);
     try {
-      // For voice, we check if VAPI keys are configured
-      const { data, error } = await supabase.functions.invoke("vapi-list-assistants", {
-        body: {},
-      });
+      let success = false;
+      let message = "Connection failed";
 
-      const success = !error && data?.assistants;
+      // Test based on selected provider
+      if (selectedVoiceProvider === "elevenlabs") {
+        const { data, error } = await supabase.functions.invoke("elevenlabs-test-connection", {
+          body: { tenantId: workspaceId },
+        });
+        success = !error && data?.success;
+        message = data?.message || error?.message || "ElevenLabs connection failed";
+      } else {
+        // Default: VAPI
+        const { data, error } = await supabase.functions.invoke("vapi-list-assistants", {
+          body: {},
+        });
+        success = !error && data?.assistants;
+        message = success ? "VAPI connection verified" : error?.message || "VAPI connection failed";
+      }
+
       const testResult = {
         success,
-        message: success ? "VAPI connection verified" : error?.message || "Connection failed",
+        message,
         tested_at: new Date().toISOString(),
       };
 
@@ -216,7 +260,7 @@ export function ProviderSettings({ workspaceId, onUpdate }: ProviderSettingsProp
       if (success) {
         toast.success("Voice connection verified!");
       } else {
-        toast.error("Voice connection test failed - check VAPI API keys");
+        toast.error(`Voice connection test failed - ${message}`);
       }
       onUpdate?.();
     } catch (error) {
@@ -344,13 +388,22 @@ export function ProviderSettings({ workspaceId, onUpdate }: ProviderSettingsProp
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <RadioGroup value={selectedVoiceProvider} disabled>
-            <div className="flex items-center space-x-2 p-3 border rounded-lg bg-muted/30">
+          <RadioGroup value={selectedVoiceProvider} onValueChange={saveVoiceProvider} disabled={saving}>
+            <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50">
               <RadioGroupItem value="vapi" id="vapi" />
               <Label htmlFor="vapi" className="flex-1 cursor-pointer">
                 <span className="font-medium">VAPI</span>
                 <span className="text-sm text-muted-foreground ml-2">
                   (AI voice calls with custom assistants)
+                </span>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50">
+              <RadioGroupItem value="elevenlabs" id="elevenlabs" />
+              <Label htmlFor="elevenlabs" className="flex-1 cursor-pointer">
+                <span className="font-medium">ElevenLabs</span>
+                <span className="text-sm text-muted-foreground ml-2">
+                  (High-quality voice synthesis & conversational AI)
                 </span>
               </Label>
             </div>
