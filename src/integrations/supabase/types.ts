@@ -1971,6 +1971,7 @@ export type Database = {
           is_locked: boolean | null
           locked_at: string | null
           locked_reason: string | null
+          schedule: Json | null
           status: string
           target_audience: Json | null
           updated_at: string
@@ -1987,6 +1988,7 @@ export type Database = {
           is_locked?: boolean | null
           locked_at?: string | null
           locked_reason?: string | null
+          schedule?: Json | null
           status?: string
           target_audience?: Json | null
           updated_at?: string
@@ -2003,6 +2005,7 @@ export type Database = {
           is_locked?: boolean | null
           locked_at?: string | null
           locked_reason?: string | null
+          schedule?: Json | null
           status?: string
           target_audience?: Json | null
           updated_at?: string
