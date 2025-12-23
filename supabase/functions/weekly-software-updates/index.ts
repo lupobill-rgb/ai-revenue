@@ -12,17 +12,19 @@ const corsHeaders = {
 interface SoftwareUpdate {
   title: string;
   description: string;
-  type: 'feature' | 'improvement' | 'maintenance' | 'fix';
+  type: 'feature' | 'improvement' | 'maintenance' | 'fix' | 'notice';
   date: string;
+}
+
+interface RequestBody {
+  cron?: boolean;
+  customUpdates?: SoftwareUpdate[];
+  subject?: string;
 }
 
 // Get the latest updates - in production, these would come from a database table
 function getLatestUpdates(): SoftwareUpdate[] {
-  const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  
   // TODO: Replace with actual database query when updates table is created
-  // For now, return empty array - no fake updates
   return [];
 }
 
@@ -31,13 +33,15 @@ function formatUpdateType(type: string): string {
     feature: '🚀',
     improvement: '✨',
     maintenance: '🔧',
-    fix: '🐛'
+    fix: '🐛',
+    notice: '📢'
   };
   const labels: Record<string, string> = {
     feature: 'New Feature',
     improvement: 'Improvement',
     maintenance: 'Maintenance',
-    fix: 'Bug Fix'
+    fix: 'Bug Fix',
+    notice: 'Notice'
   };
   return `${icons[type] || '📢'} ${labels[type] || type}`;
 }
@@ -142,26 +146,42 @@ serve(async (req) => {
   }
 
   try {
-    // Verify internal secret for cron calls
+    // Verify authorization - accept either internal secret OR service role key
     const internalSecret = req.headers.get("x-internal-secret");
+    const authHeader = req.headers.get("authorization");
     const expectedSecret = Deno.env.get("INTERNAL_FUNCTION_SECRET");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
-    let body: { cron?: boolean } = {};
+    let body: RequestBody = {};
     try {
       body = await req.json();
     } catch {
       // Empty body is fine
     }
 
-    if (internalSecret !== expectedSecret && !body.cron) {
-      console.log("Unauthorized call to weekly-software-updates");
+    // Check internal secret OR service role bearer token
+    const hasValidInternalSecret = internalSecret && expectedSecret && internalSecret === expectedSecret;
+    const hasValidServiceRole = authHeader?.startsWith("Bearer ") && 
+                                 authHeader.slice(7) === serviceRoleKey;
+
+    if (!hasValidInternalSecret && !hasValidServiceRole) {
+      console.log("Unauthorized call to weekly-software-updates", {
+        hasInternalSecret: !!internalSecret,
+        hasAuthHeader: !!authHeader
+      });
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log("Starting weekly software updates email job...");
+    const customUpdates = body.customUpdates || [];
+    const customSubject = body.subject;
+    
+    console.log("Starting software updates email job...", { 
+      hasCustomUpdates: customUpdates.length > 0,
+      customSubject 
+    });
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -192,8 +212,8 @@ serve(async (req) => {
       });
     }
 
-    // Get latest updates
-    const updates = getLatestUpdates();
+    // Get latest updates - use custom updates if provided
+    const updates = customUpdates.length > 0 ? customUpdates : getLatestUpdates();
     console.log(`Found ${updates.length} updates for this week`);
 
     const results: { email: string; success: boolean; error?: string }[] = [];
@@ -212,10 +232,12 @@ serve(async (req) => {
 
         const emailHtml = generateEmailHtml(updates, userName);
 
+        const defaultSubject = `📦 Weekly Platform Update - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        
         const { error: emailError } = await resend.emails.send({
           from: "UbiGrowth <updates@resend.dev>",
           to: [user.email],
-          subject: `📦 Weekly Platform Update - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+          subject: customSubject || defaultSubject,
           html: emailHtml,
         });
 
