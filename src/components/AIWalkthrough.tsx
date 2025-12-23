@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { X, Send, Sparkles, Bot, User, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 
 interface Message {
   role: "user" | "assistant";
@@ -26,6 +27,7 @@ const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
   const [hasStarted, setHasStarted] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { workspaceId } = useWorkspaceContext();
 
   useEffect(() => {
     if (forceShow) {
@@ -64,7 +66,7 @@ const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ messages: [], isFirstMessage: true }),
+        body: JSON.stringify({ messages: [], isFirstMessage: true, workspaceId }),
       });
 
       if (!resp.ok || !resp.body) {
@@ -145,7 +147,7 @@ const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ messages: newMessages, isFirstMessage: false }),
+        body: JSON.stringify({ messages: newMessages, isFirstMessage: false, workspaceId }),
       });
 
       if (!resp.ok) {

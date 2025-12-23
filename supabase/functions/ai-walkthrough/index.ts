@@ -1,11 +1,27 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const systemPrompt = `You are an AI platform assistant - a friendly, knowledgeable guide helping users discover and use the marketing automation platform.
+interface TenantContext {
+  businessName: string;
+  industry: string;
+  icpSegments: string[];
+  leadCount: number;
+  campaignCount: number;
+}
+
+const buildSystemPrompt = (ctx: TenantContext) => `You are an AI platform assistant for ${ctx.businessName || "this business"} - a friendly, knowledgeable guide helping users discover and use the marketing automation platform.
+
+## Account Context:
+- Business: ${ctx.businessName || "Not configured"}
+- Industry: ${ctx.industry || "Not specified"}
+- Target Segments: ${ctx.icpSegments.length > 0 ? ctx.icpSegments.join(", ") : "Not defined yet"}
+- Current Leads: ${ctx.leadCount}
+- Active Campaigns: ${ctx.campaignCount}
 
 ## Platform Features You Can Guide Users Through:
 
@@ -35,12 +51,14 @@ const systemPrompt = `You are an AI platform assistant - a friendly, knowledgeab
 
 ## Your Behavior:
 - Be concise but helpful (2-3 sentences max per response)
+- Personalize suggestions based on their industry (${ctx.industry || "their business"}) and target segments
 - Ask clarifying questions to understand what the user wants to accomplish
 - Suggest specific features based on their goals
 - Use emojis sparingly to be friendly
 - If they ask about something outside the platform, gently guide them back
 - When suggesting a feature, mention the navigation path (e.g., "Head to Video Studio in the left menu")
-- If this is their first message, give a warm welcome and ask what they'd like to accomplish with marketing automation
+- Reference their ICP segments when discussing targeting or campaigns
+- If this is their first message, give a warm welcome personalized to their business
 
 ## Response Format:
 Keep responses short and actionable. End with a question or suggestion when appropriate.`;
@@ -51,7 +69,7 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, isFirstMessage } = await req.json();
+    const { messages, isFirstMessage, workspaceId } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     
     if (!LOVABLE_API_KEY) {
@@ -59,17 +77,96 @@ serve(async (req) => {
       throw new Error("AI service is not configured");
     }
 
-    // Build conversation with system prompt
+    // Fetch tenant context
+    let tenantContext: TenantContext = {
+      businessName: "your business",
+      industry: "your industry",
+      icpSegments: [],
+      leadCount: 0,
+      campaignCount: 0,
+    };
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const authHeader = req.headers.get("Authorization");
+
+    if (authHeader) {
+      const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      
+      if (user) {
+        // Get workspace ID if not provided
+        let wsId = workspaceId;
+        if (!wsId) {
+          const { data: workspace } = await supabaseClient
+            .from("workspaces")
+            .select("id")
+            .eq("owner_id", user.id)
+            .maybeSingle();
+          wsId = workspace?.id;
+        }
+
+        if (wsId) {
+          // Fetch business profile
+          const { data: profile } = await supabaseClient
+            .from("business_profiles")
+            .select("business_name, industry")
+            .eq("workspace_id", wsId)
+            .maybeSingle();
+
+          if (profile) {
+            tenantContext.businessName = profile.business_name || tenantContext.businessName;
+            tenantContext.industry = profile.industry || tenantContext.industry;
+          }
+
+          // Fetch ICP segments
+          const { data: segments } = await supabaseClient
+            .from("cmo_icp_segments")
+            .select("segment_name")
+            .eq("workspace_id", wsId)
+            .limit(5);
+
+          if (segments) {
+            tenantContext.icpSegments = segments
+              .map((s) => s.segment_name)
+              .filter(Boolean) as string[];
+          }
+
+          // Fetch lead count
+          const { count: leadCount } = await supabaseClient
+            .from("crm_leads")
+            .select("*", { count: "exact", head: true })
+            .eq("workspace_id", wsId);
+
+          tenantContext.leadCount = leadCount || 0;
+
+          // Fetch campaign count
+          const { count: campaignCount } = await supabaseClient
+            .from("cmo_campaigns")
+            .select("*", { count: "exact", head: true })
+            .eq("workspace_id", wsId);
+
+          tenantContext.campaignCount = campaignCount || 0;
+        }
+      }
+    }
+
+    console.log(`[ai-walkthrough] Context: ${tenantContext.businessName}, ${tenantContext.industry}, segments: ${tenantContext.icpSegments.length}`);
+
+    // Build conversation with tenant-aware system prompt
     const conversationMessages = [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: buildSystemPrompt(tenantContext) },
       ...(isFirstMessage ? [] : messages),
     ];
 
-    // If first message, add a starter prompt
+    // If first message, add a personalized starter prompt
     if (isFirstMessage) {
       conversationMessages.push({
         role: "user",
-        content: "Hi! I'm new here and want to learn about this platform."
+        content: `Hi! I'm exploring the platform${tenantContext.businessName !== "your business" ? ` for ${tenantContext.businessName}` : ""}. What can you help me with?`,
       });
     }
 

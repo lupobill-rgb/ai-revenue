@@ -18,6 +18,8 @@ interface AppContext {
   leadCount: number;
   campaignCount: number;
   modulesEnabled: string[];
+  icpSegments?: string[];
+  workspaceId?: string;
 }
 
 serve(async (req) => {
@@ -43,46 +45,81 @@ serve(async (req) => {
     let campaignCount = context?.campaignCount || 0;
     let currentRoute = context?.currentRoute || "/dashboard";
     let modulesEnabled = context?.modulesEnabled || [];
+    let icpSegments: string[] = context?.icpSegments || [];
+    let workspaceId = context?.workspaceId;
 
-    // Fallback: fetch from database if context not provided
-    if (!context && authHeader) {
+    // Fetch complete context from database using workspace scope
+    if (authHeader) {
       const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
         global: { headers: { Authorization: authHeader } }
       });
 
       const { data: { user } } = await supabaseClient.auth.getUser();
       if (user) {
-        const { data: profile } = await supabaseClient
-          .from("business_profiles")
-          .select("business_name, industry")
-          .eq("user_id", user.id)
-          .single();
-        
-        if (profile) {
-          businessName = profile.business_name || businessName;
-          industry = profile.industry || industry;
+        // Get workspace ID if not provided
+        if (!workspaceId) {
+          const { data: workspace } = await supabaseClient
+            .from("workspaces")
+            .select("id")
+            .eq("owner_id", user.id)
+            .maybeSingle();
+          workspaceId = workspace?.id;
         }
 
-        // Get counts
-        const { count: leads } = await supabaseClient
-          .from("crm_leads")
-          .select("*", { count: "exact", head: true });
-        
-        const { count: campaigns } = await supabaseClient
-          .from("cmo_campaigns")
-          .select("*", { count: "exact", head: true });
+        if (workspaceId) {
+          // Fetch business profile by workspace
+          const { data: profile } = await supabaseClient
+            .from("business_profiles")
+            .select("business_name, industry")
+            .eq("workspace_id", workspaceId)
+            .maybeSingle();
+          
+          if (profile) {
+            businessName = profile.business_name || businessName;
+            industry = profile.industry || industry;
+          }
 
-        leadCount = leads || 0;
-        campaignCount = campaigns || 0;
+          // Fetch ICP segments
+          if (icpSegments.length === 0) {
+            const { data: segments } = await supabaseClient
+              .from("cmo_icp_segments")
+              .select("segment_name")
+              .eq("workspace_id", workspaceId)
+              .limit(5);
+
+            if (segments) {
+              icpSegments = segments
+                .map((s) => s.segment_name)
+                .filter(Boolean) as string[];
+            }
+          }
+
+          // Get counts scoped to workspace
+          const { count: leads } = await supabaseClient
+            .from("crm_leads")
+            .select("*", { count: "exact", head: true })
+            .eq("workspace_id", workspaceId);
+          
+          const { count: campaigns } = await supabaseClient
+            .from("cmo_campaigns")
+            .select("*", { count: "exact", head: true })
+            .eq("workspace_id", workspaceId);
+
+          leadCount = leads || 0;
+          campaignCount = campaigns || 0;
+        }
       }
     }
 
-    // Build context-aware system prompt
-    const systemPrompt = `You are the UbiGrowth AI Assistant, an expert marketing automation assistant.
+    console.log(`[ai-chat] Context: ${businessName}, ${industry}, segments: ${icpSegments.length}, leads: ${leadCount}`);
+
+    // Build context-aware system prompt with ICP segments
+    const systemPrompt = `You are the UbiGrowth AI Assistant, an expert marketing automation assistant for ${businessName}.
 
 ACCOUNT CONTEXT:
 - Business: ${businessName}
 - Industry: ${industry}
+- Target Segments: ${icpSegments.length > 0 ? icpSegments.join(", ") : "Not defined yet"}
 - Current leads: ${leadCount}
 - Active campaigns: ${campaignCount}
 - Current page: ${currentRoute}
@@ -94,15 +131,18 @@ YOUR CAPABILITIES:
 3. Provide industry-specific marketing advice for ${industry}
 4. Guide users through the platform features
 5. Suggest optimizations based on their current setup
+6. Recommend strategies targeting their ICP segments: ${icpSegments.join(", ") || "their audience"}
 
 RESPONSE GUIDELINES:
 - Be concise and direct. Avoid filler phrases.
-- When asked about account data (industry, business name, leads, campaigns), use the context above.
-- Provide actionable recommendations specific to their industry.
+- When asked about account data (industry, business name, leads, campaigns, segments), use the context above.
+- Personalize recommendations for ${businessName} and ${industry}.
+- Reference their target segments (${icpSegments.join(", ") || "their audience"}) when discussing campaigns or content.
 - Use clear, professional language without markdown formatting.
 - If asked about a feature, explain how to access it in the current UI.
 
-When the user asks "What is my industry?" respond with their stored industry: "${industry}".
+When the user asks "What is my industry?" respond with: "${industry}".
+When the user asks about their segments, mention: ${icpSegments.length > 0 ? icpSegments.join(", ") : "No segments defined yet - recommend they set up ICP segments in CMO → Brand Setup"}.
 When asked about leads or campaigns, reference the actual counts provided.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

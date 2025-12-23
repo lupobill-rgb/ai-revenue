@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Sparkles, Send, Loader2, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
+import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 
 interface Message {
   role: "user" | "assistant";
@@ -25,11 +26,14 @@ interface AppContext {
   leadCount: number;
   campaignCount: number;
   modulesEnabled: string[];
+  icpSegments: string[];
+  workspaceId: string | null;
 }
 
 const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
   const { toast } = useToast();
   const location = useLocation();
+  const { workspaceId } = useWorkspaceContext();
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -43,29 +47,48 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`;
 
-  // Fetch application context on mount
+  // Fetch application context on mount - scoped to workspace
   useEffect(() => {
     const fetchContext = async () => {
+      if (!workspaceId) return;
+      
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        // Fetch business profile
+        // Fetch business profile by workspace
         const { data: profile } = await supabase
           .from("business_profiles")
           .select("business_name, industry")
-          .eq("user_id", user.id)
+          .eq("workspace_id", workspaceId)
           .maybeSingle();
 
-        // Fetch lead count
-        const { count: leadCount } = await supabase
-          .from("crm_leads")
-          .select("*", { count: "exact", head: true });
+        // Fetch ICP segments
+        const { data: segments } = await supabase
+          .from("cmo_icp_segments")
+          .select("segment_name")
+          .eq("workspace_id", workspaceId)
+          .limit(5);
 
-        // Fetch campaign count
+        // Fetch lead count - crm_leads uses tenant_id, not workspace_id
+        // Get tenant_id from workspace first
+        const { data: wsData } = await supabase
+          .from("workspaces")
+          .select("tenant_id")
+          .eq("id", workspaceId)
+          .maybeSingle();
+        
+        let leadCount = 0;
+        if (wsData?.tenant_id) {
+          const { count } = await supabase
+            .from("crm_leads")
+            .select("*", { count: "exact", head: true })
+            .eq("tenant_id", wsData.tenant_id);
+          leadCount = count || 0;
+        }
+
+        // Fetch campaign count scoped to workspace
         const { count: campaignCount } = await supabase
           .from("cmo_campaigns")
-          .select("*", { count: "exact", head: true });
+          .select("*", { count: "exact", head: true })
+          .eq("workspace_id", workspaceId as string);
 
         // Fetch enabled modules
         const { data: moduleAccess } = await supabase
@@ -74,6 +97,7 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
           .eq("enabled", true);
 
         const modulesEnabled = moduleAccess?.map(m => m.module_id) || [];
+        const icpSegments = segments?.map(s => s.segment_name).filter(Boolean) as string[] || [];
 
         setAppContext({
           businessName: profile?.business_name || null,
@@ -82,6 +106,8 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
           leadCount: leadCount || 0,
           campaignCount: campaignCount || 0,
           modulesEnabled,
+          icpSegments,
+          workspaceId,
         });
       } catch (error) {
         console.error("Failed to fetch app context:", error);
@@ -89,7 +115,7 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
     };
 
     fetchContext();
-  }, [location.pathname]);
+  }, [workspaceId, location.pathname]);
 
   // Handle initial prompt
   useEffect(() => {
