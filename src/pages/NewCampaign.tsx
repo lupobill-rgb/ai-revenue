@@ -22,6 +22,7 @@ import CampaignOptimizer from "@/components/CampaignOptimizer";
 import { useChannelPreferences } from "@/hooks/useChannelPreferences";
 import { AutopilotCampaignWizard } from "@/components/cmo/campaigns";
 import { AIBuildSectionButton } from "@/components/cmo/campaigns/AIBuildSectionButton";
+import { CampaignScheduler, DEFAULT_SCHEDULE, type ScheduleConfig } from "@/components/CampaignScheduler";
 
 const verticals = [
   "Accounting & Finance",
@@ -85,6 +86,9 @@ const NewCampaign = () => {
     video: true,
     landing_page: true,
   });
+
+  // Campaign schedule
+  const [schedule, setSchedule] = useState<ScheduleConfig>(DEFAULT_SCHEDULE);
 
   // Update channel defaults when user preferences load
   useEffect(() => {
@@ -207,6 +211,7 @@ const NewCampaign = () => {
           businessType: businessType || undefined,
           budget: budget ? parseFloat(budget) : undefined,
           channels: selectedChannels,
+          schedule,
           draftedEmail: draftedEmailContent ? {
             subject: draftedEmailSubject || campaignName,
             content: draftedEmailContent,
@@ -477,6 +482,9 @@ const NewCampaign = () => {
                         )}
                       </div>
                     </div>
+
+                    {/* Campaign Schedule */}
+                    <CampaignScheduler value={schedule} onChange={setSchedule} />
 
                     {/* AI Build Section */}
                     <div className="border border-primary/20 rounded-lg p-4 bg-primary/5">
