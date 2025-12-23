@@ -309,3 +309,6 @@ verify_jwt = true
 
 [functions.slo-monitor]
 verify_jwt = true
+
+[functions.elevenlabs-test-connection]
+verify_jwt = true
