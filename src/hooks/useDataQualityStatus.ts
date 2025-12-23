@@ -92,8 +92,11 @@ export function useDataQualityStatus(workspaceId?: string | null): DataQualitySt
       }
       
       // Fetch voice connection status from ai_settings_voice
-      // INVARIANT: ai_settings_voice.tenant_id == workspaceId (NOT workspace.tenant_id which is NULL)
-      // This matches how SettingsIntegrations.tsx saves the data
+      // ╔══════════════════════════════════════════════════════════════════════════╗
+      // ║ INVARIANT: ai_settings_voice.tenant_id stores workspace.id              ║
+      // ║ workspaces.tenant_id is NULL in production and must NOT be used.        ║
+      // ║ This matches how SettingsIntegrations.tsx saves the data.               ║
+      // ╚══════════════════════════════════════════════════════════════════════════╝
       const { data: voiceSettings } = await supabase
         .from('ai_settings_voice')
         .select('is_connected, vapi_private_key, elevenlabs_api_key')
