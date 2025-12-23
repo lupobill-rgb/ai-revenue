@@ -158,6 +158,7 @@ const NewCampaign = () => {
           budget: budget ? parseFloat(budget) : undefined,
           aiPlan: plan, // Pass the AI plan for optimized execution
           channels: selectedChannels,
+          schedule,
         },
       });
 

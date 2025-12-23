@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { campaignName, vertical, goal, location, businessType, budget, draftedEmail, channels } = await req.json();
+    const { campaignName, vertical, goal, location, businessType, budget, draftedEmail, channels, schedule } = await req.json();
     
     // Default channels if not specified (all enabled)
     const selectedChannels = channels || {
@@ -264,6 +264,7 @@ serve(async (req) => {
           status: "pending_approval",
           budget_allocated: budgetPerChannel,
           workspace_id: workspaceId,
+          schedule: schedule || null,
           target_audience: { 
             vertical, 
             campaignName, 
@@ -338,6 +339,7 @@ serve(async (req) => {
           status: "pending_approval",
           budget_allocated: budgetPerChannel,
           workspace_id: workspaceId,
+          schedule: schedule || null,
           target_audience: { vertical, campaignName, goal },
         }).select().single();
         
@@ -396,6 +398,7 @@ serve(async (req) => {
           status: "pending_approval",
           budget_allocated: budgetPerChannel,
           workspace_id: workspaceId,
+          schedule: schedule || null,
           target_audience: { vertical, campaignName, goal },
         }).select().single();
         
@@ -473,6 +476,7 @@ serve(async (req) => {
           status: "pending_approval",
           budget_allocated: budgetPerChannel,
           workspace_id: workspaceId,
+          schedule: schedule || null,
           target_audience: { 
             vertical, 
             campaignName, 
@@ -497,12 +501,36 @@ serve(async (req) => {
     console.log(`Voice campaign linked to ${leadsWithPhone.length} leads with phone numbers`);
     console.log(`Email campaign linked to ${leadsWithEmail.length} leads with emails`);
 
+    // If schedule is provided, trigger scheduling for each campaign
+    let scheduledCampaigns = 0;
+    if (schedule && campaignIds.length > 0) {
+      console.log("Schedule provided, triggering campaign-schedule-outbox for campaigns...");
+      for (const cId of campaignIds) {
+        try {
+          const { error: scheduleError } = await supabaseClient.functions.invoke("campaign-schedule-outbox", {
+            body: { campaignId: cId, daysToSchedule: 7 },
+          });
+          if (scheduleError) {
+            console.error(`Failed to schedule campaign ${cId}:`, scheduleError);
+          } else {
+            scheduledCampaigns++;
+            console.log(`Successfully scheduled campaign ${cId}`);
+          }
+        } catch (err) {
+          console.error(`Error scheduling campaign ${cId}:`, err);
+        }
+      }
+      console.log(`Scheduled ${scheduledCampaigns} of ${campaignIds.length} campaigns`);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         campaignName,
         assetsCreated: assetsCreated.length,
         campaignsCreated: campaignIds.length,
+        scheduledCampaigns: schedule ? scheduledCampaigns : 0,
+        schedule: schedule || null,
         leadsScraped,
         leadsLinked: {
           voice: leadsWithPhone.length,

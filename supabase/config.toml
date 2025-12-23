@@ -219,6 +219,9 @@ verify_jwt = true
 [functions.schedule-campaigns]
 verify_jwt = true
 
+[functions.campaign-schedule-outbox]
+verify_jwt = true
+
 [functions.scrape-google-maps]
 verify_jwt = true
 
