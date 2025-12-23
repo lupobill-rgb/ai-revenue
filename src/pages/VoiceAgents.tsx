@@ -11,6 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useVapiConversation } from "@/hooks/useVapiConversation";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
+import { DataQualityBanner } from "@/components/DataQualityBadge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -353,8 +354,8 @@ const VoiceAgents = () => {
   const [activeTab, setActiveTab] = useState("call");
   
   // DEMO MODE + VOICE PROVIDER GATING
-  const { demoMode: showSampleData } = useDemoMode();
-  const { workspaceId } = useWorkspaceContext();
+  const { demoMode } = useDemoMode();
+  const { workspaceId, toggleDemoMode } = useWorkspaceContext();
   const [voiceConnected, setVoiceConnected] = useState(false);
 
   // Fetch voice provider connection status
@@ -376,17 +377,21 @@ const VoiceAgents = () => {
     fetchVoiceConnectionStatus();
   }, [fetchVoiceConnectionStatus]);
 
-  // GATING LOGIC:
-  // - Demo mode ON: show sample data (labeled)
-  // - Demo mode OFF + voice connected: show real data
-  // - Demo mode OFF + voice NOT connected: show zeros/empty
-  const canShowData = showSampleData || voiceConnected;
-  
-  // Display data: only show sample data when in demo mode AND no real data
-  const displayAssistants = showSampleData && assistants.length === 0 ? SAMPLE_ASSISTANTS : (canShowData ? assistants : []);
-  const displayPhoneNumbers = showSampleData && phoneNumbers.length === 0 ? SAMPLE_PHONE_NUMBERS : (canShowData ? phoneNumbers : []);
-  const displayCalls = showSampleData && calls.length === 0 ? SAMPLE_CALLS : (canShowData ? calls : []);
-  const displayAnalytics = showSampleData && !analytics ? SAMPLE_ANALYTICS : (canShowData ? analytics : null);
+  // VOICE DATA QUALITY STATUS (same pattern as other dashboards)
+  type VoiceDataQualityStatus = 'DEMO_MODE' | 'NO_VOICE_PROVIDER_CONNECTED' | 'LIVE_OK';
+  const voiceDataQualityStatus: VoiceDataQualityStatus = demoMode 
+    ? 'DEMO_MODE' 
+    : voiceConnected 
+      ? 'LIVE_OK' 
+      : 'NO_VOICE_PROVIDER_CONNECTED';
+
+  // GATING RULES (NON-NEGOTIABLE):
+  // - demoMode = false: NEVER use SAMPLE_* under any condition
+  // - demoMode = true: SAMPLE_* allowed only when real arrays are empty
+  const displayAssistants = demoMode ? (assistants.length ? assistants : SAMPLE_ASSISTANTS) : assistants;
+  const displayPhoneNumbers = demoMode ? (phoneNumbers.length ? phoneNumbers : SAMPLE_PHONE_NUMBERS) : phoneNumbers;
+  const displayCalls = demoMode ? (calls.length ? calls : SAMPLE_CALLS) : calls;
+  const displayAnalytics = demoMode ? (analytics ?? SAMPLE_ANALYTICS) : (analytics ?? null);
 
   // Create assistant dialog
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -911,35 +916,8 @@ const VoiceAgents = () => {
             </Alert>
           )}
 
-          {/* Voice Provider Gating Banner */}
-          {!showSampleData && !voiceConnected && (
-            <Alert className="mb-6 border-amber-500/50 bg-amber-500/10">
-              <AlertCircle className="h-4 w-4 text-amber-500" />
-              <AlertTitle className="text-amber-600">Voice Provider Not Connected</AlertTitle>
-              <AlertDescription className="flex items-center justify-between">
-                <span className="text-muted-foreground">
-                  Connect your VAPI account in Settings to view real voice analytics and make calls.
-                </span>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => navigate("/settings/integrations")}
-                  className="ml-4"
-                >
-                  <Settings className="h-4 w-4 mr-2" />
-                  Connect Provider
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {showSampleData && (
-            <div className="mb-6 flex items-center gap-2 px-3 py-2 rounded-md bg-primary/10 border border-primary/20 text-sm">
-              <Database className="h-4 w-4 text-primary" />
-              <span className="text-primary font-medium">DEMO MODE</span>
-              <span className="text-muted-foreground">— Showing sample data. Disable demo mode to see real metrics.</span>
-            </div>
-          )}
+          {/* Voice Data Quality Banner - matches other dashboard patterns */}
+          <DataQualityBanner status={voiceDataQualityStatus} />
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-7">
@@ -1654,7 +1632,7 @@ const VoiceAgents = () => {
 
             {/* Analytics Tab */}
             <TabsContent value="analytics">
-              <AnalyticsCharts analytics={analytics} calls={calls} />
+              <AnalyticsCharts analytics={displayAnalytics} calls={displayCalls} />
             </TabsContent>
           </Tabs>
         </main>

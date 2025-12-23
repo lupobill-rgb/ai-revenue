@@ -17,7 +17,8 @@ import {
   CreditCard, 
   BarChart3, 
   Activity,
-  Settings
+  Settings,
+  Phone
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -27,6 +28,7 @@ export type DataQualityStatus =
   | 'NO_STRIPE_CONNECTED' 
   | 'NO_ANALYTICS_CONNECTED' 
   | 'NO_PROVIDER_CONNECTED'
+  | 'NO_VOICE_PROVIDER_CONNECTED'
   | 'EMPTY_CRM'
   | 'REVENUE_UNVERIFIED';
 
@@ -113,6 +115,16 @@ export function DataQualityBanner({
               >
                 <BarChart3 className="h-3 w-3 mr-1" />
                 Connect Analytics
+              </Button>
+            )}
+            {status === 'NO_VOICE_PROVIDER_CONNECTED' && (
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => navigate("/settings/integrations")}
+              >
+                <Phone className="h-3 w-3 mr-1" />
+                Connect Voice Provider
               </Button>
             )}
             {status === 'DEMO_MODE' && (
@@ -235,6 +247,17 @@ function getStatusConfig(status: DataQualityStatus) {
         iconClass: 'text-destructive',
         alertTitle: 'No Data Providers Connected',
         alertDescription: 'Connect Stripe and Analytics integrations to populate your dashboard with real data.',
+      };
+    case 'NO_VOICE_PROVIDER_CONNECTED':
+      return {
+        label: 'No Voice Provider',
+        shortLabel: 'NO VOICE',
+        icon: Phone,
+        badgeClass: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
+        alertClass: 'border-orange-500/50 bg-orange-500/10',
+        iconClass: 'text-orange-500',
+        alertTitle: 'Voice Provider Not Connected',
+        alertDescription: 'Connect VAPI or another voice provider to track calls and analytics. All voice KPIs show 0 until connected.',
       };
     case 'EMPTY_CRM':
       return {
