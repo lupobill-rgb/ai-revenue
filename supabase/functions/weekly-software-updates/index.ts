@@ -146,12 +146,18 @@ serve(async (req) => {
   }
 
   try {
-    // Verify authorization - accept either internal secret OR service role key
+    // Verify authorization - accept internal secret(s) OR service role key
     const internalSecret = req.headers.get("x-internal-secret");
     const authHeader = req.headers.get("authorization");
-    const expectedSecret = Deno.env.get("INTERNAL_FUNCTION_SECRET");
+
+    // Allow rotation/dual-secrets to avoid outages when schedulers drift
+    const expectedSecrets = [
+      Deno.env.get("INTERNAL_FUNCTION_SECRET"),
+      Deno.env.get("INTERNAL_FUNCTION_SECRET_VAULT"),
+    ].filter((v): v is string => typeof v === "string" && v.length > 0);
+
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    
+
     let body: RequestBody = {};
     try {
       body = await req.json();
@@ -160,24 +166,26 @@ serve(async (req) => {
     }
 
     // Check internal secret OR service role bearer token
-    const hasValidInternalSecret = internalSecret && expectedSecret && internalSecret === expectedSecret;
-    const hasValidServiceRole = authHeader?.startsWith("Bearer ") && 
-                                 authHeader.slice(7) === serviceRoleKey;
+    const hasValidInternalSecret =
+      !!internalSecret && expectedSecrets.some((s) => internalSecret === s);
+
+    const hasValidServiceRole =
+      authHeader?.startsWith("Bearer ") && authHeader.slice(7) === serviceRoleKey;
 
     // Debug: log first/last chars to help diagnose mismatches
     console.log("Auth debug:", {
       receivedPrefix: internalSecret?.slice(0, 4),
       receivedSuffix: internalSecret?.slice(-4),
-      expectedPrefix: expectedSecret?.slice(0, 4),
-      expectedSuffix: expectedSecret?.slice(-4),
-      match: hasValidInternalSecret
+      expectedPrefixes: expectedSecrets.map((s) => s.slice(0, 4)),
+      expectedSuffixes: expectedSecrets.map((s) => s.slice(-4)),
+      match: hasValidInternalSecret,
     });
 
     if (!hasValidInternalSecret && !hasValidServiceRole) {
       console.log("Unauthorized call to weekly-software-updates", {
         hasInternalSecret: !!internalSecret,
-        hasExpectedSecret: !!expectedSecret,
-        hasAuthHeader: !!authHeader
+        expectedSecretsCount: expectedSecrets.length,
+        hasAuthHeader: !!authHeader,
       });
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
