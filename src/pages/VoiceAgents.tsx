@@ -926,10 +926,12 @@ const VoiceAgents = () => {
             </Alert>
           )}
 
-          {/* Voice Data Quality Banner - only in live mode when no voice provider */}
-          {showVoiceSetupBanner && (
+          {/* Voice Data Quality Banner */}
+          {demoMode ? (
+            <DataQualityBanner status="DEMO_MODE" />
+          ) : showVoiceSetupBanner ? (
             <DataQualityBanner status="NO_VOICE_PROVIDER_CONNECTED" />
-          )}
+          ) : null}
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-7">
