@@ -32,9 +32,6 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
   const [testEmails, setTestEmails] = useState<string[]>([""]);
   const [emailSettings, setEmailSettings] = useState<EmailSettings | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
-  const [customFromName, setCustomFromName] = useState("");
-  const [customFromAddress, setCustomFromAddress] = useState("");
-  const [useCustomFrom, setUseCustomFrom] = useState(false);
 
   // Fetch email settings when dialog opens
   useEffect(() => {
@@ -56,8 +53,6 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
 
       if (data) {
         setEmailSettings(data);
-        setCustomFromName(data.sender_name || "");
-        setCustomFromAddress(data.from_address || "");
       }
     } catch (error) {
       console.error("Error fetching email settings:", error);
@@ -102,11 +97,17 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
       return;
     }
 
+    if (!workspaceId) {
+      toast({
+        variant: "destructive",
+        title: "Workspace Required",
+        description: "No workspace selected",
+      });
+      return;
+    }
+
     setSending(true);
     try {
-      const fromName = useCustomFrom ? customFromName : (emailSettings?.sender_name || "UbiGrowth Test");
-      const fromAddress = useCustomFrom ? customFromAddress : (emailSettings?.from_address || "onboarding@resend.dev");
-
       // Extract email content from asset
       const subject = asset.content?.subject || `Test: ${asset.name}`;
       const body = asset.content?.body || asset.content?.html || `
@@ -120,13 +121,13 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
         </div>
       `;
 
+      // Send workspaceId so backend fetches the user's configured email settings
       const { data, error } = await supabase.functions.invoke("test-email", {
         body: {
           recipients: validEmails,
           subject,
           body,
-          fromName,
-          fromAddress,
+          workspaceId,
           assetId: asset.id,
         },
       });
@@ -167,55 +168,26 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
         <div className="space-y-6 py-4">
           {/* FROM Section */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">From</Label>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setUseCustomFrom(!useCustomFrom)}
-                className="text-xs"
-              >
-                {useCustomFrom ? "Use Default" : "Customize"}
-              </Button>
-            </div>
+            <Label className="text-sm font-medium">From</Label>
             
             {loadingSettings ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading email settings...
               </div>
-            ) : useCustomFrom ? (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Sender Name</Label>
-                    <Input
-                      value={customFromName}
-                      onChange={(e) => setCustomFromName(e.target.value)}
-                      placeholder="Company Name"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">From Address</Label>
-                    <Input
-                      value={customFromAddress}
-                      onChange={(e) => setCustomFromAddress(e.target.value)}
-                      placeholder="hello@example.com"
-                    />
-                  </div>
-                </div>
-              </div>
             ) : (
               <div className="rounded-lg border bg-muted/50 p-3">
                 <p className="text-sm">
-                  <span className="font-medium">{emailSettings?.sender_name || "UbiGrowth Test"}</span>
-                  <span className="text-muted-foreground ml-1">
-                    &lt;{emailSettings?.from_address || "onboarding@resend.dev"}&gt;
-                  </span>
+                  <span className="font-medium">{emailSettings?.sender_name || "Not configured"}</span>
+                  {emailSettings?.from_address && (
+                    <span className="text-muted-foreground ml-1">
+                      &lt;{emailSettings.from_address}&gt;
+                    </span>
+                  )}
                 </p>
-                {!emailSettings && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Configure email settings in Settings → Integrations
+                {!emailSettings?.from_address && (
+                  <p className="text-xs text-destructive mt-1">
+                    Please configure your email domain in Settings → Integrations
                   </p>
                 )}
               </div>
