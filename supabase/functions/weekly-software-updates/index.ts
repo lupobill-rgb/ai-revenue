@@ -22,10 +22,28 @@ interface RequestBody {
   subject?: string;
 }
 
-// Get the latest updates - in production, these would come from a database table
-function getLatestUpdates(): SoftwareUpdate[] {
-  // TODO: Replace with actual database query when updates table is created
-  return [];
+// Get the latest updates from the release_notes table
+async function getLatestUpdates(supabase: any): Promise<SoftwareUpdate[]> {
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+  
+  const { data, error } = await supabase
+    .from('release_notes')
+    .select('title, body_md, released_at')
+    .gte('released_at', oneWeekAgo.toISOString())
+    .order('released_at', { ascending: false });
+  
+  if (error) {
+    console.error('Error fetching release notes:', error);
+    return [];
+  }
+  
+  return (data || []).map((note: { title: string; body_md: string; released_at: string }) => ({
+    title: note.title,
+    description: note.body_md,
+    type: 'feature' as const,
+    date: new Date(note.released_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }));
 }
 
 function formatUpdateType(type: string): string {
@@ -233,7 +251,7 @@ serve(async (req) => {
     }
 
     // Get latest updates - use custom updates if provided
-    const updates = customUpdates.length > 0 ? customUpdates : getLatestUpdates();
+    const updates = customUpdates.length > 0 ? customUpdates : await getLatestUpdates(supabase);
     console.log(`Found ${updates.length} updates for this week`);
 
     const results: { email: string; success: boolean; error?: string }[] = [];
