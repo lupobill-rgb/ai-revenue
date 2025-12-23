@@ -770,6 +770,9 @@ const Dashboard = () => {
                         <tbody>
                           {campaigns.map((campaign) => {
                             const Icon = getAssetIcon(campaign.type);
+                            // Apply gating at table row level for consistent display
+                            const showImpressions = dataIntegrity.shouldShowImpressions;
+                            const showRevenue = dataIntegrity.shouldShowRevenue;
                             return (
                               <tr
                                 key={campaign.id}
@@ -788,21 +791,23 @@ const Dashboard = () => {
                                   {campaign.channel}
                                 </td>
                                 <td className="py-4 text-sm text-foreground text-right">
-                                  {campaign.views.toLocaleString()}
+                                  {showImpressions ? campaign.views.toLocaleString() : "—"}
                                 </td>
                                 <td className="py-4 text-sm text-foreground text-right">
-                                  {campaign.clicks.toLocaleString()}
+                                  {showImpressions ? campaign.clicks.toLocaleString() : "—"}
                                 </td>
                                 <td className="py-4 text-sm text-foreground text-right">
-                                  ${campaign.revenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                  {showRevenue ? `$${campaign.revenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"}
                                 </td>
                                 <td className="py-4 text-sm text-foreground text-right">
-                                  ${campaign.cost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                  {showRevenue ? `$${campaign.cost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"}
                                 </td>
                                 <td className="py-4 text-sm font-bold text-right">
-                                  <span className={campaign.roi >= 0 ? "text-green-500" : "text-red-500"}>
-                                    {campaign.roi.toFixed(1)}%
-                                  </span>
+                                  {showRevenue ? (
+                                    <span className={campaign.roi >= 0 ? "text-green-500" : "text-red-500"}>
+                                      {campaign.roi.toFixed(1)}%
+                                    </span>
+                                  ) : "—"}
                                 </td>
                                 <td className="py-4 text-center">
                                   <Button
