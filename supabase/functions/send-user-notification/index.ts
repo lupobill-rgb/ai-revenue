@@ -85,10 +85,12 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
-    // Send emails
+    // Send emails with rate limiting (Resend allows 2 requests/second)
     const results: { email: string; success: boolean; error?: string }[] = [];
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    for (const email of emailAddresses) {
+    for (let i = 0; i < emailAddresses.length; i++) {
+      const email = emailAddresses[i];
       try {
         const emailResponse = await resend.emails.send({
           from: "UbiGrowth AI <updates@ubigrowth.com>",
@@ -108,11 +110,18 @@ const handler = async (req: Request): Promise<Response> => {
           `,
         });
 
-        console.log(`[send-user-notification] Email sent to ${email}:`, emailResponse);
-        results.push({ email, success: true });
+        const success = !emailResponse.error;
+        console.log(`[send-user-notification] Email ${i + 1}/${emailAddresses.length} to ${email}:`, 
+          success ? `sent (id: ${emailResponse.data?.id})` : `failed: ${emailResponse.error?.message}`);
+        results.push({ email, success, error: emailResponse.error?.message });
       } catch (emailError: any) {
         console.error(`[send-user-notification] Failed to send to ${email}:`, emailError);
         results.push({ email, success: false, error: emailError.message });
+      }
+
+      // Wait 600ms between emails to stay under Resend's 2 req/sec limit
+      if (i < emailAddresses.length - 1) {
+        await delay(600);
       }
     }
 
