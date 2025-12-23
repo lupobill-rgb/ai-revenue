@@ -354,6 +354,9 @@ const VoiceAgents = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [activeTab, setActiveTab] = useState("call");
   
+  // Track paywall/upgrade-required errors separately for first-class UI
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
+  
   // CANONICAL VOICE DATA QUALITY GATING (uses dedicated hook)
   const { workspaceId, toggleDemoMode } = useWorkspaceContext();
   const { 
@@ -502,11 +505,21 @@ const VoiceAgents = () => {
     setVolume,
   } = useVapiConversation({
     publicKey: VAPI_PUBLIC_KEY,
-    onError: (err) => toast.error(normalizeError(err)),
+    onError: (err) => {
+      // Check for 402/paywall errors
+      const isPaywall = err?.statusCode === 402 || 
+                        normalizeError(err).toLowerCase().includes('upgrade');
+      if (isPaywall) {
+        setUpgradeRequired(true);
+      } else {
+        toast.error(normalizeError(err));
+      }
+    },
   });
 
   const fetchAllData = async () => {
     setIsLoading(true);
+    setUpgradeRequired(false); // Reset on refetch
     try {
       const [assistantsRes, phoneNumbersRes, callsRes, analyticsRes, leadsRes, campaignsRes] = await Promise.all([
         supabase.functions.invoke('vapi-list-assistants'),
@@ -516,6 +529,18 @@ const VoiceAgents = () => {
         supabase.from('leads').select('id, first_name, last_name, phone, company, status').not('phone', 'is', null).limit(100),
         supabase.from('assets').select('id, name, status, goal, content, created_at').eq('type', 'voice').in('status', ['approved', 'review']).order('created_at', { ascending: false }),
       ]);
+
+      // Check for 402/paywall errors in any response
+      const checkPaywall = (res: any) => {
+        if (res?.error?.statusCode === 402 || res?.data?.statusCode === 402) {
+          setUpgradeRequired(true);
+          return true;
+        }
+        return false;
+      };
+
+      // Check all responses for paywall
+      [assistantsRes, phoneNumbersRes, callsRes, analyticsRes].forEach(checkPaywall);
 
       if (assistantsRes.data?.assistants) {
         setAssistants(assistantsRes.data.assistants);
@@ -541,9 +566,14 @@ const VoiceAgents = () => {
       if (campaignsRes.data) {
         setVoiceCampaigns(campaignsRes.data);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching Vapi data:', error);
-      toast.error('Failed to load voice agent data');
+      // Check if catch block error is 402
+      if (error?.statusCode === 402 || normalizeError(error).toLowerCase().includes('upgrade')) {
+        setUpgradeRequired(true);
+      } else {
+        toast.error('Failed to load voice agent data');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -920,7 +950,37 @@ const VoiceAgents = () => {
             </div>
           </div>
 
-          {error && (
+          {/* Upgrade Required Banner (402/Paywall) - First-class UI */}
+          {upgradeRequired && (
+            <Alert className="mb-6 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-800 dark:text-amber-200">Upgrade Required</AlertTitle>
+              <AlertDescription className="text-amber-700 dark:text-amber-300">
+                <p className="mb-3">Voice features require an upgraded plan or provider configuration.</p>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    onClick={() => navigate('/settings')}
+                    className="bg-amber-600 hover:bg-amber-700"
+                  >
+                    View Plans
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => navigate('/settings/integrations')}
+                    className="border-amber-500 text-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900"
+                  >
+                    <Settings className="h-4 w-4 mr-1" />
+                    Connect Keys
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Generic error alert (non-402 errors) */}
+          {error && !upgradeRequired && (
             <Alert variant="destructive" className="mb-6">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{normalizeError(error)}</AlertDescription>
