@@ -315,3 +315,6 @@ verify_jwt = true
 
 [functions.weekly-software-updates]
 verify_jwt = false
+
+[functions.send-user-notification]
+verify_jwt = false
