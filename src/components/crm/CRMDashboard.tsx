@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Target, TrendingUp, Zap, ArrowRight, Star, Phone, Mail, Brain, Sparkles, AlertCircle, CheckCircle2, Loader2, Tags } from "lucide-react";
+import { Users, Target, TrendingUp, Zap, ArrowRight, Star, Phone, Mail, Brain, Sparkles, AlertCircle, CheckCircle2, Loader2, Tags, Database } from "lucide-react";
+import { usePipelineMetrics } from "@/hooks/usePipelineMetrics";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -91,6 +92,9 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
   const [analyzingLeads, setAnalyzingLeads] = useState(false);
   const { segments, getSegmentByCode } = useTenantSegments();
   const baseLeads = showSampleData && leads.length === 0 ? SAMPLE_LEADS : leads;
+  
+  // CRM TRUTH: Use authoritative view for conversion metrics
+  const { metrics: pipelineMetrics } = usePipelineMetrics(workspaceId ?? null);
 
   // Auto-analyze leads when data changes (only if workspaceId is available)
   useEffect(() => {
@@ -142,7 +146,8 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
   const convertedLeads = displayLeads.filter(l => l.status === "converted" || l.status === "won").length;
   const lostLeads = displayLeads.filter(l => l.status === "lost" || l.status === "unqualified").length;
 
-  const conversionRate = totalLeads > 0 ? ((convertedLeads / totalLeads) * 100) : 0;
+  // CRM TRUTH: Conversion rate comes from authoritative view, NOT local calculation
+  const conversionRate = pipelineMetrics?.conversion_rate ?? 0;
   const avgScore = displayLeads.length > 0 
     ? Math.round(displayLeads.reduce((acc, l) => acc + (l.score || 0), 0) / displayLeads.length) 
     : 0;
@@ -186,6 +191,12 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
 
   return (
     <div className="space-y-6">
+      {/* CRM TRUTH GUARDRAIL - Non-negotiable transparency */}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground">
+        <Database className="h-3 w-3 flex-shrink-0" />
+        <span>Metrics are driven from CRM deal outcomes. No inferred or estimated revenue.</span>
+      </div>
+
       {/* Header with filters */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
