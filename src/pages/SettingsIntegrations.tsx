@@ -811,6 +811,9 @@ export default function SettingsIntegrations() {
     setSaving("voice");
 
     try {
+      // Determine if voice is connected based on having valid API keys
+      const hasVoiceKeys = !!(vapiPrivateKey || elevenlabsApiKey);
+      
       const payload = {
         tenant_id: tenantId,
         vapi_public_key: vapiPublicKey || null,
@@ -819,6 +822,7 @@ export default function SettingsIntegrations() {
         default_vapi_assistant_id: defaultVapiAssistantId || null,
         default_elevenlabs_voice_id: defaultElevenlabsVoiceId || null,
         elevenlabs_model: elevenlabsModel || null,
+        is_connected: hasVoiceKeys, // Set connected status based on key presence
         updated_at: new Date().toISOString(),
       };
 
