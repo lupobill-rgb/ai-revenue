@@ -54,7 +54,8 @@ serve(async (req) => {
   }
 
   try {
-    const { assetId, segmentCodes } = await req.json();
+    const { assetId, segmentCodes, scheduledAt } = await req.json();
+    const isScheduled = !!scheduledAt;
 
     if (!assetId) {
       throw new Error("Asset ID is required");
@@ -241,11 +242,17 @@ serve(async (req) => {
       campaign = newCampaign;
     }
 
-    // Send emails via Resend REST API
+    // Handle scheduled vs immediate send
     let sentCount = 0;
     let failedCount = 0;
     let skippedCount = 0;
+    let scheduledCount = 0;
     const sentMessages: Array<{ email: string; messageId: string }> = [];
+    
+    // If scheduled, just queue the emails without sending
+    if (isScheduled) {
+      console.log(`Scheduling ${recipientList.length} emails for ${scheduledAt}`);
+    }
     
     // Derive tenantId for channel_outbox
     const tenantId = workspaceId || user?.id || "unknown";
@@ -265,7 +272,8 @@ serve(async (req) => {
           new Date().toISOString().slice(0, 10), // Daily uniqueness
         ]);
         
-        // IDEMPOTENCY: Insert outbox entry BEFORE provider call with status 'queued'
+        // IDEMPOTENCY: Insert outbox entry BEFORE provider call with status 'queued' or 'scheduled'
+        const outboxStatus = isScheduled ? "scheduled" : "queued";
         const { data: insertedOutbox, error: insertError } = await serviceClient
           .from("channel_outbox")
           .insert({
@@ -279,8 +287,13 @@ serve(async (req) => {
               campaign_id: campaign.id, 
               asset_id: assetId,
               subject: subjectTemplate,
+              html_body: htmlBodyTemplate,
+              from_address: fromAddress,
+              reply_to: replyToAddress,
+              sender_name: senderName,
             },
-            status: "queued",
+            status: outboxStatus,
+            scheduled_at: isScheduled ? scheduledAt : null,
             idempotency_key: idempotencyKey,
             skipped: false,
           })
@@ -306,6 +319,13 @@ serve(async (req) => {
         }
         
         const outboxId = insertedOutbox?.id;
+        
+        // If scheduled, we're done - the cron job will send later
+        if (isScheduled) {
+          scheduledCount++;
+          console.log(`Scheduled email for ${recipientEmail} at ${scheduledAt}`);
+          return;
+        }
         
         // Personalize subject and body with lead data
         const personalizedSubject = personalizeContent(subjectTemplate, linkedLead || { email: recipientEmail });
@@ -426,21 +446,29 @@ serve(async (req) => {
       });
     }
 
-    // Update campaign status
-    await supabaseClient
-      .from("campaigns")
-      .update({ status: sentCount > 0 ? "active" : "failed" })
-      .eq("id", campaign.id);
-
-    // Update asset status to live
-    if (sentCount > 0) {
+    // Update campaign status based on whether scheduled or immediate
+    if (isScheduled) {
       await supabaseClient
-        .from("assets")
-        .update({ status: "live" })
-        .eq("id", assetId);
-    }
+        .from("campaigns")
+        .update({ status: "scheduled" })
+        .eq("id", campaign.id);
+      console.log(`Email campaign scheduled: ${scheduledCount} emails queued for ${scheduledAt}`);
+    } else {
+      await supabaseClient
+        .from("campaigns")
+        .update({ status: sentCount > 0 ? "active" : "failed" })
+        .eq("id", campaign.id);
 
-    console.log(`Email campaign deployed: ${sentCount} sent, ${failedCount} failed, ${skippedCount} skipped`);
+      // Update asset status to live
+      if (sentCount > 0) {
+        await supabaseClient
+          .from("assets")
+          .update({ status: "live" })
+          .eq("id", assetId);
+      }
+
+      console.log(`Email campaign deployed: ${sentCount} sent, ${failedCount} failed, ${skippedCount} skipped`);
+    }
 
     return new Response(
       JSON.stringify({
@@ -449,9 +477,13 @@ serve(async (req) => {
         sentCount,
         failedCount,
         skippedCount,
+        scheduledCount,
+        scheduledAt: isScheduled ? scheduledAt : null,
         // E1 proof: Return provider_message_ids for verification
         sentMessages: sentMessages.slice(0, 10), // First 10 for logging
-        message: `Successfully sent ${sentCount} personalized emails${skippedCount > 0 ? ` (${skippedCount} skipped as duplicates)` : ""}`,
+        message: isScheduled 
+          ? `Successfully scheduled ${scheduledCount} emails for ${new Date(scheduledAt).toLocaleString()}`
+          : `Successfully sent ${sentCount} personalized emails${skippedCount > 0 ? ` (${skippedCount} skipped as duplicates)` : ""}`,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

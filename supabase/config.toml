@@ -318,3 +318,7 @@ verify_jwt = false
 
 [functions.send-user-notification]
 verify_jwt = false
+
+[functions.process-scheduled-emails]
+verify_jwt = false
+schedule = "* * * * *"
