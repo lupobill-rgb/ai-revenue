@@ -16,7 +16,9 @@ interface ScheduleConfig {
     saturday: boolean;
     sunday: boolean;
   };
-  timeOfDay: "morning" | "midday" | "afternoon" | "evening";
+  timesOfDay: ("morning" | "midday" | "afternoon" | "evening")[];
+  // Legacy support for single timeOfDay
+  timeOfDay?: "morning" | "midday" | "afternoon" | "evening";
   timezone: string;
 }
 
@@ -43,7 +45,11 @@ const DAY_INDEX: Record<string, number> = {
 function getNextScheduledDates(schedule: ScheduleConfig, count: number = 7): Date[] {
   const dates: Date[] = [];
   const now = new Date();
-  const targetHour = TIME_SLOT_HOURS[schedule.timeOfDay] || 12;
+  
+  // Support both timesOfDay array and legacy timeOfDay single value
+  const targetTimes = schedule.timesOfDay?.length 
+    ? schedule.timesOfDay 
+    : (schedule.timeOfDay ? [schedule.timeOfDay] : ["midday"]);
   
   // Get enabled days
   const enabledDays: number[] = [];
@@ -58,15 +64,9 @@ function getNextScheduledDates(schedule: ScheduleConfig, count: number = 7): Dat
     return dates;
   }
   
-  // Start from today and find next valid dates
+  // Start from today
   let checkDate = new Date(now);
-  checkDate.setHours(targetHour, 0, 0, 0);
-  
-  // If today's slot has passed, start from tomorrow
-  if (checkDate <= now) {
-    checkDate.setDate(checkDate.getDate() + 1);
-    checkDate.setHours(targetHour, 0, 0, 0);
-  }
+  checkDate.setHours(0, 0, 0, 0);
   
   let daysChecked = 0;
   const maxDaysToCheck = 30; // Look up to 30 days ahead
@@ -75,15 +75,29 @@ function getNextScheduledDates(schedule: ScheduleConfig, count: number = 7): Dat
     const dayOfWeek = checkDate.getDay();
     
     if (enabledDays.includes(dayOfWeek)) {
-      dates.push(new Date(checkDate));
+      // Add a date for each selected time slot
+      for (const timeSlot of targetTimes) {
+        const targetHour = TIME_SLOT_HOURS[timeSlot] || 12;
+        const slotDate = new Date(checkDate);
+        slotDate.setHours(targetHour, 0, 0, 0);
+        
+        // Only add future times
+        if (slotDate > now) {
+          dates.push(new Date(slotDate));
+        }
+      }
     }
     
     checkDate.setDate(checkDate.getDate() + 1);
-    checkDate.setHours(targetHour, 0, 0, 0);
+    checkDate.setHours(0, 0, 0, 0);
     daysChecked++;
+    
+    // Stop if we have enough dates
+    if (dates.length >= count * targetTimes.length) break;
   }
   
-  return dates;
+  // Sort by date and limit
+  return dates.sort((a, b) => a.getTime() - b.getTime()).slice(0, count * targetTimes.length);
 }
 
 // Generate idempotency key

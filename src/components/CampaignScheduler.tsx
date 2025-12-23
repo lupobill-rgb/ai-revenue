@@ -14,7 +14,7 @@ interface ScheduleConfig {
     saturday: boolean;
     sunday: boolean;
   };
-  timeOfDay: "morning" | "midday" | "afternoon" | "evening";
+  timesOfDay: ("morning" | "midday" | "afternoon" | "evening")[];
   timezone: string;
 }
 
@@ -58,7 +58,7 @@ export const DEFAULT_SCHEDULE: ScheduleConfig = {
     saturday: false,
     sunday: false,
   },
-  timeOfDay: "midday",
+  timesOfDay: ["midday"],
   timezone: "America/New_York",
 };
 
@@ -160,28 +160,43 @@ export function CampaignScheduler({ value, onChange }: CampaignSchedulerProps) {
         </p>
       </div>
 
-      {/* Time of Day */}
+      {/* Time of Day - Multi-select */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-muted-foreground" />
-          <Label className="text-sm">Time of Day</Label>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm">Times of Day</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {value.timesOfDay.length === 0
+              ? "Select at least one"
+              : `${value.timesOfDay.length} time${value.timesOfDay.length > 1 ? "s" : ""} selected`}
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          {TIME_SLOTS.map((slot) => (
-            <button
-              key={slot.value}
-              type="button"
-              onClick={() => onChange({ ...value, timeOfDay: slot.value })}
-              className={`p-3 rounded-md text-left transition-colors border ${
-                value.timeOfDay === slot.value
-                  ? "bg-primary/10 border-primary text-foreground"
-                  : "bg-background border-border hover:border-primary/50 text-muted-foreground"
-              }`}
-            >
-              <p className="text-sm font-medium">{slot.label}</p>
-              <p className="text-xs text-muted-foreground">{slot.description}</p>
-            </button>
-          ))}
+          {TIME_SLOTS.map((slot) => {
+            const isSelected = value.timesOfDay.includes(slot.value);
+            return (
+              <button
+                key={slot.value}
+                type="button"
+                onClick={() => {
+                  const newTimes = isSelected
+                    ? value.timesOfDay.filter((t) => t !== slot.value)
+                    : [...value.timesOfDay, slot.value];
+                  onChange({ ...value, timesOfDay: newTimes });
+                }}
+                className={`p-3 rounded-md text-left transition-colors border ${
+                  isSelected
+                    ? "bg-primary/10 border-primary text-foreground"
+                    : "bg-background border-border hover:border-primary/50 text-muted-foreground"
+                }`}
+              >
+                <p className="text-sm font-medium">{slot.label}</p>
+                <p className="text-xs text-muted-foreground">{slot.description}</p>
+              </button>
+            );
+          })}
         </div>
       </div>
 
