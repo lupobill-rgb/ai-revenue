@@ -1,14 +1,16 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Phone, PhoneOff, Mic, MicOff, RefreshCw, AlertCircle, Loader2, Plus, Trash2, Edit, PhoneCall, Clock, BarChart3, Users, PhoneIncoming, PhoneOutgoing, Play, Pause, Volume2, ChevronDown, ChevronUp, MessageSquare, Zap, CheckCircle2, XCircle, Database } from "lucide-react";
+import { Phone, PhoneOff, Mic, MicOff, RefreshCw, AlertCircle, Loader2, Plus, Trash2, Edit, PhoneCall, Clock, BarChart3, Users, PhoneIncoming, PhoneOutgoing, Play, Pause, Volume2, ChevronDown, ChevronUp, MessageSquare, Zap, CheckCircle2, XCircle, Database, Settings } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useVapiConversation } from "@/hooks/useVapiConversation";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -340,6 +342,7 @@ const AnalyticsCharts = ({ analytics, calls }: { analytics: VapiAnalytics | null
 };
 
 const VoiceAgents = () => {
+  const navigate = useNavigate();
   const [assistants, setAssistants] = useState<VapiAssistant[]>([]);
   const [phoneNumbers, setPhoneNumbers] = useState<VapiPhoneNumber[]>([]);
   const [calls, setCalls] = useState<VapiCall[]>([]);
@@ -348,14 +351,42 @@ const VoiceAgents = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [activeTab, setActiveTab] = useState("call");
-  // DEMO MODE: Use centralized workspace demo_mode instead of local toggle
+  
+  // DEMO MODE + VOICE PROVIDER GATING
   const { demoMode: showSampleData } = useDemoMode();
+  const { workspaceId } = useWorkspaceContext();
+  const [voiceConnected, setVoiceConnected] = useState(false);
 
-  // Display data (sample or real)
-  const displayAssistants = showSampleData && assistants.length === 0 ? SAMPLE_ASSISTANTS : assistants;
-  const displayPhoneNumbers = showSampleData && phoneNumbers.length === 0 ? SAMPLE_PHONE_NUMBERS : phoneNumbers;
-  const displayCalls = showSampleData && calls.length === 0 ? SAMPLE_CALLS : calls;
-  const displayAnalytics = showSampleData && !analytics ? SAMPLE_ANALYTICS : analytics;
+  // Fetch voice provider connection status
+  const fetchVoiceConnectionStatus = useCallback(async () => {
+    if (!workspaceId) return;
+    try {
+      const { data } = await supabase
+        .from("ai_settings_voice")
+        .select("is_connected")
+        .eq("tenant_id", workspaceId)
+        .maybeSingle();
+      setVoiceConnected(data?.is_connected === true);
+    } catch (err) {
+      console.error("Failed to fetch voice connection status:", err);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    fetchVoiceConnectionStatus();
+  }, [fetchVoiceConnectionStatus]);
+
+  // GATING LOGIC:
+  // - Demo mode ON: show sample data (labeled)
+  // - Demo mode OFF + voice connected: show real data
+  // - Demo mode OFF + voice NOT connected: show zeros/empty
+  const canShowData = showSampleData || voiceConnected;
+  
+  // Display data: only show sample data when in demo mode AND no real data
+  const displayAssistants = showSampleData && assistants.length === 0 ? SAMPLE_ASSISTANTS : (canShowData ? assistants : []);
+  const displayPhoneNumbers = showSampleData && phoneNumbers.length === 0 ? SAMPLE_PHONE_NUMBERS : (canShowData ? phoneNumbers : []);
+  const displayCalls = showSampleData && calls.length === 0 ? SAMPLE_CALLS : (canShowData ? calls : []);
+  const displayAnalytics = showSampleData && !analytics ? SAMPLE_ANALYTICS : (canShowData ? analytics : null);
 
   // Create assistant dialog
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -878,6 +909,36 @@ const VoiceAgents = () => {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
+          )}
+
+          {/* Voice Provider Gating Banner */}
+          {!showSampleData && !voiceConnected && (
+            <Alert className="mb-6 border-amber-500/50 bg-amber-500/10">
+              <AlertCircle className="h-4 w-4 text-amber-500" />
+              <AlertTitle className="text-amber-600">Voice Provider Not Connected</AlertTitle>
+              <AlertDescription className="flex items-center justify-between">
+                <span className="text-muted-foreground">
+                  Connect your VAPI account in Settings to view real voice analytics and make calls.
+                </span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => navigate("/settings/integrations")}
+                  className="ml-4"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Connect Provider
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {showSampleData && (
+            <div className="mb-6 flex items-center gap-2 px-3 py-2 rounded-md bg-primary/10 border border-primary/20 text-sm">
+              <Database className="h-4 w-4 text-primary" />
+              <span className="text-primary font-medium">DEMO MODE</span>
+              <span className="text-muted-foreground">— Showing sample data. Disable demo mode to see real metrics.</span>
+            </div>
           )}
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
