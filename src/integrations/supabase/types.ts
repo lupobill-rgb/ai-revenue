@@ -2098,6 +2098,7 @@ export type Database = {
           recipient_id: string | null
           recipient_phone: string | null
           run_id: string | null
+          scheduled_at: string | null
           skip_reason: string | null
           skipped: boolean | null
           status: string
@@ -2120,6 +2121,7 @@ export type Database = {
           recipient_id?: string | null
           recipient_phone?: string | null
           run_id?: string | null
+          scheduled_at?: string | null
           skip_reason?: string | null
           skipped?: boolean | null
           status?: string
@@ -2142,6 +2144,7 @@ export type Database = {
           recipient_id?: string | null
           recipient_phone?: string | null
           run_id?: string | null
+          scheduled_at?: string | null
           skip_reason?: string | null
           skipped?: boolean | null
           status?: string

@@ -11,7 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, CheckCircle, Save, Send, Sparkles, RefreshCw } from "lucide-react";
+import { ArrowLeft, CheckCircle, Save, Send, Sparkles, RefreshCw, Calendar, Clock } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { formatDistanceToNow } from "date-fns";
 import NavBar from "@/components/NavBar";
 import PageBreadcrumbs from "@/components/PageBreadcrumbs";
@@ -48,6 +50,8 @@ const AssetDetail = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [deploySegmentCodes, setDeploySegmentCodes] = useState<string[]>([]);
   const [deployLeadCount, setDeployLeadCount] = useState<number>(0);
+  const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
+  const [scheduleTime, setScheduleTime] = useState<string>("");
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [justSaved, setJustSaved] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -384,32 +388,75 @@ const AssetDetail = () => {
     fetchLeadCount();
   }, [deploySegmentCodes, asset?.workspace_id]);
 
-  const handleDeployEmail = async () => {
+  const handleDeployEmail = async (isScheduled: boolean = false) => {
+    // Build scheduled timestamp if scheduling
+    let scheduledAt: string | undefined;
+    if (isScheduled) {
+      if (!scheduleDate) {
+        toast({
+          variant: "destructive",
+          title: "Missing Date",
+          description: "Please select a date for the scheduled send",
+        });
+        return;
+      }
+      
+      const dateTime = new Date(scheduleDate);
+      if (scheduleTime) {
+        const [hours, minutes] = scheduleTime.split(':').map(Number);
+        dateTime.setHours(hours, minutes, 0, 0);
+      } else {
+        // Default to 9 AM if no time specified
+        dateTime.setHours(9, 0, 0, 0);
+      }
+      
+      if (dateTime <= new Date()) {
+        toast({
+          variant: "destructive",
+          title: "Invalid Time",
+          description: "Scheduled time must be in the future",
+        });
+        return;
+      }
+      
+      scheduledAt = dateTime.toISOString();
+    }
+
     setDeploying(true);
     try {
       const { data, error } = await supabase.functions.invoke('email-deploy', {
         body: { 
           assetId: id,
-          segmentCodes: deploySegmentCodes.length > 0 ? deploySegmentCodes : undefined
+          segmentCodes: deploySegmentCodes.length > 0 ? deploySegmentCodes : undefined,
+          scheduledAt
         }
       });
 
       if (error) throw error;
 
-      toast({
-        title: "Success",
-        description: `Email campaign deployed! ${data.sentCount} emails sent${data.skippedCount > 0 ? ` (${data.skippedCount} skipped as duplicates)` : ''}.`,
-      });
+      if (isScheduled) {
+        toast({
+          title: "Scheduled",
+          description: `Email campaign scheduled for ${new Date(scheduledAt!).toLocaleString()}. ${data.scheduledCount} emails queued.`,
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: `Email campaign deployed! ${data.sentCount} emails sent${data.skippedCount > 0 ? ` (${data.skippedCount} skipped as duplicates)` : ''}.`,
+        });
+      }
 
       // Refresh asset to show updated status
       await fetchAsset();
-      // Reset segment selection
+      // Reset selections
       setDeploySegmentCodes([]);
+      setScheduleDate(undefined);
+      setScheduleTime("");
     } catch (error) {
       console.error("Error deploying email:", error);
       toast({
         variant: "destructive",
-        title: "Deployment Failed",
+        title: isScheduled ? "Scheduling Failed" : "Deployment Failed",
         description: error instanceof Error ? error.message : "Failed to deploy email campaign",
       });
     } finally {
@@ -1462,14 +1509,63 @@ const AssetDetail = () => {
                               </p>
                             </div>
 
+                            {/* Send Now Button */}
                             <Button
-                              onClick={handleDeployEmail}
+                              onClick={() => handleDeployEmail(false)}
                               disabled={deploying || (deploySegmentCodes.length > 0 && deployLeadCount === 0)}
                               className="w-full bg-green-600 text-white hover:bg-green-700"
                             >
                               <Send className="mr-2 h-4 w-4" />
-                              {deploying ? "Deploying..." : `Deploy to ${deployLeadCount > 0 ? deployLeadCount : 'All'} Contact${deployLeadCount !== 1 ? 's' : ''}`}
+                              {deploying ? "Deploying..." : `Send Now to ${deployLeadCount > 0 ? deployLeadCount : 'All'} Contact${deployLeadCount !== 1 ? 's' : ''}`}
                             </Button>
+
+                            {/* Schedule Send Section */}
+                            <div className="border-t border-border pt-4 mt-4">
+                              <h4 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                Schedule for Later
+                              </h4>
+                              <div className="flex flex-col gap-3">
+                                <div className="flex gap-2">
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        className="flex-1 justify-start text-left font-normal"
+                                      >
+                                        <Calendar className="mr-2 h-4 w-4" />
+                                        {scheduleDate ? scheduleDate.toLocaleDateString() : "Pick a date"}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                      <CalendarComponent
+                                        mode="single"
+                                        selected={scheduleDate}
+                                        onSelect={setScheduleDate}
+                                        disabled={(date) => date < new Date()}
+                                        initialFocus
+                                      />
+                                    </PopoverContent>
+                                  </Popover>
+                                  <Input
+                                    type="time"
+                                    value={scheduleTime}
+                                    onChange={(e) => setScheduleTime(e.target.value)}
+                                    className="w-32"
+                                    placeholder="09:00"
+                                  />
+                                </div>
+                                <Button
+                                  onClick={() => handleDeployEmail(true)}
+                                  disabled={deploying || !scheduleDate || (deploySegmentCodes.length > 0 && deployLeadCount === 0)}
+                                  variant="outline"
+                                  className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                                >
+                                  <Clock className="mr-2 h-4 w-4" />
+                                  {deploying ? "Scheduling..." : `Schedule for ${deployLeadCount > 0 ? deployLeadCount : 'All'} Contact${deployLeadCount !== 1 ? 's' : ''}`}
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         )}
 
