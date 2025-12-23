@@ -164,9 +164,19 @@ serve(async (req) => {
     const hasValidServiceRole = authHeader?.startsWith("Bearer ") && 
                                  authHeader.slice(7) === serviceRoleKey;
 
+    // Debug: log first/last chars to help diagnose mismatches
+    console.log("Auth debug:", {
+      receivedPrefix: internalSecret?.slice(0, 4),
+      receivedSuffix: internalSecret?.slice(-4),
+      expectedPrefix: expectedSecret?.slice(0, 4),
+      expectedSuffix: expectedSecret?.slice(-4),
+      match: hasValidInternalSecret
+    });
+
     if (!hasValidInternalSecret && !hasValidServiceRole) {
       console.log("Unauthorized call to weekly-software-updates", {
         hasInternalSecret: !!internalSecret,
+        hasExpectedSecret: !!expectedSecret,
         hasAuthHeader: !!authHeader
       });
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
