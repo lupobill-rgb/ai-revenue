@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,14 +7,15 @@ const corsHeaders = {
 };
 
 interface TestEmailRequest {
-  recipients: string[];  // Array of email addresses
+  recipients: string[];
   subject: string;
   body: string;
+  workspaceId: string;
+  assetId?: string;
+  // Legacy support
+  to?: string;
   fromName?: string;
   fromAddress?: string;
-  assetId?: string;
-  // Legacy single recipient support
-  to?: string;
 }
 
 serve(async (req) => {
@@ -23,7 +25,15 @@ serve(async (req) => {
 
   try {
     const requestData: TestEmailRequest = await req.json();
-    const { recipients, subject, body, fromName, fromAddress, assetId, to } = requestData;
+    const { recipients, subject, body, workspaceId, assetId, to, fromName, fromAddress } = requestData;
+
+    // Validate workspaceId
+    if (!workspaceId) {
+      return new Response(
+        JSON.stringify({ error: "workspaceId is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Support both new array format and legacy single 'to' format
     let emailList: string[] = [];
@@ -40,7 +50,6 @@ serve(async (req) => {
       );
     }
 
-    // Limit to 20 recipients per test
     if (emailList.length > 20) {
       return new Response(
         JSON.stringify({ error: "Maximum 20 test recipients allowed" }),
@@ -56,27 +65,44 @@ serve(async (req) => {
       );
     }
 
-    const senderName = fromName || "UbiGrowth Test";
-    const senderAddress = fromAddress || "onboarding@resend.dev";
-    const emailSubject = subject || "Test Email from UbiGrowth";
+    // Initialize Supabase client to fetch workspace email settings
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Fetch workspace email settings
+    const { data: emailSettings, error: settingsError } = await supabase
+      .from("ai_settings_email")
+      .select("sender_name, from_address")
+      .eq("tenant_id", workspaceId)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error("[test-email] Error fetching email settings:", settingsError);
+    }
+
+    // Use workspace settings, fall back to provided values or defaults
+    let senderName = emailSettings?.sender_name || fromName || "UbiGrowth";
+    let senderAddress = emailSettings?.from_address || fromAddress || "onboarding@resend.dev";
+
+    // Validate that we have a proper from address (not the resend default unless no settings)
+    if (!emailSettings?.from_address && senderAddress === "onboarding@resend.dev") {
+      console.warn("[test-email] No custom email domain configured, using Resend default");
+    }
+
+    const emailSubject = subject || "Test Email";
     const emailBody = body || `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #1DA4FF;">Test Email</h1>
-        <p>This is a test email to verify your email configuration is working correctly.</p>
+        <h1>Test Email</h1>
+        <p>This is a test email to verify your email configuration.</p>
         <p>Sent at: ${new Date().toISOString()}</p>
-        <hr style="border: 1px solid #eee; margin: 20px 0;" />
-        <p style="color: #666; font-size: 12px;">
-          If you received this email, your email delivery is configured correctly.
-        </p>
       </div>
     `;
 
-    console.log(`[test-email] Sending test email to ${emailList.length} recipient(s) from ${senderName} <${senderAddress}>`);
-    if (assetId) {
-      console.log(`[test-email] Asset ID: ${assetId}`);
-    }
+    console.log(`[test-email] Sending to ${emailList.length} recipient(s) from ${senderName} <${senderAddress}>`);
+    console.log(`[test-email] Workspace: ${workspaceId}, Asset: ${assetId || 'N/A'}`);
 
-    // Send to all recipients using Resend API directly
+    // Send to all recipients
     const results = await Promise.allSettled(
       emailList.map(async (recipient) => {
         const response = await fetch("https://api.resend.com/emails", {
@@ -95,6 +121,7 @@ serve(async (req) => {
         
         if (!response.ok) {
           const errorData = await response.json();
+          console.error(`[test-email] Resend error for ${recipient}:`, errorData);
           throw new Error(errorData.message || `Failed to send to ${recipient}`);
         }
         
@@ -110,7 +137,7 @@ serve(async (req) => {
     if (failed.length > 0) {
       failed.forEach((f, i) => {
         if (f.status === 'rejected') {
-          console.error(`[test-email] Failed for recipient ${i}:`, f.reason);
+          console.error(`[test-email] Failed:`, f.reason);
         }
       });
     }
