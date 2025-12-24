@@ -157,6 +157,7 @@ const AppContent = () => {
         <Route path="/cro/deals/:id" element={<CRODealDetail />} />
         <Route path="/cro/recommendations" element={<CRORecommendations />} />
         <Route path="/outbound" element={<OutboundDashboard />} />
+        <Route path="/outbound/campaigns" element={<OutboundDashboard />} />
         <Route path="/outbound/campaigns/new" element={<OutboundCampaignBuilder />} />
         <Route path="/outbound/campaigns/:id" element={<OutboundCampaignDetail />} />
         <Route path="/outbound/linkedin-queue" element={<OutboundLinkedInQueue />} />
