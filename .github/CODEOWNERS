@@ -1,18 +1,8 @@
-# Code Owners
-# NOTE: GitHub requires repository settings to "Require review from Code Owners" for enforcement.
-#
-# Replace @YOUR_GH_HANDLE_OR_TEAM with the actual owner(s) for these areas.
+# Kernel governance ownership
 
-# Revenue OS Kernel Runtime (control plane) - requires explicit owner review
-/supabase/functions/_shared/revenue_os_kernel/** @YOUR_GH_HANDLE_OR_TEAM
-
-# Revenue OS Kernel boundary + schema (prevents bypassing via edges/migrations)
-/supabase/functions/revenue-os-*/** @YOUR_GH_HANDLE_OR_TEAM
-/supabase/migrations/*revenue_os* @YOUR_GH_HANDLE_OR_TEAM
-
-# Governance enforcement files (invariants + frozen contracts)
-/scripts/kernel-invariants.ts @YOUR_GH_HANDLE_OR_TEAM
-/docs/REVENUE_OS_KERNEL_CONTRACTS.md @YOUR_GH_HANDLE_OR_TEAM
-/tests/integration/revenue_os_kernel_contracts.test.ts @YOUR_GH_HANDLE_OR_TEAM
-
-
+supabase/functions/_shared/revenue_os_kernel/** @lupobill-rgb
+supabase/migrations/*revenue_os* @lupobill-rgb
+supabase/functions/revenue-os-*/** @lupobill-rgb
+scripts/kernel-invariants.ts @lupobill-rgb
+docs/REVENUE_OS_KERNEL_CONTRACTS.md @lupobill-rgb
+tests/integration/revenue_os_kernel_contracts.test.ts @lupobill-rgb
