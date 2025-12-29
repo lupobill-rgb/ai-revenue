@@ -254,6 +254,30 @@ serve(async (req) => {
     const updates = customUpdates.length > 0 ? customUpdates : await getLatestUpdates(supabase);
     console.log(`Found ${updates.length} updates for this week`);
 
+    // Fetch UbiGrowth workspace email settings
+    const { data: workspace } = await supabase
+      .from('workspaces')
+      .select('id, name')
+      .ilike('name', '%ubigrowth%')
+      .single();
+
+    let fromAddress = 'updates@ubigrowth.com';
+    let senderName = 'UbiGrowth AI';
+
+    if (workspace) {
+      const { data: emailSettings } = await supabase
+        .from('ai_settings_email')
+        .select('from_address, sender_name')
+        .eq('tenant_id', workspace.id)
+        .single();
+
+      if (emailSettings) {
+        fromAddress = emailSettings.from_address || fromAddress;
+        senderName = emailSettings.sender_name || senderName;
+      }
+    }
+    console.log(`Sending emails from: ${senderName} <${fromAddress}>`);
+
     const results: { email: string; success: boolean; error?: string }[] = [];
 
     // Send email to each user
@@ -273,7 +297,7 @@ serve(async (req) => {
         const defaultSubject = `📦 Weekly Platform Update - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
         
         const { error: emailError } = await resend.emails.send({
-          from: "UbiGrowth <updates@resend.dev>",
+          from: `${senderName} <${fromAddress}>`,
           to: [user.email],
           subject: customSubject || defaultSubject,
           html: emailHtml,
