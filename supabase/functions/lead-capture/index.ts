@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { verifyHmacSignature } from "../_shared/webhook.ts";
 import { checkRateLimits, rateLimitResponse, getClientIp } from "../_shared/rate-limit.ts";
+import { ingestKernelEvent } from "../_shared/revenue_os_kernel/runtime.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -217,33 +218,31 @@ serve(async (req) => {
       console.log("[lead-capture] Logged CRM activity for contact:", contactId);
     }
 
-    // Trigger kernel for next steps (automations, scoring, routing)
-    if (campaignId) {
-      try {
-        const { error: kernelError } = await supabaseClient.functions.invoke(
-          "cmo-kernel",
-          {
-            body: {
-              agent_name: "cmo_lead_router",
-              tenant_id: effectiveTenantId,
-              campaign_id: campaignId,
-              payload: {
-                contact_id: contactId,
-                lead_id: leadId,
-                source: leadSource,
-                utm: { utmSource, utmMedium, utmCampaign },
-              },
-            },
-          }
-        );
-        if (kernelError) {
-          console.warn("[lead-capture] Kernel lead router failed:", kernelError);
-        } else {
-          console.log("[lead-capture] Triggered cmo_lead_router for lead:", leadId);
-        }
-      } catch (kernelErr) {
-        console.warn("[lead-capture] Kernel call error:", kernelErr);
-      }
+    // Revenue OS Kernel (events -> decisions -> actions). No direct side effects from module.
+    try {
+      const kernelRes = await ingestKernelEvent(
+        supabaseClient,
+        {
+        tenant_id: effectiveTenantId,
+        type: "lead_captured",
+        source: "cmo_campaigns",
+        entity_type: "lead",
+        entity_id: leadId,
+        correlation_id: leadId, // stable trace id for this flow
+        payload: {
+          contact_id: contactId,
+          lead_id: leadId,
+          campaign_id: campaignId || null,
+          source: leadSource,
+          utm: { utm_source: utmSource, utm_medium: utmMedium, utm_campaign: utmCampaign },
+        },
+        },
+        { mode: "shadow" }
+      );
+      console.log("[lead-capture] Kernel ingested lead_captured:", kernelRes);
+    } catch (kernelErr) {
+      console.warn("[lead-capture] Kernel ingest error:", kernelErr);
+      // Non-blocking: lead capture must succeed even if kernel fails.
     }
 
     console.log(`[lead-capture] Successfully captured lead: ${email} for tenant ${effectiveTenantId}`);

@@ -1,0 +1,8 @@
+# Kernel governance ownership
+
+supabase/functions/_shared/revenue_os_kernel/** @lupobill-rgb
+supabase/migrations/*revenue_os* @lupobill-rgb
+supabase/functions/revenue-os-*/** @lupobill-rgb
+scripts/kernel-invariants.ts @lupobill-rgb
+docs/REVENUE_OS_KERNEL_CONTRACTS.md @lupobill-rgb
+tests/integration/revenue_os_kernel_contracts.test.ts @lupobill-rgb

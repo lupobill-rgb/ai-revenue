@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimits, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
+import { ingestKernelEvent } from "../_shared/revenue_os_kernel/runtime.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -226,31 +227,31 @@ Deno.serve(async (req) => {
       console.log("[landing-form-submit] Logged activity for contact:", contactId);
     }
 
-    // 7. Trigger kernel for next steps (automations, scoring, routing)
+    // Revenue OS Kernel (events -> decisions -> actions). No direct side effects from module.
     try {
-      const { error: kernelError } = await supabase.functions.invoke(
-        "cmo-kernel",
+      const kernelRes = await ingestKernelEvent(
+        supabase,
         {
-          body: {
-            agent_name: "cmo_lead_router",
-            tenant_id: tenantId,
-            campaign_id: campaignId,
-            payload: {
-              contact_id: contactId,
-              lead_id: leadId,
-              source: `landing_page:${payload.slug}`,
-              utm: payload.tracking || {},
-            },
+          tenant_id: tenantId,
+          type: "lead_captured",
+          source: "cmo_campaigns",
+          entity_type: "lead",
+          entity_id: leadId,
+          correlation_id: leadId,
+          payload: {
+            contact_id: contactId,
+            lead_id: leadId,
+            campaign_id: campaignId || null,
+            source: `landing_page:${payload.slug}`,
+            utm: payload.tracking || {},
           },
-        }
+        },
+        { mode: "shadow" }
       );
-      if (kernelError) {
-        console.warn("[landing-form-submit] Kernel lead router failed:", kernelError);
-      } else {
-        console.log("[landing-form-submit] Triggered cmo_lead_router for lead:", leadId);
-      }
+      console.log("[landing-form-submit] Kernel ingested lead_captured:", kernelRes);
     } catch (kernelErr) {
-      console.warn("[landing-form-submit] Kernel call error:", kernelErr);
+      console.warn("[landing-form-submit] Kernel ingest error:", kernelErr);
+      // Non-blocking: form submit must succeed even if kernel fails.
     }
 
     console.log("[landing-form-submit] Successfully processed form submission");

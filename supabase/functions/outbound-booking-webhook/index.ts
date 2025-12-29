@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { ingestKernelEvent } from "../_shared/revenue_os_kernel/runtime.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -137,6 +138,38 @@ serve(async (req) => {
         rationale: `Booked meeting: ${payload.event_name || "Call"}`,
         last_scored_at: new Date().toISOString(),
       }, { onConflict: "prospect_id" });
+
+      // Revenue OS Kernel golden path (FTS): booking_created -> decisions -> actions
+      try {
+        const bookingId = payload.calendar_event_id || sequenceRun?.id || prospect.id;
+        const kernelRes = await ingestKernelEvent(
+          supabase,
+          {
+            tenant_id: prospect.tenant_id,
+            type: "booking_created",
+            source: "fts_marketplace",
+            entity_type: "booking",
+            entity_id: bookingId,
+            correlation_id: bookingId,
+            payload: {
+              booking_id: bookingId,
+              prospect_id: prospect.id,
+              invitee_email: payload.invitee_email,
+              invitee_name: payload.invitee_name,
+              event_name: payload.event_name,
+              scheduled_at: payload.scheduled_at,
+              duration_minutes: payload.duration_minutes,
+              meeting_url: payload.meeting_url,
+              calendar_event_id: payload.calendar_event_id,
+              source: payload.source,
+            },
+          },
+          { mode: "shadow" }
+        );
+        console.log("[outbound-booking-webhook] Kernel ingested booking_created:", kernelRes);
+      } catch (kernelErr) {
+        console.warn("[outbound-booking-webhook] Kernel ingest error:", kernelErr);
+      }
     }
 
     return new Response(JSON.stringify({ 

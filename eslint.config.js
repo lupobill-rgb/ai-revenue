@@ -23,4 +23,17 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    // Revenue OS Kernel runtime boundary adapters: allow `any` only here.
+    // Policies + contract types remain strict.
+    files: [
+      "supabase/functions/_shared/revenue_os_kernel/dispatcher.ts",
+      "supabase/functions/_shared/revenue_os_kernel/event-bus.ts",
+      "supabase/functions/_shared/revenue_os_kernel/guard.ts",
+      "supabase/functions/_shared/revenue_os_kernel/runtime.ts",
+    ],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
 );

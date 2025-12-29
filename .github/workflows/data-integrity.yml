@@ -66,6 +66,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint (Kernel governance surface)
+        run: npm run lint:kernel
+
+      - name: Revenue OS Kernel Invariants (Hard Fail)
+        run: npm run check:kernel
+
+      - name: Revenue OS Kernel Contracts (Hard Fail)
+        run: npx vitest run tests/integration/revenue_os_kernel_contracts.test.ts --reporter=verbose
+
       - name: Run Unit Tests
         run: npx vitest run src/test/deal-source-isolation.test.ts --reporter=verbose
         # Unit tests will run, integration tests will be skipped (no env vars)

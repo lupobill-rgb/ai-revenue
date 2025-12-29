@@ -187,8 +187,29 @@ export function DealsPipeline({ workspaceId }: DealsPipelineProps) {
         updates.actual_close_date = new Date().toISOString().split('T')[0];
       }
 
-      const { error } = await supabase.from("deals").update(updates).eq("id", dealId);
-      if (error) throw error;
+      // Revenue OS guard boundary (no client-side enforcement).
+      const { data, error } = await supabase.functions.invoke("revenue-os-guard-deal-update", {
+        body: {
+          tenant_id: workspaceId,
+          deal_id: dealId,
+          updates,
+          override_ack: false,
+        },
+      });
+
+      if (error) {
+        // Surface policy reason if available (no new UI required).
+        const ctx: any = (error as any).context;
+        const guard = ctx?.body?.guard;
+        const reason = guard?.reason_text || error.message;
+        toast.error(reason);
+        return;
+      }
+
+      if (data?.allowed === false) {
+        toast.error(data?.guard?.reason_text || "Update blocked by policy");
+        return;
+      }
 
       toast.success("Deal updated");
       fetchDeals();
