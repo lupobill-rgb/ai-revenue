@@ -85,8 +85,8 @@ export async function runKernelGuard(
     if (guard) responses.push(guard);
   }
 
-  const strictest = responses.length ? pickStrictestGuard(responses) : {
-    result: "ALLOW",
+  const strictest: KernelGuardResponse = responses.length ? pickStrictestGuard(responses) : {
+    result: "ALLOW" as const,
     reason_code: "revenue_os.guard.no_guard_decision",
     reason_text: "No guard decision produced",
     override_required: false,

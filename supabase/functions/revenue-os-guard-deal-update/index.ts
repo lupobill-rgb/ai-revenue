@@ -149,7 +149,7 @@ serve(async (req) => {
           deal_close_attempted: closeGuardShadow,
         },
       }),
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("[revenue-os-guard-deal-update] Error:", error);

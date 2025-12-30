@@ -72,7 +72,7 @@ async function executeOutboundEmail(
     throw new Error("KERNEL_EMAIL_MISSING_RECIPIENT: no recipient_email resolved");
   }
 
-  const schedule = meta.schedule || { when: "now" };
+  const schedule = (meta.schedule || { when: "now" }) as { when?: string; anchor?: string; minutes_before?: number };
   const nowIso = ctx.now().toISOString();
   let scheduled_at: string | null = nowIso;
 
