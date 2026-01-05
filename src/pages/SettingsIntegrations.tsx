@@ -576,8 +576,13 @@ export default function SettingsIntegrations() {
         updated_at: new Date().toISOString(),
       };
 
+      console.log("[saveEmailSettings] tenantId:", tenantId);
+      console.log("[saveEmailSettings] payload:", payload);
+
       const changes = detectChanges(emailSettings || {}, payload);
       const isCreate = !emailSettings;
+
+      console.log("[saveEmailSettings] changes:", changes, "isCreate:", isCreate);
 
       if (Object.keys(changes).length === 0) {
         toast({ title: "No changes", description: "No changes were detected to save." });
@@ -585,11 +590,17 @@ export default function SettingsIntegrations() {
         return;
       }
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("ai_settings_email")
-        .upsert(payload, { onConflict: "tenant_id" });
+        .upsert(payload, { onConflict: "tenant_id" })
+        .select();
 
-      if (error) throw error;
+      console.log("[saveEmailSettings] upsert result:", { data, error });
+
+      if (error) {
+        console.error("[saveEmailSettings] upsert error:", error);
+        throw error;
+      }
 
       await logAuditEntry('email', changes, isCreate);
 
@@ -610,7 +621,12 @@ export default function SettingsIntegrations() {
         ),
       });
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      console.error("[saveEmailSettings] error:", error);
+      toast({ 
+        title: "Error saving email settings", 
+        description: error.message || "An unexpected error occurred", 
+        variant: "destructive" 
+      });
     } finally {
       setSaving(null);
     }
