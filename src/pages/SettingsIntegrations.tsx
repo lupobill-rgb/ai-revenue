@@ -311,20 +311,34 @@ export default function SettingsIntegrations() {
     setUserId(user.id);
 
     // Get workspace ID (user may be owner or member)
-    const { data: ownedWorkspace } = await supabase
+    // NOTE: user can have multiple workspaces, so avoid maybeSingle() without a LIMIT.
+    const { data: ownedWorkspace, error: ownedErr } = await supabase
       .from("workspaces")
       .select("id")
       .eq("owner_id", user.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
       .maybeSingle();
+
+    if (ownedErr) {
+      console.error("Failed to load owned workspace:", ownedErr);
+    }
 
     let workspaceId = ownedWorkspace?.id;
 
     if (!workspaceId) {
-      const { data: membership } = await supabase
+      const { data: membership, error: memberErr } = await supabase
         .from("workspace_members")
         .select("workspace_id")
         .eq("user_id", user.id)
+        .order("created_at", { ascending: true })
+        .limit(1)
         .maybeSingle();
+
+      if (memberErr) {
+        console.error("Failed to load workspace membership:", memberErr);
+      }
+
       workspaceId = membership?.workspace_id;
     }
 
