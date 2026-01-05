@@ -169,7 +169,7 @@ serve(async (req) => {
     // Fetch workspace email settings
     const { data: emailSettings, error: settingsError } = await supabase
       .from("ai_settings_email")
-      .select("sender_name, from_address")
+      .select("sender_name, from_address, reply_to_address")
       .eq("tenant_id", workspaceId)
       .maybeSingle();
 
@@ -192,6 +192,7 @@ serve(async (req) => {
 
     const senderName = emailSettings.sender_name || fromName || "Your Team";
     const senderAddress = emailSettings.from_address;
+    const replyToAddress = emailSettings.reply_to_address || senderAddress;
 
     const emailSubject = subject || "Test Email";
     const rawBody = body || "";
@@ -248,6 +249,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             from: `${senderName} <${senderAddress}>`,
+            reply_to: replyToAddress,
             to: [recipient],
             subject: `[TEST] ${personalizedSubject}`,
             html: personalizedHtml,
