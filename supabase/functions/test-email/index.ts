@@ -22,13 +22,11 @@ interface TestEmailRequest {
 function personalizeContent(content: string, lead: any): string {
   if (!content || !lead) return content;
 
-  // Handle location from multiple possible sources
-  const location =
-    lead.location || lead.city || lead.address || (lead.custom_fields?.location) || "";
+  // Handle location from custom_fields or vertical
+  const location = lead.vertical || (lead.custom_fields?.location) || (lead.custom_fields?.city) || "";
 
   // Handle industry from multiple sources
-  const industry =
-    lead.industry || lead.vertical || (lead.custom_fields?.industry) || "";
+  const industry = lead.industry || lead.vertical || (lead.custom_fields?.industry) || "";
 
   const replacements: Record<string, string> = {
     "{{first_name}}": lead.first_name || lead.name?.split(" ")[0] || "there",
@@ -70,7 +68,7 @@ serve(async (req) => {
     const { data: leadRows, error } = await supabase
       .from("leads")
       .select(
-        "email, first_name, last_name, company, industry, job_title, phone, city, custom_fields"
+        "email, first_name, last_name, company, industry, job_title, phone, vertical, custom_fields"
       )
       .eq("workspace_id", workspaceId)
       .in("email", lowerEmails);
