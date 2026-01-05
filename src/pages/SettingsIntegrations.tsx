@@ -553,7 +553,14 @@ export default function SettingsIntegrations() {
   };
 
   const saveEmailSettings = async () => {
-    if (!tenantId) return;
+    if (!tenantId) {
+      toast({ 
+        title: "Error", 
+        description: "Workspace not found. Please refresh the page.", 
+        variant: "destructive" 
+      });
+      return;
+    }
     setSaving("email");
 
     try {
