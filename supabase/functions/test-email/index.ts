@@ -21,19 +21,20 @@ interface TestEmailRequest {
 // Function to replace personalization tags with actual lead data (matches email-deploy)
 function personalizeContent(content: string, lead: any): string {
   if (!content || !lead) return content;
-  
+
   // Handle location from multiple possible sources
-  const location = lead.location || lead.city || lead.address || 
-    (lead.custom_fields?.location) || "";
-  
-  // Handle industry from multiple sources  
-  const industry = lead.industry || lead.vertical || 
-    (lead.custom_fields?.industry) || "";
-  
+  const location =
+    lead.location || lead.city || lead.address || (lead.custom_fields?.location) || "";
+
+  // Handle industry from multiple sources
+  const industry =
+    lead.industry || lead.vertical || (lead.custom_fields?.industry) || "";
+
   const replacements: Record<string, string> = {
     "{{first_name}}": lead.first_name || lead.name?.split(" ")[0] || "there",
     "{{last_name}}": lead.last_name || lead.name?.split(" ").slice(1).join(" ") || "",
-    "{{full_name}}": lead.name || `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || "there",
+    "{{full_name}}":
+      lead.name || `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || "there",
     "{{company}}": lead.company || "your company",
     "{{email}}": lead.email || "",
     "{{location}}": location,
@@ -44,9 +45,12 @@ function personalizeContent(content: string, lead: any): string {
 
   let personalizedContent = content;
   for (const [tag, value] of Object.entries(replacements)) {
-    personalizedContent = personalizedContent.replace(new RegExp(tag.replace(/[{}]/g, "\\$&"), "gi"), value);
+    personalizedContent = personalizedContent.replace(
+      new RegExp(tag.replace(/[{}]/g, "\\$&"), "gi"),
+      value
+    );
   }
-  
+
   return personalizedContent;
 }
 
@@ -55,9 +59,48 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Utility: ensure all recipients exist in CRM
+  const validateRecipientsInCRM = async (
+    supabase: any,
+    workspaceId: string,
+    emails: string[]
+  ): Promise<{ valid: string[]; missing: string[]; leads: Map<string, any> }> => {
+    const lowerEmails = emails.map((e) => e.toLowerCase());
+
+    const { data: leadRows, error } = await supabase
+      .from("leads")
+      .select(
+        "email, first_name, last_name, company, industry, job_title, phone, location, city, custom_fields"
+      )
+      .eq("workspace_id", workspaceId)
+      .in("email", lowerEmails);
+
+    if (error) {
+      console.error("[test-email] CRM lookup error:", error);
+    }
+
+    const leads = new Map<string, any>();
+    for (const l of leadRows || []) {
+      if (l?.email) leads.set(String(l.email).toLowerCase(), l);
+    }
+
+    const valid: string[] = [];
+    const missing: string[] = [];
+    for (const e of lowerEmails) {
+      if (leads.has(e)) {
+        valid.push(e);
+      } else {
+        missing.push(e);
+      }
+    }
+
+    return { valid, missing, leads };
+  };
+
   try {
     const requestData: TestEmailRequest & { provider?: string } = await req.json();
-    const { recipients, subject, body, workspaceId, assetId, to, fromName, fromAddress, provider } = requestData;
+    const { recipients, subject, body, workspaceId, assetId, to, fromName, fromAddress, provider } =
+      requestData;
 
     // Lightweight "provider test" mode (used by Settings → Providers)
     if (provider && (!recipients || recipients.length === 0) && !to) {
@@ -153,35 +196,36 @@ serve(async (req) => {
         .replaceAll("'", "&#039;");
 
     const looksLikeHtml = /<\w+[\s\S]*>/i.test(rawBody);
-    let emailBodyHtml = looksLikeHtml
+    const emailBodyHtml = looksLikeHtml
       ? rawBody
       : `<div style="font-family: Arial, sans-serif; white-space: pre-wrap; line-height: 1.5;">${escapeHtml(
           rawBody
         )}</div>`;
 
-    // Pull CRM lead data for each recipient (so {{first_name}} matches the recipient)
-    const { data: leadRows, error: leadsError } = await supabase
-      .from("leads")
-      .select("email, first_name, last_name, name, company, industry, job_title, phone, location, city, custom_fields")
-      .eq("workspace_id", workspaceId)
-      .in("email", emailList);
+    // Validate all recipients exist in CRM (enforced server-side for all tenants)
+    const { valid: validRecipients, missing: missingRecipients, leads: leadByEmail } =
+      await validateRecipientsInCRM(supabase, workspaceId, emailList);
 
-    if (leadsError) {
-      console.error("[test-email] Error fetching leads:", leadsError);
-    }
-
-    const leadByEmail = new Map<string, any>();
-    for (const l of leadRows || []) {
-      if (l?.email) leadByEmail.set(String(l.email).toLowerCase(), l);
+    if (missingRecipients.length > 0) {
+      console.log(`[test-email] Rejected non-CRM emails: ${missingRecipients.join(", ")}`);
+      return new Response(
+        JSON.stringify({
+          error: `The following email(s) are not in your CRM: ${missingRecipients.join(
+            ", "
+          )}. Please add them as contacts first.`,
+          missingContacts: missingRecipients,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     console.log(
-      `[test-email] Sending to ${emailList.length} recipient(s) from ${senderName} <${senderAddress}> (workspace: ${workspaceId}, asset: ${assetId || "N/A"})`
+      `[test-email] Sending to ${validRecipients.length} CRM recipient(s) from ${senderName} <${senderAddress}> (workspace: ${workspaceId}, asset: ${assetId || "N/A"})`
     );
 
-    // Send to all recipients (personalized per recipient)
+    // Send to all validated CRM recipients (personalized per recipient)
     const results = await Promise.allSettled(
-      emailList.map(async (recipient) => {
+      validRecipients.map(async (recipient) => {
         const lead = leadByEmail.get(recipient.toLowerCase()) || {};
         const personalizedSubject = personalizeContent(emailSubject, lead);
         const personalizedHtml = personalizeContent(emailBodyHtml, lead);
@@ -220,7 +264,7 @@ serve(async (req) => {
         success: true,
         sentCount: successful.length,
         failedCount: failed.length,
-        recipients: emailList,
+        recipients: validRecipients,
         from: `${senderName} <${senderAddress}>`,
         subject: `[TEST] ${emailSubject}`,
         personalizedWith: "per-recipient CRM match",

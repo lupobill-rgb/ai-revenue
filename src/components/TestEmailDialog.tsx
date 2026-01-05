@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Send, Plus, X, Loader2, Mail } from "lucide-react";
+import { Send, Plus, X, Loader2, Mail, AlertTriangle, UserPlus, Check } from "lucide-react";
 
 interface TestEmailDialogProps {
   open: boolean;
@@ -26,17 +26,26 @@ interface EmailSettings {
   reply_to_address: string;
 }
 
+interface CRMContact {
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+}
+
 export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: TestEmailDialogProps) {
   const { toast } = useToast();
   const [sending, setSending] = useState(false);
   const [testEmails, setTestEmails] = useState<string[]>([""]);
   const [emailSettings, setEmailSettings] = useState<EmailSettings | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
+  const [crmContacts, setCrmContacts] = useState<CRMContact[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
 
-  // Fetch email settings when dialog opens
+  // Fetch email settings and CRM contacts when dialog opens
   useEffect(() => {
     if (open && workspaceId) {
       fetchEmailSettings();
+      fetchCRMContacts();
     }
   }, [open, workspaceId]);
 
@@ -61,6 +70,31 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
     }
   };
 
+  const fetchCRMContacts = async () => {
+    setLoadingContacts(true);
+    try {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("email, first_name, last_name")
+        .eq("workspace_id", workspaceId)
+        .not("email", "is", null)
+        .order("first_name", { ascending: true });
+
+      if (error) throw error;
+
+      setCrmContacts(data || []);
+    } catch (error) {
+      console.error("Error fetching CRM contacts:", error);
+    } finally {
+      setLoadingContacts(false);
+    }
+  };
+
+  // Build a set of valid CRM emails (lowercase for comparison)
+  const crmEmailSet = useMemo(() => {
+    return new Set(crmContacts.map((c) => c.email?.toLowerCase()).filter(Boolean));
+  }, [crmContacts]);
+
   const addEmailField = () => {
     if (testEmails.length < 10) {
       setTestEmails([...testEmails, ""]);
@@ -79,20 +113,35 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
     setTestEmails(updated);
   };
 
+  // Validate emails: must be valid format AND exist in CRM
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   const validateEmails = () => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const validEmails = testEmails.filter(e => e.trim() && emailRegex.test(e.trim()));
-    return validEmails;
+    return testEmails
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => e && emailRegex.test(e) && crmEmailSet.has(e));
   };
+
+  const getEmailStatus = (email: string): "valid" | "invalid" | "not_in_crm" | "empty" => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed) return "empty";
+    if (!emailRegex.test(trimmed)) return "invalid";
+    if (!crmEmailSet.has(trimmed)) return "not_in_crm";
+    return "valid";
+  };
+
+  const nonCrmEmails = testEmails
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e && emailRegex.test(e) && !crmEmailSet.has(e));
 
   const handleSendTest = async () => {
     const validEmails = validateEmails();
-    
+
     if (validEmails.length === 0) {
       toast({
         variant: "destructive",
-        title: "No Valid Emails",
-        description: "Please enter at least one valid email address",
+        title: "No Valid CRM Contacts",
+        description: "Please enter email addresses of contacts that exist in your CRM.",
       });
       return;
     }
@@ -121,7 +170,6 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
         </div>
       `;
 
-      // Send workspaceId so backend fetches the user's configured email settings
       const { data, error } = await supabase.functions.invoke("test-email", {
         body: {
           recipients: validEmails,
@@ -134,9 +182,13 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
 
       if (error) throw error;
 
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
       toast({
         title: "Test Emails Sent",
-        description: `Successfully sent to ${data.sentCount || validEmails.length} recipient(s)`,
+        description: `Successfully sent to ${data.sentCount || validEmails.length} CRM contact(s)`,
       });
 
       onOpenChange(false);
@@ -152,6 +204,12 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
     }
   };
 
+  const getContactName = (email: string): string | null => {
+    const contact = crmContacts.find((c) => c.email?.toLowerCase() === email.trim().toLowerCase());
+    if (!contact) return null;
+    return contact.first_name || null;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
@@ -161,7 +219,7 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
             Send Test Email
           </DialogTitle>
           <DialogDescription>
-            Send a test version of "{asset.name}" to verify before deploying.
+            Send a test version of "{asset.name}" to CRM contacts to verify personalization.
           </DialogDescription>
         </DialogHeader>
 
@@ -169,7 +227,7 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
           {/* FROM Section */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">From</Label>
-            
+
             {loadingSettings ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -197,46 +255,102 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
           {/* TO Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">To (Test Recipients)</Label>
+              <Label className="text-sm font-medium">To (CRM Contacts Only)</Label>
               <Badge variant="secondary" className="text-xs">
                 {validateEmails().length} valid
               </Badge>
             </div>
-            
-            <div className="space-y-2">
-              {testEmails.map((email, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => updateEmail(index, e.target.value)}
-                    placeholder="email@example.com"
-                    className="flex-1"
-                  />
-                  {testEmails.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeEmailField(index)}
-                      className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
 
-            {testEmails.length < 10 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={addEmailField}
-                className="w-full"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Another Recipient
-              </Button>
+            {loadingContacts ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading CRM contacts...
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {testEmails.map((email, index) => {
+                    const status = getEmailStatus(email);
+                    const contactName = status === "valid" ? getContactName(email) : null;
+
+                    return (
+                      <div key={index} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <Input
+                              type="email"
+                              value={email}
+                              onChange={(e) => updateEmail(index, e.target.value)}
+                              placeholder="Enter CRM contact email..."
+                              className={`flex-1 pr-8 ${
+                                status === "not_in_crm"
+                                  ? "border-amber-500 focus-visible:ring-amber-500"
+                                  : status === "invalid"
+                                  ? "border-destructive focus-visible:ring-destructive"
+                                  : status === "valid"
+                                  ? "border-green-500 focus-visible:ring-green-500"
+                                  : ""
+                              }`}
+                            />
+                            {status === "valid" && (
+                              <Check className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500" />
+                            )}
+                            {status === "not_in_crm" && (
+                              <AlertTriangle className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-500" />
+                            )}
+                          </div>
+                          {testEmails.length > 1 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeEmailField(index)}
+                              className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        {status === "valid" && contactName && (
+                          <p className="text-xs text-green-600 pl-1">
+                            ✓ Will personalize as "{contactName}"
+                          </p>
+                        )}
+                        {status === "not_in_crm" && (
+                          <p className="text-xs text-amber-600 pl-1">
+                            This email is not in your CRM
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {testEmails.length < 10 && (
+                  <Button variant="outline" size="sm" onClick={addEmailField} className="w-full">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Another Recipient
+                  </Button>
+                )}
+
+                {/* Warning for non-CRM emails */}
+                {nonCrmEmails.length > 0 && (
+                  <Alert variant="default" className="border-amber-200 bg-amber-50">
+                    <UserPlus className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-800">
+                      <strong>Add contacts first:</strong> Test emails can only be sent to contacts in your CRM so personalization tags (like {"{{first_name}}"}) work correctly.
+                      <br />
+                      <a href="/crm" className="underline font-medium hover:text-amber-900">
+                        Go to CRM → Add these contacts
+                      </a>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Info about CRM contacts */}
+                <p className="text-xs text-muted-foreground">
+                  {crmContacts.length} contact{crmContacts.length !== 1 ? "s" : ""} available in your CRM
+                </p>
+              </>
             )}
           </div>
 
@@ -244,9 +358,7 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
           <div className="space-y-2">
             <Label className="text-sm font-medium">Subject</Label>
             <div className="rounded-lg border bg-muted/50 p-3">
-              <p className="text-sm">
-                {asset.content?.subject || `Test: ${asset.name}`}
-              </p>
+              <p className="text-sm">{asset.content?.subject || `Test: ${asset.name}`}</p>
             </div>
           </div>
         </div>
@@ -257,7 +369,7 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
           </Button>
           <Button
             onClick={handleSendTest}
-            disabled={sending || validateEmails().length === 0}
+            disabled={sending || validateEmails().length === 0 || loadingContacts}
             className="bg-primary"
           >
             {sending ? (
