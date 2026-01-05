@@ -7,8 +7,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Expected CNAME target for custom domains
-const EXPECTED_CNAME_TARGET = "campaigns.ubigrowth.ai";
+// Expected CNAME target for custom domains - configurable via env var
+// If not set, verification will just confirm that a CNAME or A record exists
+const EXPECTED_CNAME_TARGET = Deno.env.get("LANDING_PAGE_CNAME_TARGET") || "";
 
 interface DnsRecord {
   type: number;
@@ -98,7 +99,7 @@ serve(async (req) => {
       );
     }
 
-    // Check if there are CNAME records pointing to our target
+    // Check if there are CNAME or A records
     let verified = false;
     let foundCname = "";
     let statusMessage = "";
@@ -111,27 +112,40 @@ serve(async (req) => {
         foundCname = cnameRecord.data.replace(/\.$/, ""); // Remove trailing dot
         console.log(`Found CNAME: ${foundCname}`);
         
-        // Check if it points to our expected target
-        if (foundCname.toLowerCase() === EXPECTED_CNAME_TARGET.toLowerCase()) {
-          verified = true;
-          statusMessage = `✓ Domain verified! CNAME correctly points to ${EXPECTED_CNAME_TARGET}`;
+        // If a target is configured, check if it matches
+        // Otherwise, just verify that a valid CNAME exists
+        if (EXPECTED_CNAME_TARGET) {
+          if (foundCname.toLowerCase() === EXPECTED_CNAME_TARGET.toLowerCase()) {
+            verified = true;
+            statusMessage = `✓ Domain verified! CNAME correctly points to ${EXPECTED_CNAME_TARGET}`;
+          } else {
+            statusMessage = `CNAME record found pointing to ${foundCname}. Expected: ${EXPECTED_CNAME_TARGET}`;
+          }
         } else {
-          statusMessage = `CNAME record found but points to ${foundCname} instead of ${EXPECTED_CNAME_TARGET}`;
+          // No specific target configured - just verify CNAME exists
+          verified = true;
+          statusMessage = `✓ Domain verified! CNAME points to ${foundCname}`;
         }
       } else {
-        // Check if there's an A record (sometimes CNAME is resolved to A)
+        // Check if there's an A record
         const aRecord = dnsData.Answer.find((record) => record.type === 1);
         if (aRecord) {
-          statusMessage = `Found A record (${aRecord.data}) but no CNAME. Please add a CNAME record pointing to ${EXPECTED_CNAME_TARGET}`;
+          // A record found - this is also valid for custom domains
+          verified = true;
+          statusMessage = `✓ Domain verified! A record points to ${aRecord.data}`;
         } else {
-          statusMessage = `No CNAME record found. Please add a CNAME record pointing to ${EXPECTED_CNAME_TARGET}`;
+          statusMessage = EXPECTED_CNAME_TARGET 
+            ? `No CNAME record found. Please add a CNAME record pointing to ${EXPECTED_CNAME_TARGET}`
+            : `No CNAME or A record found. Please configure DNS for this domain.`;
         }
       }
     } else if (dnsData.Status === 3) {
       // NXDOMAIN - domain doesn't exist
       statusMessage = `Domain ${domain} not found in DNS. Please check if the domain is configured correctly.`;
     } else {
-      statusMessage = `No DNS records found. Please add a CNAME record pointing to ${EXPECTED_CNAME_TARGET}`;
+      statusMessage = EXPECTED_CNAME_TARGET
+        ? `No DNS records found. Please add a CNAME record pointing to ${EXPECTED_CNAME_TARGET}`
+        : `No DNS records found. Please configure DNS for this domain.`;
     }
 
     // If verified and tenantId provided, update the database

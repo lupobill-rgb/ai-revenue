@@ -46,7 +46,7 @@ interface DomainSettingsCardProps {
   formatChangesList: (changes: Record<string, { old: any; new: any }>) => string[];
 }
 
-const EXPECTED_CNAME_TARGET = "campaigns.ubigrowth.ai";
+// DNS verification is now handled server-side without hardcoded target
 
 export function DomainSettingsCard({
   domain,
@@ -222,18 +222,12 @@ export function DomainSettingsCard({
         <div className="bg-muted/50 rounded-lg p-4 space-y-3">
           <p className="text-sm font-medium">DNS Configuration</p>
           <p className="text-sm text-muted-foreground">
-            Add a CNAME record pointing your subdomain to our servers:
+            Configure your domain's DNS to point to your production server. You can use either:
           </p>
-          <div className="flex items-center gap-2 bg-background rounded border px-3 py-2">
-            <code className="text-sm flex-1">{EXPECTED_CNAME_TARGET}</code>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => copyToClipboard(EXPECTED_CNAME_TARGET)}
-            >
-              <Copy className="h-4 w-4" />
-            </Button>
-          </div>
+          <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1 mt-2">
+            <li><strong>CNAME record</strong>: Point to your production domain</li>
+            <li><strong>A record</strong>: Point to your server's IP address</li>
+          </ul>
 
           <div className="pt-2">
             <Button
@@ -276,9 +270,9 @@ export function DomainSettingsCard({
             <ol className="list-decimal list-inside space-y-1">
               <li>Log in to your domain registrar (GoDaddy, Namecheap, Cloudflare, etc.)</li>
               <li>Navigate to DNS settings for <strong>{domain.split('.').slice(-2).join('.')}</strong></li>
-              <li>Add a new <strong>CNAME</strong> record</li>
+              <li>Add a <strong>CNAME</strong> or <strong>A</strong> record for your subdomain</li>
               <li>Set the <strong>Name/Host</strong> to: <code className="bg-muted px-1 rounded">{domain.split('.')[0]}</code></li>
-              <li>Set the <strong>Value/Target</strong> to: <code className="bg-muted px-1 rounded">{EXPECTED_CNAME_TARGET}</code></li>
+              <li>Point it to your production domain or server IP</li>
               <li>Save and wait 5-30 minutes for DNS propagation</li>
               <li>Click "Verify Domain Now" above</li>
             </ol>
