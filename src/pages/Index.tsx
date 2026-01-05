@@ -341,6 +341,14 @@ const Index = () => {
               <a href="#" className="hover:text-foreground transition-colors tracking-wide">
                 Documentation
               </a>
+              <a
+                href="https://www.ubigrowth.ai/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-foreground transition-colors tracking-wide"
+              >
+                Privacy
+              </a>
               <button onClick={() => navigate("/login")} className="hover:text-foreground transition-colors tracking-wide">
                 Login
               </button>
