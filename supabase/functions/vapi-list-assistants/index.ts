@@ -37,11 +37,38 @@ serve(async (req) => {
       );
     }
 
+    // Get workspace ID for user (tenant_id is the workspace_id)
+    let tenantId = null;
+
+    // Check if user owns a workspace
+    const { data: ownedWorkspace } = await supabase
+      .from('workspaces')
+      .select('id')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    tenantId = ownedWorkspace?.id;
+
+    // If no owned workspace, check membership
+    if (!tenantId) {
+      const { data: membership } = await supabase
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      tenantId = membership?.workspace_id;
+    }
+
     // Get tenant-specific VAPI key from ai_settings_voice
     const { data: voiceSettings, error: settingsError } = await supabase
       .from('ai_settings_voice')
       .select('vapi_private_key')
-      .eq('tenant_id', user.id)
+      .eq('tenant_id', tenantId)
       .maybeSingle();
 
     let vapiPrivateKey = voiceSettings?.vapi_private_key;

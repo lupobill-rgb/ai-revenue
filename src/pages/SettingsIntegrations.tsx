@@ -214,9 +214,19 @@ export default function SettingsIntegrations() {
   const [testingSmtp, setTestingSmtp] = useState(false);
   const [testingCalendar, setTestingCalendar] = useState(false);
   const [testingStripe, setTestingStripe] = useState(false);
+  const [testingLinkedIn, setTestingLinkedIn] = useState(false);
+  const [testingVapi, setTestingVapi] = useState(false);
+  const [testingElevenLabs, setTestingElevenLabs] = useState(false);
+  const [testingDomain, setTestingDomain] = useState(false);
+  const [testingSocial, setTestingSocial] = useState<string | null>(null);
   const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [calendarTestResult, setCalendarTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [stripeTestResult, setStripeTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [linkedInTestResult, setLinkedInTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [vapiTestResult, setVapiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [elevenLabsTestResult, setElevenLabsTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [domainTestResult, setDomainTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [socialTestResults, setSocialTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
 
   // Gmail OAuth state
   const [gmailConnected, setGmailConnected] = useState(false);
@@ -1224,6 +1234,184 @@ export default function SettingsIntegrations() {
     }
   };
 
+  const testLinkedInProfile = async () => {
+    if (!linkedinProfileUrl) {
+      toast({ title: "Missing URL", description: "Please enter your LinkedIn profile URL", variant: "destructive" });
+      return;
+    }
+    
+    setTestingLinkedIn(true);
+    setLinkedInTestResult(null);
+    
+    try {
+      // Validate URL format
+      const url = new URL(linkedinProfileUrl);
+      const isLinkedIn = url.hostname.includes('linkedin.com');
+      const hasProfile = url.pathname.includes('/in/') || url.pathname.includes('/company/');
+      
+      if (!isLinkedIn) {
+        setLinkedInTestResult({ success: false, message: "Not a valid LinkedIn URL" });
+        toast({ title: "Invalid URL", description: "Please enter a linkedin.com URL", variant: "destructive" });
+        return;
+      }
+
+      if (!hasProfile) {
+        setLinkedInTestResult({ success: false, message: "URL should point to a profile (/in/) or company (/company/)" });
+        toast({ title: "Invalid Profile URL", description: "URL should contain /in/yourname or /company/name", variant: "destructive" });
+        return;
+      }
+
+      setLinkedInTestResult({ success: true, message: `Valid LinkedIn profile URL detected` });
+      toast({ title: "LinkedIn URL Valid", description: "Profile URL format is correct" });
+    } catch (error: any) {
+      setLinkedInTestResult({ success: false, message: "Invalid URL format" });
+      toast({ title: "Invalid URL", description: "Please enter a valid URL", variant: "destructive" });
+    } finally {
+      setTestingLinkedIn(false);
+    }
+  };
+
+  const testVapiConnection = async () => {
+    if (!vapiPrivateKey) {
+      toast({ title: "Missing Key", description: "Please enter your VAPI Private Key", variant: "destructive" });
+      return;
+    }
+    
+    setTestingVapi(true);
+    setVapiTestResult(null);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('vapi-list-assistants');
+      
+      if (error) throw error;
+      
+      if (data?.assistants) {
+        setVapiTestResult({ success: true, message: `Connected - ${data.assistants.length} assistants found` });
+        setVapiAssistants(data.assistants);
+        toast({ title: "VAPI Connected", description: `Found ${data.assistants.length} assistants` });
+      } else if (data?.error) {
+        throw new Error(data.error);
+      }
+    } catch (error: any) {
+      const message = error.message || "Connection failed";
+      setVapiTestResult({ success: false, message });
+      toast({ title: "VAPI Connection Failed", description: message, variant: "destructive" });
+    } finally {
+      setTestingVapi(false);
+    }
+  };
+
+  const testElevenLabsConnection = async () => {
+    if (!elevenlabsApiKey) {
+      toast({ title: "Missing Key", description: "Please enter your ElevenLabs API Key", variant: "destructive" });
+      return;
+    }
+    
+    setTestingElevenLabs(true);
+    setElevenLabsTestResult(null);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('elevenlabs-test-connection', {
+        body: { tenantId }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.success) {
+        setElevenLabsTestResult({ success: true, message: data.message });
+        toast({ title: "ElevenLabs Connected", description: data.message });
+      } else {
+        throw new Error(data?.error || data?.message || "Connection failed");
+      }
+    } catch (error: any) {
+      const message = error.message || "Connection failed";
+      setElevenLabsTestResult({ success: false, message });
+      toast({ title: "ElevenLabs Connection Failed", description: message, variant: "destructive" });
+    } finally {
+      setTestingElevenLabs(false);
+    }
+  };
+
+  const testDomainDns = async () => {
+    if (!domain) {
+      toast({ title: "Missing Domain", description: "Please enter a domain", variant: "destructive" });
+      return;
+    }
+    
+    setTestingDomain(true);
+    setDomainTestResult(null);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-domain-dns', {
+        body: { domain, tenantId }
+      });
+      
+      if (error) throw error;
+      
+      setDomainTestResult({ success: data.verified, message: data.message });
+      
+      if (data.verified) {
+        // Update local state to reflect verification
+        setDomainSettings(prev => prev ? { ...prev, cname_verified: true } : prev);
+        toast({ title: "Domain Verified", description: data.message });
+      } else {
+        toast({ title: "Domain Not Verified", description: data.message, variant: "destructive" });
+      }
+    } catch (error: any) {
+      const message = error.message || "Verification failed";
+      setDomainTestResult({ success: false, message });
+      toast({ title: "Verification Failed", description: message, variant: "destructive" });
+    } finally {
+      setTestingDomain(false);
+    }
+  };
+
+  const testSocialConnection = async (platform: string) => {
+    const tokenData = socialTokens[platform];
+    if (!tokenData?.token) {
+      toast({ title: "Missing Token", description: `Please enter an access token for ${platform}`, variant: "destructive" });
+      return;
+    }
+    
+    setTestingSocial(platform);
+    setSocialTestResults(prev => ({ ...prev, [platform]: { success: false, message: "Testing..." } }));
+    
+    try {
+      // First save the token, then test
+      await saveSocialIntegration(platform);
+      
+      const { data, error } = await supabase.functions.invoke('social-test-connection', {
+        body: { platform }
+      });
+      
+      if (error) throw error;
+      
+      const result = { success: data.success, message: data.message || data.error };
+      setSocialTestResults(prev => ({ ...prev, [platform]: result }));
+      
+      if (data.success) {
+        // Refresh integrations to get updated account info
+        const { data: refreshed } = await supabase
+          .from("social_integrations")
+          .select("*")
+          .eq("workspace_id", tenantId);
+        
+        if (refreshed) {
+          setSocialIntegrations(refreshed as SocialIntegration[]);
+        }
+        toast({ title: `${platform} Connected`, description: data.message });
+      } else {
+        toast({ title: `${platform} Connection Failed`, description: data.error || data.message, variant: "destructive" });
+      }
+    } catch (error: any) {
+      const message = error.message || "Connection test failed";
+      setSocialTestResults(prev => ({ ...prev, [platform]: { success: false, message } }));
+      toast({ title: "Test Failed", description: message, variant: "destructive" });
+    } finally {
+      setTestingSocial(null);
+    }
+  };
+
   if (loading) {
     return (
       <ProtectedRoute>
@@ -1706,6 +1894,22 @@ export default function SettingsIntegrations() {
                           value={linkedinProfileUrl}
                           onChange={(e) => setLinkedinProfileUrl(e.target.value)}
                         />
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={testLinkedInProfile}
+                            disabled={testingLinkedIn || !linkedinProfileUrl}
+                          >
+                            {testingLinkedIn ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                            Validate URL
+                          </Button>
+                          {linkedInTestResult && (
+                            <span className={`text-sm ${linkedInTestResult.success ? "text-green-600" : "text-destructive"}`}>
+                              {linkedInTestResult.success ? "✓ " : "✕ "}{linkedInTestResult.message}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1798,6 +2002,22 @@ export default function SettingsIntegrations() {
                         </div>
                       </div>
 
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="outline" 
+                          onClick={testCalendarUrl}
+                          disabled={testingCalendar || !bookingUrl}
+                        >
+                          {testingCalendar ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                          Test Booking URL
+                        </Button>
+                        {calendarTestResult && (
+                          <span className={`text-sm ${calendarTestResult.success ? "text-green-600" : "text-destructive"}`}>
+                            {calendarTestResult.success ? "✓ " : "✕ "}{calendarTestResult.message}
+                          </span>
+                        )}
+                      </div>
+
                       <Separator />
 
                       <div className="flex items-center justify-between">
@@ -1854,6 +2074,11 @@ export default function SettingsIntegrations() {
                         <p className="text-xs text-muted-foreground">
                           Receives events when emails are sent, opened, clicked, or replied to.
                         </p>
+                      </div>
+
+                      <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground mb-1">Webhook Testing</p>
+                        <p>After saving your webhook URLs, use a service like <a href="https://webhook.site" target="_blank" rel="noopener noreferrer" className="text-primary underline">webhook.site</a> or <a href="https://requestbin.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">RequestBin</a> to test and debug your webhook endpoints.</p>
                       </div>
 
                       <Separator />
@@ -1933,6 +2158,20 @@ export default function SettingsIntegrations() {
                             Used for creating and managing assistants
                           </p>
                         </div>
+                        <Button 
+                          variant="outline" 
+                          onClick={testVapiConnection}
+                          disabled={testingVapi || !vapiPrivateKey}
+                          className="w-full sm:w-auto"
+                        >
+                          {testingVapi ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                          Test VAPI Connection
+                        </Button>
+                        {vapiTestResult && (
+                          <div className={`p-3 rounded-lg text-sm ${vapiTestResult.success ? "bg-green-500/10 text-green-700" : "bg-destructive/10 text-destructive"}`}>
+                            {vapiTestResult.message}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
 
@@ -1990,6 +2229,20 @@ export default function SettingsIntegrations() {
                             </Select>
                           </div>
                         </div>
+                        <Button 
+                          variant="outline" 
+                          onClick={testElevenLabsConnection}
+                          disabled={testingElevenLabs || !elevenlabsApiKey}
+                          className="w-full sm:w-auto"
+                        >
+                          {testingElevenLabs ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                          Test ElevenLabs Connection
+                        </Button>
+                        {elevenLabsTestResult && (
+                          <div className={`p-3 rounded-lg text-sm ${elevenLabsTestResult.success ? "bg-green-500/10 text-green-700" : "bg-destructive/10 text-destructive"}`}>
+                            {elevenLabsTestResult.message}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
 
@@ -2180,6 +2433,22 @@ export default function SettingsIntegrations() {
                             Mark as connected
                           </Label>
                         </div>
+                        
+                        <div className="flex items-center gap-2 mt-4">
+                          <Button 
+                            variant="outline" 
+                            onClick={testStripeConnection}
+                            disabled={testingStripe || !stripePublishableKey}
+                          >
+                            {testingStripe ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                            Test Stripe Keys
+                          </Button>
+                          {stripeTestResult && (
+                            <span className={`text-sm ${stripeTestResult.success ? "text-green-600" : "text-destructive"}`}>
+                              {stripeTestResult.success ? "✓ " : "✕ "}{stripeTestResult.message}
+                            </span>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
 
@@ -2277,7 +2546,26 @@ export default function SettingsIntegrations() {
                                 </div>
                               </div>
                               
-                              <div className="flex justify-end">
+                              {socialTestResults[platform.id] && (
+                                <div className={`p-2 rounded text-sm ${socialTestResults[platform.id].success ? "bg-green-500/10 text-green-700" : "bg-destructive/10 text-destructive"}`}>
+                                  {socialTestResults[platform.id].message}
+                                </div>
+                              )}
+                              
+                              <div className="flex justify-end gap-2">
+                                <Button 
+                                  variant="outline"
+                                  size="sm" 
+                                  onClick={() => testSocialConnection(platform.id)}
+                                  disabled={testingSocial === platform.id || !tokenData.token}
+                                >
+                                  {testingSocial === platform.id ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                                  )}
+                                  Test Connection
+                                </Button>
                                 <Button 
                                   size="sm" 
                                   onClick={() => saveSocialIntegration(platform.id)}
