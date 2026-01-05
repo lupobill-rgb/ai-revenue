@@ -18,6 +18,38 @@ interface TestEmailRequest {
   fromAddress?: string;
 }
 
+// Function to replace personalization tags with actual lead data (matches email-deploy)
+function personalizeContent(content: string, lead: any): string {
+  if (!content || !lead) return content;
+  
+  // Handle location from multiple possible sources
+  const location = lead.location || lead.city || lead.address || 
+    (lead.custom_fields?.location) || "";
+  
+  // Handle industry from multiple sources  
+  const industry = lead.industry || lead.vertical || 
+    (lead.custom_fields?.industry) || "";
+  
+  const replacements: Record<string, string> = {
+    "{{first_name}}": lead.first_name || lead.name?.split(" ")[0] || "there",
+    "{{last_name}}": lead.last_name || lead.name?.split(" ").slice(1).join(" ") || "",
+    "{{full_name}}": lead.name || `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || "there",
+    "{{company}}": lead.company || "your company",
+    "{{email}}": lead.email || "",
+    "{{location}}": location,
+    "{{industry}}": industry,
+    "{{title}}": lead.title || lead.job_title || "",
+    "{{phone}}": lead.phone || "",
+  };
+
+  let personalizedContent = content;
+  for (const [tag, value] of Object.entries(replacements)) {
+    personalizedContent = personalizedContent.replace(new RegExp(tag.replace(/[{}]/g, "\\$&"), "gi"), value);
+  }
+  
+  return personalizedContent;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -91,7 +123,7 @@ serve(async (req) => {
     }
 
     const emailSubject = subject || "Test Email";
-    const emailBody = body || `
+    let emailBody = body || `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h1>Test Email</h1>
         <p>This is a test email to verify your email configuration.</p>
@@ -99,8 +131,30 @@ serve(async (req) => {
       </div>
     `;
 
+    // Fetch a sample lead from CRM for personalization preview
+    let sampleLead: any = null;
+    const { data: leads, error: leadsError } = await supabase
+      .from("leads")
+      .select("id, first_name, last_name, name, email, company, industry, job_title, phone, location, city, custom_fields")
+      .eq("workspace_id", workspaceId)
+      .not("first_name", "is", null)
+      .limit(1);
+
+    if (!leadsError && leads && leads.length > 0) {
+      sampleLead = leads[0];
+      console.log(`[test-email] Using sample lead for personalization: ${sampleLead.first_name} ${sampleLead.last_name || ""}`);
+    } else {
+      console.log("[test-email] No leads found in CRM, using default personalization fallbacks");
+    }
+
+    // Personalize subject and body with sample lead data
+    const personalizedSubject = personalizeContent(emailSubject, sampleLead || {});
+    const personalizedBody = personalizeContent(emailBody, sampleLead || {});
+
     console.log(`[test-email] Sending to ${emailList.length} recipient(s) from ${senderName} <${senderAddress}>`);
     console.log(`[test-email] Workspace: ${workspaceId}, Asset: ${assetId || 'N/A'}`);
+    console.log(`[test-email] Subject: ${personalizedSubject}`);
+    console.log(`[test-email] HTML body length: ${personalizedBody.length} chars`);
 
     // Send to all recipients
     const results = await Promise.allSettled(
@@ -114,8 +168,8 @@ serve(async (req) => {
           body: JSON.stringify({
             from: `${senderName} <${senderAddress}>`,
             to: [recipient],
-            subject: emailSubject,
-            html: emailBody,
+            subject: `[TEST] ${personalizedSubject}`,
+            html: personalizedBody,
           }),
         });
         
@@ -149,7 +203,8 @@ serve(async (req) => {
         failedCount: failed.length,
         recipients: emailList,
         from: `${senderName} <${senderAddress}>`,
-        subject: emailSubject,
+        subject: `[TEST] ${personalizedSubject}`,
+        personalizedWith: sampleLead ? `${sampleLead.first_name || ""} ${sampleLead.last_name || ""}`.trim() : "default values",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
