@@ -121,17 +121,35 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       );
 
       // If the user has *no* workspaces (common for legacy accounts), auto-create one.
-      // This keeps the app usable without requiring manual backend intervention.
+      // IMPORTANT: don't permanently "give up" after a failed attempt (network/RLS hiccups).
+      // We rate-limit attempts via localStorage so the UI doesn't get stuck forever.
       if (uniqueWorkspaces.length === 0) {
         const autoKey = `workspace_autocreated_${user.id}`;
-        const alreadyTried = localStorage.getItem(autoKey) === "1";
+        const now = Date.now();
 
-        if (!alreadyTried) {
-          localStorage.setItem(autoKey, "1");
+        let autoState: { lastAttempt?: number; success?: boolean } | null = null;
+        try {
+          const raw = localStorage.getItem(autoKey);
+          autoState = raw ? (JSON.parse(raw) as any) : null;
+        } catch {
+          autoState = null;
+        }
 
-          const baseName = (user.email?.split("@")[0] || "My").replace(/[^a-zA-Z0-9]+/g, " ").trim();
+        const lastAttempt = autoState?.lastAttempt ?? 0;
+        const success = autoState?.success === true;
+        const canRetry = !success && (now - lastAttempt > 15_000);
+
+        if (canRetry) {
+          localStorage.setItem(autoKey, JSON.stringify({ lastAttempt: now, success: false }));
+
+          const baseName = (user.email?.split("@")[0] || "My")
+            .replace(/[^a-zA-Z0-9]+/g, " ")
+            .trim();
           const name = baseName ? `${baseName}'s Workspace` : "My Workspace";
-          const slug = `${(baseName || "my").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${user.id.slice(0, 6)}`;
+          const slug = `${(baseName || "my")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "")}-${user.id.slice(0, 6)}`;
 
           console.log("[WorkspaceProvider] No workspaces found; auto-creating:", { name, slug });
 
@@ -149,7 +167,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
           if (createErr) {
             console.error("[WorkspaceProvider] auto-create workspace failed:", createErr);
+            toast.error("Couldn't create workspace", {
+              description: "Please refresh and try again. If this persists, we'll need to check your account permissions.",
+            });
           } else if (ws) {
+            localStorage.setItem(autoKey, JSON.stringify({ lastAttempt: now, success: true }));
+
             await supabase.from("workspace_members").insert({
               workspace_id: ws.id,
               user_id: user.id,
