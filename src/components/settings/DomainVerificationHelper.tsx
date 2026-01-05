@@ -9,15 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
   CheckCircle2, 
-  XCircle, 
   Loader2, 
   Globe, 
   ExternalLink,
   Copy,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Plus
 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface DomainVerificationHelperProps {
   domain: string;
@@ -25,7 +26,17 @@ interface DomainVerificationHelperProps {
   isGmailConnected?: boolean;
 }
 
-type VerificationStatus = "unknown" | "checking" | "verified" | "unverified" | "partial";
+interface DnsRecord {
+  record: string;
+  name: string;
+  type: string;
+  ttl: string;
+  status: string;
+  value: string;
+  priority?: number;
+}
+
+type VerificationStatus = "unknown" | "checking" | "verified" | "pending" | "not_found" | "added";
 
 export function DomainVerificationHelper({
   domain,
@@ -34,51 +45,81 @@ export function DomainVerificationHelper({
 }: DomainVerificationHelperProps) {
   const [status, setStatus] = useState<VerificationStatus>("unknown");
   const [checking, setChecking] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [dnsRecords, setDnsRecords] = useState<DnsRecord[]>([]);
+  const [message, setMessage] = useState("");
 
-  // DNS records needed for Resend domain verification
-  const dnsRecords = [
-    {
-      type: "MX",
-      name: `${domain}`,
-      value: "feedback-smtp.us-east-1.amazonses.com",
-      priority: "10",
-    },
-    {
-      type: "TXT",
-      name: `resend._domainkey.${domain}`,
-      value: "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBg...",
-      priority: null,
-    },
-    {
-      type: "TXT",
-      name: `${domain}`,
-      value: `v=spf1 include:amazonses.com ~all`,
-      priority: null,
-    },
-  ];
-
-  const checkDomainStatus = async () => {
+  const checkDomainStatus = async (action?: "verify") => {
     if (!domain) {
       toast.error("No domain to check");
       return;
     }
 
     setChecking(true);
-    setStatus("checking");
 
     try {
-      // Simulate domain check - in production this would call an API
-      // to verify DNS records or check with Resend
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const { data, error } = await supabase.functions.invoke("resend-verify-domain", {
+        body: { domain, action },
+      });
 
-      // For demo purposes, show as unverified with guidance
-      // In production, this would actually check Resend's API
-      setStatus("unverified");
+      if (error) {
+        console.error("Domain check error:", error);
+        toast.error("Failed to check domain status");
+        setStatus("unknown");
+        return;
+      }
+
+      setStatus(data.status as VerificationStatus);
+      setMessage(data.message || "");
+      if (data.records) {
+        setDnsRecords(data.records);
+      }
+
+      if (data.status === "verified") {
+        toast.success("Domain is verified!");
+      } else if (data.status === "pending") {
+        toast.info("Domain verification pending - DNS records may take time to propagate");
+      }
     } catch (error) {
+      console.error("Domain check error:", error);
       toast.error("Failed to check domain status");
       setStatus("unknown");
     } finally {
       setChecking(false);
+    }
+  };
+
+  const addDomainToResend = async () => {
+    if (!domain) {
+      toast.error("No domain to add");
+      return;
+    }
+
+    setAdding(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("resend-verify-domain", {
+        body: { domain, action: "add" },
+      });
+
+      if (error) {
+        console.error("Add domain error:", error);
+        toast.error("Failed to add domain to Resend");
+        return;
+      }
+
+      setStatus(data.status as VerificationStatus);
+      setMessage(data.message || "");
+      if (data.records) {
+        setDnsRecords(data.records);
+      }
+
+      toast.success("Domain added to Resend! Please configure DNS records.");
+    } catch (error) {
+      console.error("Add domain error:", error);
+      toast.error("Failed to add domain");
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -140,33 +181,69 @@ export function DomainVerificationHelper({
               Verified
             </Badge>
           )}
-          {status === "unverified" && (
+          {(status === "pending" || status === "added") && (
             <Badge variant="outline" className="text-amber-500 border-amber-500">
               <AlertTriangle className="h-3 w-3 mr-1" />
-              Not Verified
+              Pending Verification
+            </Badge>
+          )}
+          {status === "not_found" && (
+            <Badge variant="outline" className="text-red-500 border-red-500">
+              Not in Resend
             </Badge>
           )}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {status === "not_found" ? (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={addDomainToResend}
+              disabled={adding}
+            >
+              {adding ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Domain to Resend
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => checkDomainStatus("verify")}
+              disabled={checking}
+            >
+              {checking ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Checking...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Verify Now
+                </>
+              )}
+            </Button>
+          )}
+          
           <Button
             variant="outline"
             size="sm"
-            onClick={checkDomainStatus}
+            onClick={() => checkDomainStatus()}
             disabled={checking}
           >
-            {checking ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Checking...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Check Status
-              </>
-            )}
+            Check Status
           </Button>
+          
           <Button
             variant="outline"
             size="sm"
@@ -178,37 +255,59 @@ export function DomainVerificationHelper({
         </div>
       </div>
 
-      {status === "unverified" && (
-        <div className="space-y-4">
-          <Alert className="border-amber-500/30 bg-amber-500/5">
+      {message && (
+        <Alert className={status === "verified" ? "border-green-500/30 bg-green-500/5" : "border-amber-500/30 bg-amber-500/5"}>
+          {status === "verified" ? (
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+          ) : (
             <AlertTriangle className="h-4 w-4 text-amber-500" />
-            <AlertTitle className="text-amber-700">Domain Verification Required</AlertTitle>
-            <AlertDescription className="text-amber-600">
-              To send emails from <strong>{domain}</strong>, you need to add DNS records in your domain provider.
-              Emails may fail or go to spam until verified.
-            </AlertDescription>
-          </Alert>
+          )}
+          <AlertDescription className={status === "verified" ? "text-green-600" : "text-amber-600"}>
+            {message}
+          </AlertDescription>
+        </Alert>
+      )}
 
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm">Required DNS Records:</h4>
-            
-            <div className="space-y-2">
-              {dnsRecords.map((record, i) => (
-                <div
-                  key={i}
-                  className="p-3 rounded border bg-background text-sm flex items-start justify-between gap-4"
-                >
+      {dnsRecords.length > 0 && status !== "verified" && (
+        <div className="space-y-3">
+          <h4 className="font-medium text-sm">Required DNS Records from Resend:</h4>
+          
+          <div className="space-y-2">
+            {dnsRecords.map((record, i) => (
+              <div
+                key={i}
+                className="p-3 rounded border bg-background text-sm"
+              >
+                <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-2">
                       <Badge variant="outline" className="text-xs">{record.type}</Badge>
+                      <Badge 
+                        variant="outline" 
+                        className={`text-xs ${
+                          record.status === "verified" 
+                            ? "text-green-500 border-green-500" 
+                            : record.status === "pending"
+                            ? "text-amber-500 border-amber-500"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        {record.status}
+                      </Badge>
                       {record.priority && (
                         <span className="text-xs text-muted-foreground">Priority: {record.priority}</span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground mb-1">Name:</p>
-                    <p className="font-mono text-xs break-all">{record.name}</p>
-                    <p className="text-xs text-muted-foreground mt-2 mb-1">Value:</p>
-                    <p className="font-mono text-xs break-all text-muted-foreground">{record.value}</p>
+                    <div className="grid grid-cols-1 gap-1">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Name:</p>
+                        <p className="font-mono text-xs break-all">{record.name}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mt-1">Value:</p>
+                        <p className="font-mono text-xs break-all">{record.value}</p>
+                      </div>
+                    </div>
                   </div>
                   <Button
                     variant="ghost"
@@ -219,14 +318,13 @@ export function DomainVerificationHelper({
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
-              ))}
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Note: DNS changes can take 1-48 hours to propagate. The exact records required will be shown 
-              in your <a href="https://resend.com/domains" target="_blank" className="text-primary underline">Resend dashboard</a>.
-            </p>
+              </div>
+            ))}
           </div>
+
+          <p className="text-xs text-muted-foreground">
+            DNS changes can take up to 48 hours to propagate. Click "Verify Now" after adding records.
+          </p>
         </div>
       )}
 
