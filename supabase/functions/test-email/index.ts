@@ -177,9 +177,21 @@ serve(async (req) => {
       console.error("[test-email] Error fetching email settings:", settingsError);
     }
 
-    // Use workspace settings, fall back to provided values or defaults
-    const senderName = emailSettings?.sender_name || fromName || "UbiGrowth";
-    const senderAddress = emailSettings?.from_address || fromAddress || "onboarding@resend.dev";
+    console.log(`[test-email] Email settings for workspace ${workspaceId}:`, emailSettings);
+
+    // Use workspace settings - REQUIRE configured email, don't fall back to defaults
+    if (!emailSettings?.from_address) {
+      return new Response(
+        JSON.stringify({ 
+          error: "Email integration not configured. Please set up your email address in Settings → Integrations → Email.",
+          requiresSetup: true 
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const senderName = emailSettings.sender_name || fromName || "Your Team";
+    const senderAddress = emailSettings.from_address;
 
     const emailSubject = subject || "Test Email";
     const rawBody = body || "";
