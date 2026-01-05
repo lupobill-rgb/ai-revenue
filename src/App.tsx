@@ -39,6 +39,7 @@ import OSDashboard from "./pages/OSDashboard";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import Privacy from "./pages/Privacy";
+import TermsOfService from "./pages/TermsOfService";
 import MondayLeadConverter from "./pages/MondayLeadConverter";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
 import CRODashboard from "./pages/cro/CRODashboard";
@@ -219,6 +220,7 @@ const AppContent = () => {
 
         <Route path="/profile" element={<Profile />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route path="/service" element={<TermsOfService />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
