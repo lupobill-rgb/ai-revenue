@@ -39,18 +39,55 @@ serve(async (req) => {
 
     console.log(`Verifying DNS for domain: ${domain}`);
 
-    // Use Google's DNS-over-HTTPS to lookup CNAME records
-    // This is a reliable way to check DNS from the server side
-    const dnsUrl = `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=CNAME`;
-    
-    const dnsResponse = await fetch(dnsUrl, {
-      headers: {
-        "Accept": "application/dns-json",
-      },
-    });
+    // Helper function to check DNS for a specific domain
+    async function checkDns(domainToCheck: string): Promise<DnsResponse> {
+      const dnsUrl = `https://dns.google/resolve?name=${encodeURIComponent(domainToCheck)}&type=CNAME`;
+      const dnsResponse = await fetch(dnsUrl, {
+        headers: { "Accept": "application/dns-json" },
+      });
+      if (!dnsResponse.ok) {
+        throw new Error("DNS lookup failed");
+      }
+      return dnsResponse.json();
+    }
 
-    if (!dnsResponse.ok) {
-      console.error("DNS lookup failed:", await dnsResponse.text());
+    // Try CNAME lookup on the exact domain first
+    let dnsData: DnsResponse;
+    let checkedDomain = domain;
+    
+    try {
+      dnsData = await checkDns(domain);
+      console.log(`DNS response for ${domain}:`, JSON.stringify(dnsData));
+      
+      // If no CNAME found on root, also check for A record pointing to us
+      // Some setups use A records instead of CNAME for root domains
+      if (!dnsData.Answer?.some(r => r.type === 5)) {
+        // Also try checking if there's a www or campaigns subdomain with CNAME
+        const subdomainsToTry = ['campaigns', 'www', 'lp', 'go'];
+        const rootDomain = domain.includes('.') && domain.split('.').length === 2 ? domain : null;
+        
+        if (rootDomain) {
+          for (const sub of subdomainsToTry) {
+            const subDomain = `${sub}.${rootDomain}`;
+            console.log(`Checking subdomain: ${subDomain}`);
+            try {
+              const subDnsData = await checkDns(subDomain);
+              console.log(`DNS response for ${subDomain}:`, JSON.stringify(subDnsData));
+              
+              if (subDnsData.Answer?.some(r => r.type === 5)) {
+                dnsData = subDnsData;
+                checkedDomain = subDomain;
+                console.log(`Found CNAME on subdomain: ${subDomain}`);
+                break;
+              }
+            } catch (e) {
+              console.log(`No records for ${subDomain}`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("DNS lookup failed:", error);
       return new Response(
         JSON.stringify({ 
           verified: false,
@@ -60,9 +97,6 @@ serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const dnsData: DnsResponse = await dnsResponse.json();
-    console.log("DNS response:", JSON.stringify(dnsData));
 
     // Check if there are CNAME records pointing to our target
     let verified = false;
@@ -125,6 +159,7 @@ serve(async (req) => {
       JSON.stringify({
         verified,
         domain,
+        checkedDomain,
         foundCname,
         expectedCname: EXPECTED_CNAME_TARGET,
         message: statusMessage,
