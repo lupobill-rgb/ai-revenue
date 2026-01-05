@@ -14,7 +14,9 @@ const Footer = () => {
             AI-powered marketing automation platform
           </p>
           <a 
-            href="/privacy" 
+            href="https://www.ubigrowth.ai/privacy" 
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-xs text-muted-foreground/60 hover:text-primary transition-colors"
           >
             Privacy Policy
