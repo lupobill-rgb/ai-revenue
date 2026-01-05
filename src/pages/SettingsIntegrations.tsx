@@ -21,6 +21,7 @@ import {
 import { EmailSetupWizard } from "@/components/settings/EmailSetupWizard";
 import { EmailReplyToExplainer } from "@/components/settings/EmailReplyToExplainer";
 import { DomainVerificationHelper } from "@/components/settings/DomainVerificationHelper";
+import { DomainSettingsCard } from "@/components/settings/DomainSettingsCard";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -1827,72 +1828,20 @@ export default function SettingsIntegrations() {
 
                 {/* Domain Tab */}
                 <TabsContent value="domain">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Globe className="h-5 w-5 text-primary" />
-                        Custom Domain
-                      </CardTitle>
-                      <CardDescription>
-                        Use your own domain for landing pages and email tracking links.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="custom-domain">Domain</Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            id="custom-domain"
-                            placeholder="campaigns.yourcompany.com"
-                            value={domain}
-                            onChange={(e) => setDomain(e.target.value)}
-                          />
-                          {domainSettings?.cname_verified ? (
-                            <Badge variant="outline" className="text-green-600 border-green-600 shrink-0">
-                              <CheckCircle2 className="h-3 w-3 mr-1" /> Verified
-                            </Badge>
-                          ) : domain ? (
-                            <Badge variant="outline" className="text-yellow-600 border-yellow-600 shrink-0">
-                              <XCircle className="h-3 w-3 mr-1" /> Not Verified
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-                        <p className="text-sm font-medium">DNS Configuration</p>
-                        <p className="text-sm text-muted-foreground">
-                          Add a CNAME record pointing your subdomain to our servers:
-                        </p>
-                        <div className="flex items-center gap-2 bg-background rounded border px-3 py-2">
-                          <code className="text-sm flex-1">campaigns.ubigrowth.ai</code>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => copyToClipboard("campaigns.ubigrowth.ai")}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      <div className="flex items-center justify-between">
-                        <div>
-                          {domainSettings?.updated_at && (
-                            <p className="text-sm text-muted-foreground">
-                              Last updated: {formatUpdatedAt(domainSettings.updated_at)}
-                            </p>
-                          )}
-                        </div>
-                        <Button onClick={saveDomainSettings} disabled={saving === "domain"}>
-                          {saving === "domain" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                          Save Domain Settings
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <DomainSettingsCard 
+                    domain={domain}
+                    setDomain={setDomain}
+                    domainSettings={domainSettings}
+                    setDomainSettings={setDomainSettings}
+                    tenantId={tenantId}
+                    saving={saving}
+                    setSaving={setSaving}
+                    copyToClipboard={copyToClipboard}
+                    formatUpdatedAt={formatUpdatedAt}
+                    detectChanges={detectChanges}
+                    logAuditEntry={logAuditEntry}
+                    formatChangesList={formatChangesList}
+                  />
                 </TabsContent>
 
                 {/* Voice Tab */}
