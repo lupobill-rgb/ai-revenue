@@ -70,7 +70,7 @@ serve(async (req) => {
     const { data: leadRows, error } = await supabase
       .from("leads")
       .select(
-        "email, first_name, last_name, company, industry, job_title, phone, location, city, custom_fields"
+        "email, first_name, last_name, company, industry, job_title, phone, city, custom_fields"
       )
       .eq("workspace_id", workspaceId)
       .in("email", lowerEmails);
