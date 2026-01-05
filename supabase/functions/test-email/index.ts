@@ -56,8 +56,31 @@ serve(async (req) => {
   }
 
   try {
-    const requestData: TestEmailRequest = await req.json();
-    const { recipients, subject, body, workspaceId, assetId, to, fromName, fromAddress } = requestData;
+    const requestData: TestEmailRequest & { provider?: string } = await req.json();
+    const { recipients, subject, body, workspaceId, assetId, to, fromName, fromAddress, provider } = requestData;
+
+    // Lightweight "provider test" mode (used by Settings → Providers)
+    if (provider && (!recipients || recipients.length === 0) && !to) {
+      const resendApiKey = Deno.env.get("RESEND_API_KEY");
+      if (provider === "resend") {
+        const ok = Boolean(resendApiKey);
+        return new Response(
+          JSON.stringify({
+            success: ok,
+            message: ok ? "Resend is configured" : "RESEND_API_KEY is not configured",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: `Provider '${provider}' test is not supported by this endpoint`,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Validate workspaceId
     if (!workspaceId) {
@@ -70,7 +93,7 @@ serve(async (req) => {
     // Support both new array format and legacy single 'to' format
     let emailList: string[] = [];
     if (recipients && Array.isArray(recipients)) {
-      emailList = recipients.filter(e => e && typeof e === 'string' && e.includes('@'));
+      emailList = recipients.filter((e) => e && typeof e === "string" && e.includes("@"));
     } else if (to) {
       emailList = [to];
     }
@@ -97,7 +120,7 @@ serve(async (req) => {
       );
     }
 
-    // Initialize Supabase client to fetch workspace email settings
+    // Initialize Supabase client (service role) to fetch settings + CRM lead data
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -114,87 +137,83 @@ serve(async (req) => {
     }
 
     // Use workspace settings, fall back to provided values or defaults
-    let senderName = emailSettings?.sender_name || fromName || "UbiGrowth";
-    let senderAddress = emailSettings?.from_address || fromAddress || "onboarding@resend.dev";
-
-    // Validate that we have a proper from address (not the resend default unless no settings)
-    if (!emailSettings?.from_address && senderAddress === "onboarding@resend.dev") {
-      console.warn("[test-email] No custom email domain configured, using Resend default");
-    }
+    const senderName = emailSettings?.sender_name || fromName || "UbiGrowth";
+    const senderAddress = emailSettings?.from_address || fromAddress || "onboarding@resend.dev";
 
     const emailSubject = subject || "Test Email";
-    let emailBody = body || `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1>Test Email</h1>
-        <p>This is a test email to verify your email configuration.</p>
-        <p>Sent at: ${new Date().toISOString()}</p>
-      </div>
-    `;
+    const rawBody = body || "";
 
-    // Fetch a sample lead from CRM for personalization preview
-    let sampleLead: any = null;
-    const { data: leads, error: leadsError } = await supabase
+    // Convert plain-text bodies to HTML so newlines/spacing match preview
+    const escapeHtml = (input: string) =>
+      input
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+    const looksLikeHtml = /<\w+[\s\S]*>/i.test(rawBody);
+    let emailBodyHtml = looksLikeHtml
+      ? rawBody
+      : `<div style="font-family: Arial, sans-serif; white-space: pre-wrap; line-height: 1.5;">${escapeHtml(
+          rawBody
+        )}</div>`;
+
+    // Pull CRM lead data for each recipient (so {{first_name}} matches the recipient)
+    const { data: leadRows, error: leadsError } = await supabase
       .from("leads")
-      .select("id, first_name, last_name, name, email, company, industry, job_title, phone, location, city, custom_fields")
+      .select("email, first_name, last_name, name, company, industry, job_title, phone, location, city, custom_fields")
       .eq("workspace_id", workspaceId)
-      .not("first_name", "is", null)
-      .limit(1);
+      .in("email", emailList);
 
-    if (!leadsError && leads && leads.length > 0) {
-      sampleLead = leads[0];
-      console.log(`[test-email] Using sample lead for personalization: ${sampleLead.first_name} ${sampleLead.last_name || ""}`);
-    } else {
-      console.log("[test-email] No leads found in CRM, using default personalization fallbacks");
+    if (leadsError) {
+      console.error("[test-email] Error fetching leads:", leadsError);
     }
 
-    // Personalize subject and body with sample lead data
-    const personalizedSubject = personalizeContent(emailSubject, sampleLead || {});
-    const personalizedBody = personalizeContent(emailBody, sampleLead || {});
+    const leadByEmail = new Map<string, any>();
+    for (const l of leadRows || []) {
+      if (l?.email) leadByEmail.set(String(l.email).toLowerCase(), l);
+    }
 
-    console.log(`[test-email] Sending to ${emailList.length} recipient(s) from ${senderName} <${senderAddress}>`);
-    console.log(`[test-email] Workspace: ${workspaceId}, Asset: ${assetId || 'N/A'}`);
-    console.log(`[test-email] Subject: ${personalizedSubject}`);
-    console.log(`[test-email] HTML body length: ${personalizedBody.length} chars`);
+    console.log(
+      `[test-email] Sending to ${emailList.length} recipient(s) from ${senderName} <${senderAddress}> (workspace: ${workspaceId}, asset: ${assetId || "N/A"})`
+    );
 
-    // Send to all recipients
+    // Send to all recipients (personalized per recipient)
     const results = await Promise.allSettled(
       emailList.map(async (recipient) => {
+        const lead = leadByEmail.get(recipient.toLowerCase()) || {};
+        const personalizedSubject = personalizeContent(emailSubject, lead);
+        const personalizedHtml = personalizeContent(emailBodyHtml, lead);
+
         const response = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${resendApiKey}`,
+            Authorization: `Bearer ${resendApiKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             from: `${senderName} <${senderAddress}>`,
             to: [recipient],
             subject: `[TEST] ${personalizedSubject}`,
-            html: personalizedBody,
+            html: personalizedHtml,
           }),
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json();
           console.error(`[test-email] Resend error for ${recipient}:`, errorData);
           throw new Error(errorData.message || `Failed to send to ${recipient}`);
         }
-        
+
         return { recipient, response: await response.json() };
       })
     );
 
-    const successful = results.filter(r => r.status === 'fulfilled');
-    const failed = results.filter(r => r.status === 'rejected');
+    const successful = results.filter((r) => r.status === "fulfilled");
+    const failed = results.filter((r) => r.status === "rejected");
 
     console.log(`[test-email] Sent: ${successful.length}, Failed: ${failed.length}`);
-
-    if (failed.length > 0) {
-      failed.forEach((f, i) => {
-        if (f.status === 'rejected') {
-          console.error(`[test-email] Failed:`, f.reason);
-        }
-      });
-    }
 
     return new Response(
       JSON.stringify({
@@ -203,8 +222,8 @@ serve(async (req) => {
         failedCount: failed.length,
         recipients: emailList,
         from: `${senderName} <${senderAddress}>`,
-        subject: `[TEST] ${personalizedSubject}`,
-        personalizedWith: sampleLead ? `${sampleLead.first_name || ""} ${sampleLead.last_name || ""}`.trim() : "default values",
+        subject: `[TEST] ${emailSubject}`,
+        personalizedWith: "per-recipient CRM match",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
