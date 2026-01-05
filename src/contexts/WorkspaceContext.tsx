@@ -84,14 +84,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Fetch all workspaces user has access to (owned or member) with demo_mode and stripe_connected
+      console.log("[WorkspaceProvider] fetchWorkspaces user:", user.id, user.email);
+
+      // Fetch all workspaces user has access to (owned or member)
       const { data: ownedWorkspaces, error: ownedError } = await supabase
         .from("workspaces")
         .select("id, name, slug, owner_id, is_default, demo_mode, stripe_connected, tenant_id")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: true });
 
-      if (ownedError) throw ownedError;
+      if (ownedError) {
+        console.error("[WorkspaceProvider] ownedWorkspaces error:", ownedError);
+        throw ownedError;
+      }
 
       // Also get workspaces user is a member of
       const { data: memberWorkspaces, error: memberError } = await supabase
@@ -100,19 +105,67 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         .eq("user_id", user.id)
         .neq("role", "owner"); // Avoid duplicates with owned
 
-      if (memberError) throw memberError;
+      if (memberError) {
+        console.error("[WorkspaceProvider] memberWorkspaces error:", memberError);
+        throw memberError;
+      }
 
       // Combine and dedupe
       const memberWs = (memberWorkspaces || [])
         .map((m) => m.workspace as Workspace | null)
         .filter((w): w is Workspace => w !== null);
-      
+
       const allWorkspaces = [...(ownedWorkspaces || []), ...memberWs] as Workspace[];
       const uniqueWorkspaces = allWorkspaces.filter(
         (w, i, arr) => arr.findIndex((x) => x.id === w.id) === i
       );
 
+      // If the user has *no* workspaces (common for legacy accounts), auto-create one.
+      // This keeps the app usable without requiring manual backend intervention.
+      if (uniqueWorkspaces.length === 0) {
+        const autoKey = `workspace_autocreated_${user.id}`;
+        const alreadyTried = localStorage.getItem(autoKey) === "1";
+
+        if (!alreadyTried) {
+          localStorage.setItem(autoKey, "1");
+
+          const baseName = (user.email?.split("@")[0] || "My").replace(/[^a-zA-Z0-9]+/g, " ").trim();
+          const name = baseName ? `${baseName}'s Workspace` : "My Workspace";
+          const slug = `${(baseName || "my").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${user.id.slice(0, 6)}`;
+
+          console.log("[WorkspaceProvider] No workspaces found; auto-creating:", { name, slug });
+
+          const { data: ws, error: createErr } = await supabase
+            .from("workspaces")
+            .insert({
+              name,
+              slug,
+              owner_id: user.id,
+              is_default: true,
+              demo_mode: true,
+            })
+            .select("id, name, slug, owner_id, is_default, demo_mode, stripe_connected, tenant_id")
+            .single();
+
+          if (createErr) {
+            console.error("[WorkspaceProvider] auto-create workspace failed:", createErr);
+          } else if (ws) {
+            await supabase.from("workspace_members").insert({
+              workspace_id: ws.id,
+              user_id: user.id,
+              role: "owner",
+            });
+
+            toast.success("Workspace created", { description: "We created your first workspace automatically." });
+            // Re-run fetch to ensure selection logic runs against fresh list
+            // (avoid depending on local ws variable and keep selection consistent)
+            return await fetchWorkspaces();
+          }
+        }
+      }
+
       setWorkspaces(uniqueWorkspaces);
+      console.log("[WorkspaceProvider] workspaces loaded:", uniqueWorkspaces.length);
 
       // Auto-select workspace
       const savedId = localStorage.getItem(STORAGE_KEY);
@@ -139,10 +192,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setDemoMode(selectedWorkspace.demo_mode ?? false);
         setStripeConnected(selectedWorkspace.stripe_connected ?? false);
         localStorage.setItem(STORAGE_KEY, selectedWorkspace.id);
-        
+
         // Fetch full integration status from view
         fetchIntegrationStatus(selectedWorkspace.id);
-        
+
         // Update last used in DB (fire and forget)
         (async () => {
           try {
