@@ -22,6 +22,7 @@ import { EmailSetupWizard } from "@/components/settings/EmailSetupWizard";
 import { EmailReplyToExplainer } from "@/components/settings/EmailReplyToExplainer";
 import { DomainVerificationHelper } from "@/components/settings/DomainVerificationHelper";
 import { DomainSettingsCard } from "@/components/settings/DomainSettingsCard";
+import { SocialTokenWizard } from "@/components/settings/SocialTokenWizard";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -268,6 +269,8 @@ export default function SettingsIntegrations() {
   // Social integrations state
   const [socialIntegrations, setSocialIntegrations] = useState<SocialIntegration[]>([]);
   const [socialTokens, setSocialTokens] = useState<Record<string, { token: string; accountName: string }>>({});
+  const [socialWizardOpen, setSocialWizardOpen] = useState(false);
+  const [socialWizardPlatform, setSocialWizardPlatform] = useState<"instagram" | "linkedin" | "facebook" | "tiktok">("instagram");
 
   useEffect(() => {
     loadAllSettings();
@@ -2208,7 +2211,8 @@ export default function SettingsIntegrations() {
                           Social Platforms
                         </CardTitle>
                         <CardDescription>
-                          Configure access tokens for your social media platforms.
+                          Configure access tokens for your social media platforms. Need help getting your token?{" "}
+                          Use the setup wizard for step-by-step guidance.
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-6">
@@ -2224,12 +2228,25 @@ export default function SettingsIntegrations() {
                                   <IconComponent className="h-5 w-5 text-primary" />
                                   <span className="font-medium">{platform.name}</span>
                                 </div>
-                                {existingIntegration?.is_active && (
-                                  <Badge variant="secondary" className="flex items-center gap-1">
-                                    <CheckCircle2 className="h-3 w-3 text-green-500" />
-                                    Connected
-                                  </Badge>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  {existingIntegration?.is_active && (
+                                    <Badge variant="secondary" className="flex items-center gap-1">
+                                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                      Connected
+                                    </Badge>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setSocialWizardPlatform(platform.id as any);
+                                      setSocialWizardOpen(true);
+                                    }}
+                                  >
+                                    <Sparkles className="h-4 w-4 mr-1" />
+                                    Setup Wizard
+                                  </Button>
+                                </div>
                               </div>
                               
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2278,6 +2295,20 @@ export default function SettingsIntegrations() {
                       </CardContent>
                     </Card>
                   </div>
+                  
+                  {/* Social Token Wizard */}
+                  <SocialTokenWizard
+                    open={socialWizardOpen}
+                    onOpenChange={setSocialWizardOpen}
+                    platform={socialWizardPlatform}
+                    onComplete={(token, accountName) => {
+                      setSocialTokens(prev => ({
+                        ...prev,
+                        [socialWizardPlatform]: { token, accountName }
+                      }));
+                      saveSocialIntegration(socialWizardPlatform);
+                    }}
+                  />
                 </TabsContent>
               </Tabs>
             </div>
