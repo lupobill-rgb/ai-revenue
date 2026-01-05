@@ -267,13 +267,36 @@ serve(async (req) => {
     const successful = results.filter((r) => r.status === "fulfilled");
     const failed = results.filter((r) => r.status === "rejected");
 
+    const failureMessages = failed.map((r) => {
+      const reason = (r as PromiseRejectedResult).reason;
+      return reason instanceof Error ? reason.message : String(reason);
+    });
+
     console.log(`[test-email] Sent: ${successful.length}, Failed: ${failed.length}`);
+
+    // If nothing was sent, bubble up as a hard error so the UI doesn't look like it succeeded.
+    if (successful.length === 0 && failed.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            failureMessages.find((m) => m.toLowerCase().includes("domain is not verified")) ||
+            "All test emails failed to send. Please verify your email integration settings.",
+          details: failureMessages,
+          recipients: validRecipients,
+          from: `${senderName} <${senderAddress}>`,
+          subject: `[TEST] ${emailSubject}`,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     return new Response(
       JSON.stringify({
-        success: true,
+        success: failed.length === 0,
         sentCount: successful.length,
         failedCount: failed.length,
+        failureMessages,
         recipients: validRecipients,
         from: `${senderName} <${senderAddress}>`,
         subject: `[TEST] ${emailSubject}`,
