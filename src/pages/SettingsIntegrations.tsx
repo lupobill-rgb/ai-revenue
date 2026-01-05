@@ -1649,7 +1649,16 @@ export default function SettingsIntegrations() {
                               </p>
                             )}
                           </div>
-                          <Button onClick={saveEmailSettings} disabled={saving === "email"}>
+                          <Button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              console.log("[ui] Save Email Settings click");
+                              void saveEmailSettings();
+                            }}
+                            disabled={saving === "email"}
+                          >
                             {saving === "email" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                             Save Email Settings
                           </Button>
