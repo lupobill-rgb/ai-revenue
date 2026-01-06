@@ -38,6 +38,7 @@ export async function emitKernelEvent(
     entity_id: event.entity_id,
     correlation_id: event.correlation_id,
     payload_json: event.payload,
+    status: 'pending',
     occurred_at: occurredAt,
     idempotency_key,
   };

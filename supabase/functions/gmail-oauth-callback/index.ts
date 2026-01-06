@@ -1,6 +1,28 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Allowed redirect domains for OAuth security
+const ALLOWED_REDIRECT_DOMAINS = [
+  'ubigrowth.ai',
+  'preview--ubigrowth-ai.lovable.app',
+  'lovable.app',
+  'localhost:5173',
+  'localhost:3000',
+];
+
+function isRedirectSafe(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return ALLOWED_REDIRECT_DOMAINS.some(domain => 
+      parsed.hostname === domain || 
+      parsed.hostname.endsWith(`.${domain}`) ||
+      parsed.host === domain
+    );
+  } catch {
+    return false;
+  }
+}
+
 serve(async (req) => {
   try {
     const url = new URL(req.url);
@@ -8,16 +30,31 @@ serve(async (req) => {
     const state = url.searchParams.get("state");
     const error = url.searchParams.get("error");
 
-    // Parse state to get user_id and redirect URL
+    // Parse state to get user_id and redirect URL with security validation
     let userId: string;
     let redirectUrl = "https://ubigrowth.ai/settings/integrations";
     
     try {
-      const stateData = JSON.parse(atob(state || ""));
+      if (!state) {
+        throw new Error("Missing state parameter");
+      }
+      const stateData = JSON.parse(atob(state));
+      
+      // Validate userId is a UUID
+      if (!stateData.user_id || typeof stateData.user_id !== 'string' || stateData.user_id.length < 32) {
+        throw new Error("Invalid user_id in state");
+      }
       userId = stateData.user_id;
-      redirectUrl = stateData.redirect_url || redirectUrl;
-    } catch {
-      console.error("Invalid state parameter");
+      
+      // Validate redirect URL is safe
+      const candidateRedirect = stateData.redirect_url || redirectUrl;
+      if (isRedirectSafe(candidateRedirect)) {
+        redirectUrl = candidateRedirect;
+      } else {
+        console.warn("Unsafe redirect URL rejected:", candidateRedirect);
+      }
+    } catch (stateError) {
+      console.error("Invalid state parameter:", stateError);
       return Response.redirect(`${redirectUrl}?gmail_error=invalid_state`);
     }
 

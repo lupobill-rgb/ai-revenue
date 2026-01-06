@@ -68,22 +68,167 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const status = url.searchParams.get("status");
     const campaignId = url.searchParams.get("campaignId");
-    const limit = parseInt(url.searchParams.get("limit") || "100");
+    // Default to 10000 to fetch all leads - can be paginated in the future
+    const limit = parseInt(url.searchParams.get("limit") || "10000");
     const offset = parseInt(url.searchParams.get("offset") || "0");
 
-    // Build query for leads with contact and campaign joins
-    let query = supabase
+    // Decide which backend table to use.
+    // Older CMO flows used crm_leads + crm_contacts (+ crm_activities).
+    // Newer CRM imports write directly into public.leads (+ lead_activities).
+    const { count: crmLeadsCount } = await supabase
       .from("crm_leads")
-      .select(`
-        id,
-        contact_id,
-        campaign_id,
-        status,
-        score,
-        source,
-        notes,
-        created_at,
-        crm_contacts!inner (
+      .select("id", { count: "exact", head: true });
+
+    const useCrmSchema = (crmLeadsCount ?? 0) > 0;
+
+    // First, get total count
+    let totalCount: number | null = null;
+    if (useCrmSchema) {
+      let countQuery = supabase
+        .from("crm_leads")
+        .select("id", { count: "exact", head: true });
+
+      if (status) countQuery = countQuery.eq("status", status);
+      if (campaignId) countQuery = countQuery.eq("campaign_id", campaignId);
+
+      const { count, error: countError } = await countQuery;
+      totalCount = count ?? null;
+      if (countError) {
+        console.error("[ai-cmo-leads] Failed to count crm_leads:", countError);
+      }
+    } else {
+      let countQuery = supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true });
+
+      if (status) countQuery = countQuery.eq("status", status);
+      if (campaignId) countQuery = countQuery.eq("campaign_id", campaignId);
+
+      const { count, error: countError } = await countQuery;
+      totalCount = count ?? null;
+      if (countError) {
+        console.error("[ai-cmo-leads] Failed to count leads:", countError);
+      }
+    }
+
+    // Fetch leads
+    let response: LeadResponse[] = [];
+
+    if (useCrmSchema) {
+      // Build query for leads with contact join
+      let query = supabase
+        .from("crm_leads")
+        .select(`
+          id,
+          contact_id,
+          campaign_id,
+          status,
+          score,
+          source,
+          notes,
+          created_at,
+          crm_contacts!inner (
+            id,
+            first_name,
+            last_name,
+            email,
+            phone,
+            company,
+            job_title,
+            status,
+            lifecycle_stage,
+            segment_code
+          )
+        `)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (status) query = query.eq("status", status);
+      if (campaignId) query = query.eq("campaign_id", campaignId);
+
+      const { data: leads, error: leadsError } = await query;
+
+      if (leadsError) {
+        console.error("[ai-cmo-leads] Failed to fetch crm_leads:", leadsError);
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch leads" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Get last activity for each lead
+      const leadIds = leads?.map((l: any) => l.id) || [];
+      let activitiesMap: Record<string, { type: string; createdAt: string }> = {};
+
+      if (leadIds.length > 0) {
+        const { data: activities } = await supabase
+          .from("crm_activities")
+          .select("lead_id, activity_type, created_at")
+          .in("lead_id", leadIds)
+          .order("created_at", { ascending: false });
+
+        if (activities) {
+          for (const act of activities as any[]) {
+            if (!activitiesMap[act.lead_id]) {
+              activitiesMap[act.lead_id] = {
+                type: act.activity_type,
+                createdAt: act.created_at,
+              };
+            }
+          }
+        }
+      }
+
+      // Get campaign names
+      const campaignIds = [...new Set(leads?.map((l: any) => l.campaign_id).filter(Boolean) || [])];
+      let campaignNamesMap: Record<string, string> = {};
+
+      if (campaignIds.length > 0) {
+        const { data: campaigns } = await supabase
+          .from("campaigns")
+          .select("id, asset_id, assets!inner(name)")
+          .in("id", campaignIds);
+
+        if (campaigns) {
+          for (const c of campaigns as any[]) {
+            if (c.assets?.name) {
+              campaignNamesMap[c.id] = c.assets.name;
+            }
+          }
+        }
+      }
+
+      response = (leads || []).map((lead: any) => ({
+        id: lead.id,
+        contactId: lead.contact_id,
+        campaignId: lead.campaign_id,
+        status: lead.status,
+        score: lead.score || 0,
+        source: lead.source,
+        notes: lead.notes,
+        createdAt: lead.created_at,
+        contact: {
+          id: lead.crm_contacts?.id || null,
+          firstName: lead.crm_contacts?.first_name || null,
+          lastName: lead.crm_contacts?.last_name || null,
+          email: lead.crm_contacts?.email || "",
+          phone: lead.crm_contacts?.phone || null,
+          companyName: lead.crm_contacts?.company || null,
+          roleTitle: lead.crm_contacts?.job_title || null,
+          status: lead.crm_contacts?.status || null,
+          lifecycleStage: lead.crm_contacts?.lifecycle_stage || null,
+          segmentCode: lead.crm_contacts?.segment_code || null,
+        },
+        campaign: lead.campaign_id && campaignNamesMap[lead.campaign_id]
+          ? { name: campaignNamesMap[lead.campaign_id] }
+          : null,
+        lastActivity: activitiesMap[lead.id] || null,
+      }));
+    } else {
+      // Fallback: read directly from public.leads
+      let query = supabase
+        .from("leads")
+        .select(`
           id,
           first_name,
           last_name,
@@ -92,107 +237,118 @@ Deno.serve(async (req) => {
           company,
           job_title,
           status,
-          lifecycle_stage,
+          score,
+          source,
+          notes,
+          created_at,
+          campaign_id,
           segment_code
-        )
-      `)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+        `)
+        .eq("data_mode", "live")
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
 
-    // Apply filters
-    if (status) {
-      query = query.eq("status", status);
-    }
-    if (campaignId) {
-      query = query.eq("campaign_id", campaignId);
-    }
+      if (status) query = query.eq("status", status);
+      if (campaignId) query = query.eq("campaign_id", campaignId);
 
-    const { data: leads, error: leadsError } = await query;
+      const { data: leads, error: leadsError } = await query;
 
-    if (leadsError) {
-      console.error("[ai-cmo-leads] Failed to fetch leads:", leadsError);
-      return new Response(
-        JSON.stringify({ error: "Failed to fetch leads" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+      if (leadsError) {
+        console.error("[ai-cmo-leads] Failed to fetch leads table:", leadsError);
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch leads" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
-    // Get last activity for each lead
-    const leadIds = leads?.map((l: any) => l.id) || [];
-    
-    let activitiesMap: Record<string, { type: string; createdAt: string }> = {};
-    
-    if (leadIds.length > 0) {
-      const { data: activities } = await supabase
-        .from("crm_activities")
-        .select("lead_id, activity_type, created_at")
-        .in("lead_id", leadIds)
-        .order("created_at", { ascending: false });
+      const normalizeStatus = (s: string): string => {
+        if (s === "contacted") return "working";
+        if (s === "lost") return "unqualified";
+        if (s === "won") return "converted";
+        return s;
+      };
 
-      // Map to latest per lead
-      if (activities) {
-        for (const act of activities) {
-          if (!activitiesMap[act.lead_id]) {
-            activitiesMap[act.lead_id] = {
-              type: act.activity_type,
-              createdAt: act.created_at,
-            };
+      // Last activity from lead_activities
+      const leadIds = leads?.map((l: any) => l.id) || [];
+      let activitiesMap: Record<string, { type: string; createdAt: string }> = {};
+
+      if (leadIds.length > 0) {
+        const { data: activities } = await supabase
+          .from("lead_activities")
+          .select("lead_id, activity_type, created_at")
+          .in("lead_id", leadIds)
+          .order("created_at", { ascending: false });
+
+        if (activities) {
+          for (const act of activities as any[]) {
+            if (!activitiesMap[act.lead_id]) {
+              activitiesMap[act.lead_id] = {
+                type: act.activity_type,
+                createdAt: act.created_at,
+              };
+            }
           }
         }
       }
-    }
 
-    // Get campaign names from campaigns + assets
-    const campaignIds = [...new Set(leads?.map((l: any) => l.campaign_id).filter(Boolean) || [])];
-    let campaignNamesMap: Record<string, string> = {};
+      // Campaign names
+      const campaignIds = [...new Set(leads?.map((l: any) => l.campaign_id).filter(Boolean) || [])];
+      let campaignNamesMap: Record<string, string> = {};
 
-    if (campaignIds.length > 0) {
-      const { data: campaigns } = await supabase
-        .from("campaigns")
-        .select("id, asset_id, assets!inner(name)")
-        .in("id", campaignIds);
+      if (campaignIds.length > 0) {
+        const { data: campaigns } = await supabase
+          .from("campaigns")
+          .select("id, asset_id, assets!inner(name)")
+          .in("id", campaignIds);
 
-      if (campaigns) {
-        for (const c of campaigns as any[]) {
-          if (c.assets?.name) {
-            campaignNamesMap[c.id] = c.assets.name;
+        if (campaigns) {
+          for (const c of campaigns as any[]) {
+            if (c.assets?.name) {
+              campaignNamesMap[c.id] = c.assets.name;
+            }
           }
         }
       }
+
+      response = (leads || []).map((lead: any) => ({
+        id: lead.id,
+        contactId: lead.id,
+        campaignId: lead.campaign_id,
+        status: normalizeStatus(lead.status),
+        score: lead.score || 0,
+        source: lead.source,
+        notes: lead.notes,
+        createdAt: lead.created_at,
+        contact: {
+          id: lead.id,
+          firstName: lead.first_name ?? null,
+          lastName: lead.last_name ?? null,
+          email: lead.email ?? "",
+          phone: lead.phone ?? null,
+          companyName: lead.company ?? null,
+          roleTitle: lead.job_title ?? null,
+          status: null,
+          lifecycleStage: null,
+          segmentCode: lead.segment_code ?? null,
+        },
+        campaign: lead.campaign_id && campaignNamesMap[lead.campaign_id]
+          ? { name: campaignNamesMap[lead.campaign_id] }
+          : null,
+        lastActivity: activitiesMap[lead.id] || null,
+      }));
     }
 
-    // Transform to response shape
-    const response: LeadResponse[] = (leads || []).map((lead: any) => ({
-      id: lead.id,
-      contactId: lead.contact_id,
-      campaignId: lead.campaign_id,
-      status: lead.status,
-      score: lead.score || 0,
-      source: lead.source,
-      notes: lead.notes,
-      createdAt: lead.created_at,
-      contact: {
-        id: lead.crm_contacts?.id || null,
-        firstName: lead.crm_contacts?.first_name || null,
-        lastName: lead.crm_contacts?.last_name || null,
-        email: lead.crm_contacts?.email || "",
-        phone: lead.crm_contacts?.phone || null,
-        companyName: lead.crm_contacts?.company || null,
-        roleTitle: lead.crm_contacts?.job_title || null,
-        status: lead.crm_contacts?.status || null,
-        lifecycleStage: lead.crm_contacts?.lifecycle_stage || null,
-        segmentCode: lead.crm_contacts?.segment_code || null,
-      },
-      campaign: lead.campaign_id && campaignNamesMap[lead.campaign_id]
-        ? { name: campaignNamesMap[lead.campaign_id] }
-        : null,
-      lastActivity: activitiesMap[lead.id] || null,
-    }));
-
-    console.log(`[ai-cmo-leads] Returning ${response.length} leads`);
+    console.log(`[ai-cmo-leads] Returning ${response.length} leads (total: ${totalCount ?? 'unknown'})`);
 
     return new Response(
-      JSON.stringify(response),
+      JSON.stringify({ leads: response, total: totalCount ?? response.length }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+    console.log(`[ai-cmo-leads] Returning ${response.length} leads (total: ${totalCount ?? 'unknown'})`);
+
+    return new Response(
+      JSON.stringify({ leads: response, total: totalCount ?? response.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

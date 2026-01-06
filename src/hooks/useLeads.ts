@@ -7,6 +7,7 @@ import type { LeadRow, LeadDetailsResponse, LeadStatus } from "@/lib/cmo/types";
 export function useLeads() {
   const { user } = useAuth();
   const [leads, setLeads] = useState<LeadRow[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(null);
 
@@ -22,10 +23,14 @@ export function useLeads() {
     if (!tenantId) return;
     setLoading(true);
     fetchLeads(tenantId)
-      .then(setLeads)
+      .then((result) => {
+        setLeads(result.leads);
+        setTotalCount(result.total);
+      })
       .catch((err) => {
         console.error("[useLeads] Failed to fetch leads:", err);
         setLeads([]);
+        setTotalCount(0);
       })
       .finally(() => setLoading(false));
   }, [tenantId]);
@@ -34,7 +39,7 @@ export function useLeads() {
     refresh();
   }, [refresh]);
 
-  return { leads, loading, refresh };
+  return { leads, totalCount, loading, refresh };
 }
 
 export function useLeadDetails(leadId: string | null) {

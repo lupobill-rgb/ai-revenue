@@ -37,18 +37,61 @@ serve(async (req) => {
       );
     }
 
-    // Get tenant-specific VAPI key from ai_settings_voice
-    const { data: voiceSettings, error: settingsError } = await supabase
-      .from('ai_settings_voice')
-      .select('vapi_private_key')
-      .eq('tenant_id', user.id)
+    // Get workspace ID for user (tenant_id is the workspace_id)
+    let tenantId: string | null = null;
+
+    // Check if user owns a workspace
+    const { data: ownedWorkspace, error: ownedError } = await supabase
+      .from('workspaces')
+      .select('id')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle();
 
-    let vapiPrivateKey = voiceSettings?.vapi_private_key;
+    if (ownedError) {
+      console.warn('Error fetching owned workspace:', ownedError);
+    }
+
+    tenantId = ownedWorkspace?.id || null;
+
+    // If no owned workspace, check membership
+    if (!tenantId) {
+      const { data: membership, error: memberError } = await supabase
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (memberError) {
+        console.warn('Error fetching workspace membership:', memberError);
+      }
+
+      tenantId = membership?.workspace_id || null;
+    }
+
+    // Get tenant-specific VAPI key from ai_settings_voice (only if tenantId exists)
+    let vapiPrivateKey: string | null = null;
+    
+    if (tenantId) {
+      const { data: voiceSettings, error: settingsError } = await supabase
+        .from('ai_settings_voice')
+        .select('vapi_private_key')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (settingsError) {
+        console.warn('Error fetching voice settings:', settingsError);
+      }
+
+      vapiPrivateKey = voiceSettings?.vapi_private_key || null;
+    }
 
     // Fallback to global key if tenant doesn't have one configured
     if (!vapiPrivateKey) {
-      vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY');
+      vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY') || null;
     }
     
     if (!vapiPrivateKey) {

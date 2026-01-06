@@ -2796,6 +2796,8 @@ export type Database = {
           target_icp: string | null
           target_offer: string | null
           target_segment_codes: string[] | null
+          target_segments: string[] | null
+          target_tags: string[] | null
           tenant_id: string
           updated_at: string
           workspace_id: string
@@ -2825,6 +2827,8 @@ export type Database = {
           target_icp?: string | null
           target_offer?: string | null
           target_segment_codes?: string[] | null
+          target_segments?: string[] | null
+          target_tags?: string[] | null
           tenant_id: string
           updated_at?: string
           workspace_id: string
@@ -2854,6 +2858,8 @@ export type Database = {
           target_icp?: string | null
           target_offer?: string | null
           target_segment_codes?: string[] | null
+          target_segments?: string[] | null
+          target_tags?: string[] | null
           tenant_id?: string
           updated_at?: string
           workspace_id?: string
@@ -5764,6 +5770,60 @@ export type Database = {
           },
         ]
       }
+      kernel_actions: {
+        Row: {
+          action_json: Json
+          action_type: string
+          correlation_id: string
+          created_at: string
+          decision_id: string
+          error: string | null
+          executed_at: string | null
+          id: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          action_json?: Json
+          action_type: string
+          correlation_id: string
+          created_at?: string
+          decision_id: string
+          error?: string | null
+          executed_at?: string | null
+          id?: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          action_json?: Json
+          action_type?: string
+          correlation_id?: string
+          created_at?: string
+          decision_id?: string
+          error?: string | null
+          executed_at?: string | null
+          id?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kernel_actions_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "kernel_decisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kernel_actions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       kernel_cycle_slo: {
         Row: {
           created_at: string
@@ -5801,6 +5861,116 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "kernel_cycle_slo_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kernel_decisions: {
+        Row: {
+          correlation_id: string
+          created_at: string
+          decision_json: Json
+          decision_type: string
+          event_id: string
+          executed_at: string | null
+          id: string
+          policy_name: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          correlation_id: string
+          created_at?: string
+          decision_json?: Json
+          decision_type: string
+          event_id: string
+          executed_at?: string | null
+          id?: string
+          policy_name: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          correlation_id?: string
+          created_at?: string
+          decision_json?: Json
+          decision_type?: string
+          event_id?: string
+          executed_at?: string | null
+          id?: string
+          policy_name?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kernel_decisions_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "kernel_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kernel_decisions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kernel_events: {
+        Row: {
+          correlation_id: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          idempotency_key: string
+          occurred_at: string
+          payload_json: Json
+          processed_at: string | null
+          source: string
+          status: string
+          tenant_id: string
+          type: string
+        }
+        Insert: {
+          correlation_id: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          idempotency_key: string
+          occurred_at?: string
+          payload_json?: Json
+          processed_at?: string | null
+          source: string
+          status?: string
+          tenant_id: string
+          type: string
+        }
+        Update: {
+          correlation_id?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          idempotency_key?: string
+          occurred_at?: string
+          payload_json?: Json
+          processed_at?: string | null
+          source?: string
+          status?: string
+          tenant_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kernel_events_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -10285,6 +10455,14 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_campaign_metric: {
+        Args: {
+          p_campaign_id: string
+          p_column_name: string
+          p_increment_by?: number
+        }
+        Returns: undefined
       }
       increment_campaign_reply_count: {
         Args: { p_campaign_id: string; p_workspace_id: string }

@@ -306,6 +306,8 @@ export async function buildAutopilotCampaign(payload: {
   channels: string[];
   desiredResult: 'leads' | 'meetings' | 'revenue' | 'engagement';
   workspaceId?: string;
+  targetTags?: string[];
+  targetSegments?: string[];
 }): Promise<{
   campaign_id: string;
   campaign_name: string;
@@ -345,6 +347,8 @@ export async function buildAutopilotCampaign(payload: {
         offer: payload.offer,
         channels: payload.channels,
         desired_result: payload.desiredResult,
+        target_tags: payload.targetTags,
+        target_segments: payload.targetSegments,
       },
     },
   });
@@ -525,4 +529,154 @@ export async function getCMOAssetUrl(tenantId: string, path: string) {
     .getPublicUrl(fullPath);
 
   return data.publicUrl;
+}
+
+// Campaign Orchestration - Validates integrations & launches campaigns across channels
+export interface OrchestrationResult {
+  success: boolean;
+  campaign_id: string;
+  integrations: Array<{
+    name: string;
+    configured: boolean;
+    ready: boolean;
+    error?: string;
+  }>;
+  channels_launched: string[];
+  leads_processed: number;
+  deals_created: number;
+  pipeline_value: number;
+  errors: string[];
+  recommendations: string[];
+}
+
+export async function orchestrateCampaign(
+  campaignId: string,
+  action: 'validate' | 'launch' | 'optimize' | 'pause' | 'resume',
+  options?: {
+    channels?: string[];
+    autoCreateDeals?: boolean;
+    pipelineStage?: string;
+  }
+): Promise<OrchestrationResult> {
+  // Input validation
+  if (!campaignId || typeof campaignId !== 'string') {
+    throw new Error('campaignId is required and must be a string');
+  }
+  
+  const validActions = ['validate', 'launch', 'optimize', 'pause', 'resume'];
+  if (!validActions.includes(action)) {
+    throw new Error(`action must be one of: ${validActions.join(', ')}`);
+  }
+
+  const { tenantId } = await getTenantContext();
+  
+  if (!tenantId) {
+    throw new Error('No tenant context available. Please ensure you are logged in.');
+  }
+  
+  // Get workspace_id with fallback
+  const userResponse = await supabase.auth.getUser();
+  const userId = userResponse.data.user?.id;
+  
+  if (!userId) {
+    throw new Error('User not authenticated');
+  }
+  
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("owner_id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  const workspaceId = workspace?.id || tenantId;
+
+  const { data, error } = await supabase.functions.invoke("cmo-campaign-orchestrate", {
+    body: {
+      tenant_id: tenantId,
+      workspace_id: workspaceId,
+      campaign_id: campaignId,
+      action,
+      channels: options?.channels || [],
+      auto_create_deals: options?.autoCreateDeals ?? true,
+      pipeline_stage: options?.pipelineStage ?? 'qualification',
+    },
+  });
+
+  if (error) {
+    console.error('[orchestrateCampaign] Error:', error);
+    throw new Error(error.message || 'Campaign orchestration failed');
+  }
+  
+  return data as OrchestrationResult;
+}
+
+// Validate all integrations for a workspace
+export async function validateIntegrations(
+  workspaceId: string,
+  channels: string[] = ['email', 'social', 'voice', 'calendar', 'domain']
+): Promise<OrchestrationResult['integrations']> {
+  // Input validation
+  if (!workspaceId || typeof workspaceId !== 'string') {
+    console.warn('[validateIntegrations] Invalid workspaceId, returning empty integrations');
+    return [];
+  }
+  
+  const { tenantId } = await getTenantContext();
+  
+  if (!tenantId) {
+    console.warn('[validateIntegrations] No tenant context, returning empty integrations');
+    return [];
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke("cmo-campaign-orchestrate", {
+      body: {
+        tenant_id: tenantId,
+        workspace_id: workspaceId,
+        campaign_id: 'validation-check',
+        action: 'validate',
+        channels: channels || [],
+      },
+    });
+
+    if (error) {
+      console.error('[validateIntegrations] Error:', error);
+      return [];
+    }
+    
+    return data?.integrations || [];
+  } catch (err) {
+    console.error('[validateIntegrations] Exception:', err);
+    return [];
+  }
+}
+
+// Launch campaign with full orchestration
+export async function launchCampaign(
+  campaignId: string,
+  channels?: string[]
+): Promise<OrchestrationResult> {
+  return orchestrateCampaign(campaignId, 'launch', { channels });
+}
+
+// Optimize an active campaign
+export async function optimizeCampaign(
+  campaignId: string
+): Promise<OrchestrationResult> {
+  return orchestrateCampaign(campaignId, 'optimize');
+}
+
+// Pause an active campaign
+export async function pauseCampaign(
+  campaignId: string
+): Promise<OrchestrationResult> {
+  return orchestrateCampaign(campaignId, 'pause');
+}
+
+// Resume a paused campaign
+export async function resumeCampaign(
+  campaignId: string
+): Promise<OrchestrationResult> {
+  return orchestrateCampaign(campaignId, 'resume');
 }

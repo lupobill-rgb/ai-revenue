@@ -18,14 +18,110 @@ interface TestEmailRequest {
   fromAddress?: string;
 }
 
+// Function to replace personalization tags with actual lead data (matches email-deploy)
+function personalizeContent(content: string, lead: any): string {
+  if (!content || !lead) return content;
+
+  // Handle location from custom_fields or vertical
+  const location = lead.vertical || (lead.custom_fields?.location) || (lead.custom_fields?.city) || "";
+
+  // Handle industry from multiple sources
+  const industry = lead.industry || lead.vertical || (lead.custom_fields?.industry) || "";
+
+  const replacements: Record<string, string> = {
+    "{{first_name}}": lead.first_name || lead.name?.split(" ")[0] || "there",
+    "{{last_name}}": lead.last_name || lead.name?.split(" ").slice(1).join(" ") || "",
+    "{{full_name}}":
+      lead.name || `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || "there",
+    "{{company}}": lead.company || "your company",
+    "{{email}}": lead.email || "",
+    "{{location}}": location,
+    "{{industry}}": industry,
+    "{{title}}": lead.title || lead.job_title || "",
+    "{{phone}}": lead.phone || "",
+  };
+
+  let personalizedContent = content;
+  for (const [tag, value] of Object.entries(replacements)) {
+    personalizedContent = personalizedContent.replace(
+      new RegExp(tag.replace(/[{}]/g, "\\$&"), "gi"),
+      value
+    );
+  }
+
+  return personalizedContent;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Utility: ensure all recipients exist in CRM
+  const validateRecipientsInCRM = async (
+    supabase: any,
+    workspaceId: string,
+    emails: string[]
+  ): Promise<{ valid: string[]; missing: string[]; leads: Map<string, any> }> => {
+    const lowerEmails = emails.map((e) => e.toLowerCase());
+
+    const { data: leadRows, error } = await supabase
+      .from("leads")
+      .select(
+        "email, first_name, last_name, company, industry, job_title, phone, vertical, custom_fields"
+      )
+      .eq("workspace_id", workspaceId)
+      .in("email", lowerEmails);
+
+    if (error) {
+      console.error("[test-email] CRM lookup error:", error);
+    }
+
+    const leads = new Map<string, any>();
+    for (const l of leadRows || []) {
+      if (l?.email) leads.set(String(l.email).toLowerCase(), l);
+    }
+
+    const valid: string[] = [];
+    const missing: string[] = [];
+    for (const e of lowerEmails) {
+      if (leads.has(e)) {
+        valid.push(e);
+      } else {
+        missing.push(e);
+      }
+    }
+
+    return { valid, missing, leads };
+  };
+
   try {
-    const requestData: TestEmailRequest = await req.json();
-    const { recipients, subject, body, workspaceId, assetId, to, fromName, fromAddress } = requestData;
+    const requestData: TestEmailRequest & { provider?: string } = await req.json();
+    const { recipients, subject, body, workspaceId, assetId, to, fromName, fromAddress, provider } =
+      requestData;
+
+    // Lightweight "provider test" mode (used by Settings → Providers)
+    if (provider && (!recipients || recipients.length === 0) && !to) {
+      const resendApiKey = Deno.env.get("RESEND_API_KEY");
+      if (provider === "resend") {
+        const ok = Boolean(resendApiKey);
+        return new Response(
+          JSON.stringify({
+            success: ok,
+            message: ok ? "Resend is configured" : "RESEND_API_KEY is not configured",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: `Provider '${provider}' test is not supported by this endpoint`,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Validate workspaceId
     if (!workspaceId) {
@@ -38,7 +134,7 @@ serve(async (req) => {
     // Support both new array format and legacy single 'to' format
     let emailList: string[] = [];
     if (recipients && Array.isArray(recipients)) {
-      emailList = recipients.filter(e => e && typeof e === 'string' && e.includes('@'));
+      emailList = recipients.filter((e) => e && typeof e === "string" && e.includes("@"));
     } else if (to) {
       emailList = [to];
     }
@@ -65,7 +161,7 @@ serve(async (req) => {
       );
     }
 
-    // Initialize Supabase client to fetch workspace email settings
+    // Initialize Supabase client (service role) to fetch settings + CRM lead data
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -73,7 +169,7 @@ serve(async (req) => {
     // Fetch workspace email settings
     const { data: emailSettings, error: settingsError } = await supabase
       .from("ai_settings_email")
-      .select("sender_name, from_address")
+      .select("sender_name, from_address, reply_to_address")
       .eq("tenant_id", workspaceId)
       .maybeSingle();
 
@@ -81,75 +177,184 @@ serve(async (req) => {
       console.error("[test-email] Error fetching email settings:", settingsError);
     }
 
-    // Use workspace settings, fall back to provided values or defaults
-    let senderName = emailSettings?.sender_name || fromName || "UbiGrowth";
-    let senderAddress = emailSettings?.from_address || fromAddress || "onboarding@resend.dev";
+    console.log(`[test-email] Email settings for workspace ${workspaceId}:`, emailSettings);
 
-    // Validate that we have a proper from address (not the resend default unless no settings)
-    if (!emailSettings?.from_address && senderAddress === "onboarding@resend.dev") {
-      console.warn("[test-email] No custom email domain configured, using Resend default");
+    // Use workspace settings - REQUIRE configured email, don't fall back to defaults
+    if (!emailSettings?.from_address) {
+      return new Response(
+        JSON.stringify({ 
+          error: "Email integration not configured. Please set up your email address in Settings → Integrations → Email.",
+          requiresSetup: true 
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
+    const senderName = emailSettings.sender_name || fromName || "Your Team";
+    const senderAddress = emailSettings.from_address;
+    const replyToAddress = emailSettings.reply_to_address || senderAddress;
+
     const emailSubject = subject || "Test Email";
-    const emailBody = body || `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1>Test Email</h1>
-        <p>This is a test email to verify your email configuration.</p>
-        <p>Sent at: ${new Date().toISOString()}</p>
-      </div>
-    `;
+    const rawBody = body || "";
 
-    console.log(`[test-email] Sending to ${emailList.length} recipient(s) from ${senderName} <${senderAddress}>`);
-    console.log(`[test-email] Workspace: ${workspaceId}, Asset: ${assetId || 'N/A'}`);
+    // Convert plain-text bodies to HTML so newlines/spacing match preview
+    const escapeHtml = (input: string) =>
+      input
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
 
-    // Send to all recipients
+    const looksLikeHtml = /<\w+[\s\S]*>/i.test(rawBody);
+    const emailBodyHtml = looksLikeHtml
+      ? rawBody
+      : `<div style="font-family: Arial, sans-serif; white-space: pre-wrap; line-height: 1.5;">${escapeHtml(
+          rawBody
+        )}</div>`;
+
+    // Validate all recipients exist in CRM (enforced server-side for all tenants)
+    const { valid: validRecipients, missing: missingRecipients, leads: leadByEmail } =
+      await validateRecipientsInCRM(supabase, workspaceId, emailList);
+
+    if (missingRecipients.length > 0) {
+      console.log(`[test-email] Rejected non-CRM emails: ${missingRecipients.join(", ")}`);
+      return new Response(
+        JSON.stringify({
+          error: `The following email(s) are not in your CRM: ${missingRecipients.join(
+            ", "
+          )}. Please add them as contacts first.`,
+          missingContacts: missingRecipients,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(
+      `[test-email] Sending to ${validRecipients.length} CRM recipient(s) from ${senderName} <${senderAddress}> (workspace: ${workspaceId}, asset: ${assetId || "N/A"})`
+    );
+
+    // Get lead IDs for channel_outbox tracking
+    const { data: leadData } = await supabase
+      .from("leads")
+      .select("id, email")
+      .eq("workspace_id", workspaceId)
+      .in("email", validRecipients);
+    
+    const leadIdByEmail = new Map<string, string>();
+    for (const lead of leadData || []) {
+      if (lead?.email && lead?.id) {
+        leadIdByEmail.set(lead.email.toLowerCase(), lead.id);
+      }
+    }
+
+    // Send to all validated CRM recipients (personalized per recipient)
     const results = await Promise.allSettled(
-      emailList.map(async (recipient) => {
+      validRecipients.map(async (recipient) => {
+        const lead = leadByEmail.get(recipient.toLowerCase()) || {};
+        const leadId = leadIdByEmail.get(recipient.toLowerCase());
+        const personalizedSubject = personalizeContent(emailSubject, lead);
+        const personalizedHtml = personalizeContent(emailBodyHtml, lead);
+
         const response = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${resendApiKey}`,
+            Authorization: `Bearer ${resendApiKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             from: `${senderName} <${senderAddress}>`,
+            reply_to: replyToAddress,
             to: [recipient],
-            subject: emailSubject,
-            html: emailBody,
+            subject: `[TEST] ${personalizedSubject}`,
+            html: personalizedHtml,
+            // Add tracking tags for webhook correlation
+            tags: [
+              { name: "workspace_id", value: workspaceId },
+              ...(leadId ? [{ name: "lead_id", value: leadId }] : []),
+              ...(assetId ? [{ name: "asset_id", value: assetId }] : []),
+              { name: "test_email", value: "true" },
+            ],
           }),
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json();
           console.error(`[test-email] Resend error for ${recipient}:`, errorData);
           throw new Error(errorData.message || `Failed to send to ${recipient}`);
         }
+
+        const result = await response.json();
         
-        return { recipient, response: await response.json() };
+        // Create channel_outbox record for webhook tracking
+        if (result.id) {
+          const { error: outboxError } = await supabase
+            .from("channel_outbox")
+            .insert({
+              tenant_id: workspaceId,
+              workspace_id: workspaceId,
+              channel: "email",
+              provider: "resend",
+              recipient_id: leadId || null,
+              recipient_email: recipient,
+              payload: {
+                subject: personalizedSubject,
+                test_email: true,
+                asset_id: assetId,
+              },
+              status: "sent",
+              provider_message_id: result.id,
+              provider_response: result,
+            });
+          
+          if (outboxError) {
+            console.error(`[test-email] Failed to create outbox record:`, outboxError);
+          } else {
+            console.log(`[test-email] Created outbox record for ${recipient}, provider_message_id: ${result.id}`);
+          }
+        }
+
+        return { recipient, response: result };
       })
     );
 
-    const successful = results.filter(r => r.status === 'fulfilled');
-    const failed = results.filter(r => r.status === 'rejected');
+    const successful = results.filter((r) => r.status === "fulfilled");
+    const failed = results.filter((r) => r.status === "rejected");
+
+    const failureMessages = failed.map((r) => {
+      const reason = (r as PromiseRejectedResult).reason;
+      return reason instanceof Error ? reason.message : String(reason);
+    });
 
     console.log(`[test-email] Sent: ${successful.length}, Failed: ${failed.length}`);
 
-    if (failed.length > 0) {
-      failed.forEach((f, i) => {
-        if (f.status === 'rejected') {
-          console.error(`[test-email] Failed:`, f.reason);
-        }
-      });
+    // If nothing was sent, bubble up as a hard error so the UI doesn't look like it succeeded.
+    if (successful.length === 0 && failed.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            failureMessages.find((m) => m.toLowerCase().includes("domain is not verified")) ||
+            "All test emails failed to send. Please verify your email integration settings.",
+          details: failureMessages,
+          recipients: validRecipients,
+          from: `${senderName} <${senderAddress}>`,
+          subject: `[TEST] ${emailSubject}`,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     return new Response(
       JSON.stringify({
-        success: true,
+        success: failed.length === 0,
         sentCount: successful.length,
         failedCount: failed.length,
-        recipients: emailList,
+        failureMessages,
+        recipients: validRecipients,
         from: `${senderName} <${senderAddress}>`,
-        subject: emailSubject,
+        subject: `[TEST] ${emailSubject}`,
+        personalizedWith: "per-recipient CRM match",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

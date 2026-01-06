@@ -41,9 +41,17 @@ async function insertDecisionRow(supabase: any, decision: KernelDecision): Promi
 async function updateDecisionStatus(supabase: any, id: string, status: string): Promise<void> {
   const { error } = await supabase
     .from("kernel_decisions")
-    .update({ status } as never)
+    .update({ status, executed_at: status === "executed" ? new Date().toISOString() : null } as never)
     .eq("id", id);
   if (error) throw new Error(`KERNEL_DECISION_UPDATE_FAILED: ${error.message}`);
+}
+
+async function updateEventStatus(supabase: any, id: string, status: string): Promise<void> {
+  const { error } = await supabase
+    .from("kernel_events")
+    .update({ status, processed_at: new Date().toISOString() } as never)
+    .eq("id", id);
+  if (error) throw new Error(`KERNEL_EVENT_UPDATE_FAILED: ${error.message}`);
 }
 
 export type IngestResult = {
@@ -115,6 +123,9 @@ export async function ingestKernelEvent(supabase: any, input: unknown, opts?: { 
       throw e;
     }
   }
+
+  // Mark event as completed
+  await updateEventStatus(supabase, emitted.event_id, "completed");
 
   return {
     event_id: emitted.event_id,

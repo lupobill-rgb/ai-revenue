@@ -314,3 +314,92 @@ export function useUploadCMOAsset() {
       cmoApi.uploadCMOAsset(tenantId, path, file),
   });
 }
+
+// Campaign Orchestration Hooks
+export const orchestrationKeys = {
+  integrations: (workspaceId: string) => ["orchestration", "integrations", workspaceId] as const,
+};
+
+export function useValidateIntegrations(workspaceId: string, channels?: string[]) {
+  return useQuery({
+    queryKey: [...orchestrationKeys.integrations(workspaceId), channels],
+    queryFn: () => cmoApi.validateIntegrations(workspaceId, channels),
+    enabled: !!workspaceId && workspaceId.length >= 32, // Must be valid UUID length
+    staleTime: 30000, // Cache for 30 seconds
+    retry: 1, // Only retry once on failure
+    retryDelay: 1000,
+  });
+}
+
+export function useOrchestrateCampaign() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ 
+      campaignId, 
+      action, 
+      options 
+    }: { 
+      campaignId: string; 
+      action: 'validate' | 'launch' | 'optimize' | 'pause' | 'resume';
+      options?: {
+        channels?: string[];
+        autoCreateDeals?: boolean;
+        pipelineStage?: string;
+      };
+    }) => cmoApi.orchestrateCampaign(campaignId, action, options),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: cmoKeys.campaign(campaignId) });
+      queryClient.invalidateQueries({ queryKey: cmoKeys.all });
+    },
+  });
+}
+
+export function useLaunchCampaign() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ campaignId, channels }: { campaignId: string; channels?: string[] }) => 
+      cmoApi.launchCampaign(campaignId, channels),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: cmoKeys.campaign(campaignId) });
+      queryClient.invalidateQueries({ queryKey: cmoKeys.all });
+    },
+  });
+}
+
+export function useOptimizeCampaign() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (campaignId: string) => cmoApi.optimizeCampaign(campaignId),
+    onSuccess: (_, campaignId) => {
+      queryClient.invalidateQueries({ queryKey: cmoKeys.campaign(campaignId) });
+      queryClient.invalidateQueries({ queryKey: cmoKeys.all });
+    },
+  });
+}
+
+export function usePauseCampaign() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (campaignId: string) => cmoApi.pauseCampaign(campaignId),
+    onSuccess: (_, campaignId) => {
+      queryClient.invalidateQueries({ queryKey: cmoKeys.campaign(campaignId) });
+      queryClient.invalidateQueries({ queryKey: cmoKeys.all });
+    },
+  });
+}
+
+export function useResumeCampaign() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (campaignId: string) => cmoApi.resumeCampaign(campaignId),
+    onSuccess: (_, campaignId) => {
+      queryClient.invalidateQueries({ queryKey: cmoKeys.campaign(campaignId) });
+      queryClient.invalidateQueries({ queryKey: cmoKeys.all });
+    },
+  });
+}

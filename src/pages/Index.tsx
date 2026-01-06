@@ -341,6 +341,12 @@ const Index = () => {
               <a href="#" className="hover:text-foreground transition-colors tracking-wide">
                 Documentation
               </a>
+              <button onClick={() => navigate("/privacy")} className="hover:text-foreground transition-colors tracking-wide">
+                Privacy
+              </button>
+              <button onClick={() => navigate("/service")} className="hover:text-foreground transition-colors tracking-wide">
+                Terms of Service
+              </button>
               <button onClick={() => navigate("/login")} className="hover:text-foreground transition-colors tracking-wide">
                 Login
               </button>

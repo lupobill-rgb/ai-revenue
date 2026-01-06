@@ -213,13 +213,17 @@ export async function runCampaignOptimization(payload: {
 
 import type { LeadRow, LeadDetailsResponse, LeadStatus } from "./types";
 
-export async function fetchLeads(tenantId: string): Promise<LeadRow[]> {
+export async function fetchLeads(tenantId: string): Promise<{ leads: LeadRow[]; total: number }> {
   const { data, error } = await supabase.functions.invoke("ai-cmo-leads", {
     body: { tenantId },
   });
 
   if (error) throw new Error(error.message);
-  return data || [];
+  // Handle both old array format and new { leads, total } format
+  if (Array.isArray(data)) {
+    return { leads: data, total: data.length };
+  }
+  return { leads: data?.leads || [], total: data?.total ?? (data?.leads?.length || 0) };
 }
 
 export async function fetchLeadDetails(

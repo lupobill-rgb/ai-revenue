@@ -13,6 +13,21 @@ const Footer = () => {
           <p className="text-center text-xs text-muted-foreground/60">
             AI-powered marketing automation platform
           </p>
+          <div className="flex items-center gap-4">
+            <a 
+              href="/privacy"
+              className="text-xs text-muted-foreground/60 hover:text-primary transition-colors"
+            >
+              Privacy Policy
+            </a>
+            <span className="text-muted-foreground/40">•</span>
+            <a 
+              href="/service"
+              className="text-xs text-muted-foreground/60 hover:text-primary transition-colors"
+            >
+              Terms of Service
+            </a>
+          </div>
         </div>
       </div>
     </footer>

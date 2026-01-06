@@ -6,6 +6,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Allowed redirect domains for OAuth security
+const ALLOWED_REDIRECT_DOMAINS = [
+  'ubigrowth.ai',
+  'preview--ubigrowth-ai.lovable.app',
+  'lovable.app',
+  'localhost:5173',
+  'localhost:3000',
+];
+
+function isRedirectSafe(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return ALLOWED_REDIRECT_DOMAINS.some(domain => 
+      parsed.hostname === domain || 
+      parsed.hostname.endsWith(`.${domain}`) ||
+      parsed.host === domain
+    );
+  } catch {
+    return false;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -21,8 +43,17 @@ serve(async (req) => {
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error("Missing Supabase configuration");
+      return new Response(JSON.stringify({ error: "Server configuration error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -45,9 +76,17 @@ serve(async (req) => {
       });
     }
 
-    // Get the redirect URL from request body
-    const { redirectUrl } = await req.json().catch(() => ({}));
-    const finalRedirectUrl = redirectUrl || "https://ubigrowth.ai/settings/integrations";
+    // Get the redirect URL from request body with security validation
+    const body = await req.json().catch(() => ({}));
+    const requestedRedirect = typeof body.redirectUrl === 'string' ? body.redirectUrl : null;
+    
+    // Default to safe redirect, only use requested if it passes validation
+    let finalRedirectUrl = "https://ubigrowth.ai/settings/integrations";
+    if (requestedRedirect && isRedirectSafe(requestedRedirect)) {
+      finalRedirectUrl = requestedRedirect;
+    } else if (requestedRedirect) {
+      console.warn("Rejected unsafe redirect URL:", requestedRedirect);
+    }
 
     // Build OAuth URL
     const redirectUri = `${supabaseUrl}/functions/v1/gmail-oauth-callback`;

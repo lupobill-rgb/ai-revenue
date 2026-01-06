@@ -17,7 +17,7 @@ import { useTenantSegments } from "@/hooks/useTenantSegments";
 import { toast } from "sonner";
 
 function LeadsPage() {
-  const { leads, loading, refresh } = useLeads();
+  const { leads, totalCount, loading, refresh } = useLeads();
   const { segments, getSegmentByCode } = useTenantSegments();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -57,7 +57,14 @@ function LeadsPage() {
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
-        <h1 className="text-2xl font-semibold text-foreground">Leads</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold text-foreground">Leads</h1>
+          {!loading && (
+            <Badge variant="secondary" className="text-sm">
+              {totalCount.toLocaleString()} total
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           {segments.length > 0 && (
             <Select
