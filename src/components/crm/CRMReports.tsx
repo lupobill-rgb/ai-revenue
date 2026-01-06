@@ -164,10 +164,11 @@ export function CRMReports() {
 
       setSegmentsLoading(true);
       try {
-        // First get all segments for names and colors
+        // First get segments for this tenant only
         const { data: segments } = await supabase
           .from("tenant_segments")
           .select("code, name, color")
+          .eq("tenant_id", dataIntegrity.workspaceId)
           .eq("is_active", true);
 
         const segmentMap = new Map<string, { name: string; color: string }>();
