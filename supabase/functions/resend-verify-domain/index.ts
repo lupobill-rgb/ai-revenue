@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,7 +32,7 @@ serve(async (req) => {
   }
 
   try {
-    const { domain, action } = await req.json();
+    const { domain, action, tenantId } = await req.json();
 
     if (!domain) {
       return new Response(
@@ -46,6 +47,30 @@ serve(async (req) => {
         JSON.stringify({ error: "RESEND_API_KEY not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Initialize Supabase client for updating email settings
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Helper function to activate email when domain is verified
+    async function activateEmailIfVerified(verified: boolean, tenant?: string) {
+      if (verified && tenant) {
+        const { error } = await supabase
+          .from("ai_settings_email")
+          .update({ 
+            is_connected: true,
+            updated_at: new Date().toISOString()
+          })
+          .eq("tenant_id", tenant);
+        
+        if (error) {
+          console.error("Failed to activate email settings:", error);
+        } else {
+          console.log(`[resend-verify-domain] Activated email for tenant ${tenant}`);
+        }
+      }
     }
 
     // Get list of domains from Resend
@@ -102,6 +127,7 @@ serve(async (req) => {
             domainStatus: newDomain.status,
             records: newDomain.records,
             message: "Domain added to Resend. Please add the DNS records shown below.",
+            emailActivated: false,
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
@@ -112,6 +138,7 @@ serve(async (req) => {
           status: "not_found",
           domain,
           message: "Domain not found in Resend. Click 'Add Domain' to register it.",
+          emailActivated: false,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -148,35 +175,44 @@ serve(async (req) => {
 
       if (updatedResponse.ok) {
         const updatedDomain: ResendDomain = await updatedResponse.json();
+        const isVerified = updatedDomain.status === "verified";
+        
+        // Activate email sending when domain is verified
+        await activateEmailIfVerified(isVerified, tenantId);
+        
         return new Response(
           JSON.stringify({
-            status: updatedDomain.status === "verified" ? "verified" : "pending",
+            status: isVerified ? "verified" : "pending",
             domain: updatedDomain.name,
             domainStatus: updatedDomain.status,
             records: updatedDomain.records,
-            message:
-              updatedDomain.status === "verified"
-                ? "Domain is verified and ready to send emails!"
-                : "Verification in progress. DNS records may take up to 48 hours to propagate.",
+            message: isVerified
+              ? "Domain is verified and ready to send emails!"
+              : "Verification in progress. DNS records may take up to 48 hours to propagate.",
+            emailActivated: isVerified,
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
     }
 
+    // Check if domain is verified and activate email
+    const isVerified = foundDomain.status === "verified";
+    await activateEmailIfVerified(isVerified, tenantId);
+
     // Return current status with records
     return new Response(
       JSON.stringify({
-        status: foundDomain.status === "verified" ? "verified" : "pending",
+        status: isVerified ? "verified" : "pending",
         domain: foundDomain.name,
         domainStatus: foundDomain.status,
         records: foundDomain.records,
-        message:
-          foundDomain.status === "verified"
-            ? "Domain is verified and ready to send emails!"
-            : foundDomain.status === "pending"
-            ? "DNS records found but verification pending. This can take up to 48 hours."
-            : `Domain status: ${foundDomain.status}. Please ensure DNS records are configured correctly.`,
+        message: isVerified
+          ? "Domain is verified and ready to send emails!"
+          : foundDomain.status === "pending"
+          ? "DNS records found but verification pending. This can take up to 48 hours."
+          : `Domain status: ${foundDomain.status}. Please ensure DNS records are configured correctly.`,
+        emailActivated: isVerified,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

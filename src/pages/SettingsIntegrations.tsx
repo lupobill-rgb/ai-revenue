@@ -1777,6 +1777,11 @@ export default function SettingsIntegrations() {
                               domain={fromAddress.split("@")[1] || ""}
                               emailMethod={emailMethod}
                               isGmailConnected={gmailConnected}
+                              tenantId={tenantId || undefined}
+                              onEmailActivated={() => {
+                                // Refresh email settings to show updated is_connected status
+                                loadAllSettings();
+                              }}
                             />
                           </div>
                         )}

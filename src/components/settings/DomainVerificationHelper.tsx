@@ -24,6 +24,8 @@ interface DomainVerificationHelperProps {
   domain: string;
   emailMethod: "resend" | "gmail" | "smtp";
   isGmailConnected?: boolean;
+  tenantId?: string;
+  onEmailActivated?: () => void;
 }
 
 interface DnsRecord {
@@ -42,6 +44,8 @@ export function DomainVerificationHelper({
   domain,
   emailMethod,
   isGmailConnected = false,
+  tenantId,
+  onEmailActivated,
 }: DomainVerificationHelperProps) {
   const [status, setStatus] = useState<VerificationStatus>("unknown");
   const [checking, setChecking] = useState(false);
@@ -59,7 +63,7 @@ export function DomainVerificationHelper({
 
     try {
       const { data, error } = await supabase.functions.invoke("resend-verify-domain", {
-        body: { domain, action },
+        body: { domain, action, tenantId },
       });
 
       if (error) {
@@ -76,7 +80,11 @@ export function DomainVerificationHelper({
       }
 
       if (data.status === "verified") {
-        toast.success("Domain is verified!");
+        toast.success("Domain is verified! Outbound emails activated.");
+        // Notify parent that email is now activated
+        if (data.emailActivated && onEmailActivated) {
+          onEmailActivated();
+        }
       } else if (data.status === "pending") {
         toast.info("Domain verification pending - DNS records may take time to propagate");
       }
@@ -99,7 +107,7 @@ export function DomainVerificationHelper({
 
     try {
       const { data, error } = await supabase.functions.invoke("resend-verify-domain", {
-        body: { domain, action: "add" },
+        body: { domain, action: "add", tenantId },
       });
 
       if (error) {
