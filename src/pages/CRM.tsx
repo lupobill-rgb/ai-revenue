@@ -177,6 +177,8 @@ const CRM = () => {
 
   useEffect(() => {
     if (workspaceValidated && workspaceId) {
+      // Force immediate fetch on mount and workspace change
+      console.log("[CRM] Fetching leads for workspace:", workspaceId);
       fetchLeads();
       fetchCalendarEvents();
       fetchCampaignMetrics();
@@ -190,22 +192,28 @@ const CRM = () => {
     }
   }, [workspaceId, workspaceValidated]);
 
-  // Keep analytics in sync (preview can be stale if the DB updates outside this page lifecycle)
+  // Force refresh on window focus to catch any updates
   useEffect(() => {
     if (!workspaceValidated || !workspaceId) return;
 
     const onFocus = () => {
-      fetchCampaignMetrics();
+      console.log("[CRM] Window focused, refreshing leads...");
+      fetchLeads();
     };
 
     window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [workspaceId, workspaceValidated]);
+
+  // Periodic analytics refresh
+  useEffect(() => {
+    if (!workspaceValidated || !workspaceId) return;
 
     const interval = window.setInterval(() => {
       fetchCampaignMetrics();
     }, 15000);
 
     return () => {
-      window.removeEventListener("focus", onFocus);
       window.clearInterval(interval);
     };
   }, [workspaceId, workspaceValidated]);
