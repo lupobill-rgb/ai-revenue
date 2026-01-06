@@ -68,8 +68,27 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const status = url.searchParams.get("status");
     const campaignId = url.searchParams.get("campaignId");
-    const limit = parseInt(url.searchParams.get("limit") || "100");
+    // Default to 10000 to fetch all leads - can be paginated in the future
+    const limit = parseInt(url.searchParams.get("limit") || "10000");
     const offset = parseInt(url.searchParams.get("offset") || "0");
+
+    // First, get total count
+    let countQuery = supabase
+      .from("crm_leads")
+      .select("id", { count: "exact", head: true });
+    
+    if (status) {
+      countQuery = countQuery.eq("status", status);
+    }
+    if (campaignId) {
+      countQuery = countQuery.eq("campaign_id", campaignId);
+    }
+    
+    const { count: totalCount, error: countError } = await countQuery;
+    
+    if (countError) {
+      console.error("[ai-cmo-leads] Failed to count leads:", countError);
+    }
 
     // Build query for leads with contact and campaign joins
     let query = supabase
@@ -189,10 +208,10 @@ Deno.serve(async (req) => {
       lastActivity: activitiesMap[lead.id] || null,
     }));
 
-    console.log(`[ai-cmo-leads] Returning ${response.length} leads`);
+    console.log(`[ai-cmo-leads] Returning ${response.length} leads (total: ${totalCount ?? 'unknown'})`);
 
     return new Response(
-      JSON.stringify(response),
+      JSON.stringify({ leads: response, total: totalCount ?? response.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
