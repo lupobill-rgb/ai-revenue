@@ -10450,6 +10450,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_campaign_metric: {
+        Args: {
+          p_campaign_id: string
+          p_column_name: string
+          p_increment_by?: number
+        }
+        Returns: undefined
+      }
       increment_campaign_reply_count: {
         Args: { p_campaign_id: string; p_workspace_id: string }
         Returns: undefined

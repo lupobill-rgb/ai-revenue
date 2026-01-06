@@ -1,7 +1,8 @@
 /**
  * Channel Outbox Webhook
  * Handles Resend webhook callbacks to update channel_outbox delivery status
- * Tracks: delivered, bounced, opened, clicked, complained
+ * Tracks: delivered, bounced, opened, clicked, complained, unsubscribed
+ * Also updates campaign_metrics aggregates for analytics
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -19,7 +20,8 @@ type ResendEventType =
   | "email.opened" 
   | "email.clicked" 
   | "email.bounced" 
-  | "email.complained";
+  | "email.complained"
+  | "email.unsubscribed";
 
 interface ResendWebhookPayload {
   type: ResendEventType;
@@ -42,6 +44,16 @@ const STATUS_MAP: Record<string, string> = {
   "email.clicked": "clicked",
   "email.bounced": "bounced",
   "email.complained": "complained",
+  "email.unsubscribed": "unsubscribed",
+};
+
+// Map events to campaign_metrics column names for incrementing
+const METRIC_COLUMN_MAP: Record<string, string> = {
+  "email.delivered": "delivered_count",
+  "email.opened": "open_count",
+  "email.clicked": "clicks",
+  "email.bounced": "bounce_count",
+  "email.unsubscribed": "unsubscribe_count",
 };
 
 Deno.serve(async (req) => {
@@ -146,6 +158,33 @@ Deno.serve(async (req) => {
         occurred_at: payload.created_at,
       },
     } as never);
+
+    // Update campaign_metrics if this event type has a corresponding metric column
+    const metricColumn = METRIC_COLUMN_MAP[payload.type];
+    if (metricColumn && outboxRecord.run_id) {
+      // Get campaign_id from campaign_runs
+      const { data: runData } = await supabase
+        .from("campaign_runs")
+        .select("campaign_id")
+        .eq("id", outboxRecord.run_id)
+        .maybeSingle();
+
+      if (runData?.campaign_id) {
+        // Increment the appropriate metric column
+        const { error: metricsError } = await supabase.rpc("increment_campaign_metric", {
+          p_campaign_id: runData.campaign_id,
+          p_column_name: metricColumn,
+          p_increment_by: 1,
+        });
+
+        if (metricsError) {
+          console.error("[channel-outbox-webhook] Error updating campaign_metrics:", metricsError);
+          // Don't throw - main webhook processing succeeded
+        } else {
+          console.log(`[channel-outbox-webhook] Incremented ${metricColumn} for campaign ${runData.campaign_id}`);
+        }
+      }
+    }
 
     console.log(`[channel-outbox-webhook] Updated outbox ${outboxRecord.id} to status: ${newStatus}`);
 
