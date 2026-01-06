@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { 
   Upload, 
@@ -67,6 +68,19 @@ const ENTITY_ICONS = {
   mixed: FileSpreadsheet,
 };
 
+const AVAILABLE_TAGS = [
+  { name: "Hot Lead", color: "bg-red-500/10 text-red-500 border-red-500/20" },
+  { name: "Decision Maker", color: "bg-purple-500/10 text-purple-500 border-purple-500/20" },
+  { name: "Budget Approved", color: "bg-green-500/10 text-green-500 border-green-500/20" },
+  { name: "Needs Demo", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
+  { name: "Referral", color: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  { name: "Enterprise", color: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20" },
+  { name: "SMB", color: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20" },
+  { name: "Follow Up", color: "bg-orange-500/10 text-orange-500 border-orange-500/20" },
+  { name: "Priority", color: "bg-pink-500/10 text-pink-500 border-pink-500/20" },
+  { name: "Competitor", color: "bg-slate-500/10 text-slate-500 border-slate-500/20" },
+];
+
 export function UniversalCSVImport({ 
   open, 
   onOpenChange, 
@@ -88,6 +102,7 @@ export function UniversalCSVImport({
   // Import options
   const [advancedMode, setAdvancedMode] = useState(false);
   const [selectedSegment, setSelectedSegment] = useState<string>("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   
   // Import results
   const [importStats, setImportStats] = useState<ImportStats>({ created: 0, updated: 0, skipped: 0, errors: 0 });
@@ -104,10 +119,19 @@ export function UniversalCSVImport({
     setTotalRows(0);
     setAdvancedMode(false);
     setSelectedSegment("");
+    setSelectedTags([]);
     setImportStats({ created: 0, updated: 0, skipped: 0, errors: 0 });
     setFailedRows([]);
     setProgress(0);
   }, []);
+
+  const toggleTag = (tagName: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tagName) 
+        ? prev.filter(t => t !== tagName)
+        : [...prev, tagName]
+    );
+  };
 
   const handleClose = useCallback(() => {
     resetState();
@@ -289,6 +313,7 @@ export function UniversalCSVImport({
             notes: lead.notes || null,
             source: "csv_import",
             segment_code: selectedSegment || null,
+            tags: selectedTags.length > 0 ? selectedTags : null,
             workspace_id: workspaceId,
             created_by: user.user.id,
             // Store unmapped fields as custom_fields
@@ -557,6 +582,37 @@ Jane Smith,jane@example.com,+1-555-0101,Tech Corp,CTO`;
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Tag selection */}
+            <div className="space-y-2">
+              <Label>Apply tags to all imported leads:</Label>
+              <div className="flex flex-wrap gap-2">
+                {AVAILABLE_TAGS.map(tag => (
+                  <Badge
+                    key={tag.name}
+                    variant="outline"
+                    className={`cursor-pointer transition-all ${
+                      selectedTags.includes(tag.name) 
+                        ? tag.color + " ring-2 ring-offset-1 ring-primary" 
+                        : "opacity-60 hover:opacity-100"
+                    }`}
+                    onClick={() => toggleTag(tag.name)}
+                  >
+                    <Checkbox 
+                      checked={selectedTags.includes(tag.name)} 
+                      className="mr-1.5 h-3 w-3"
+                      onCheckedChange={() => toggleTag(tag.name)}
+                    />
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
+              {selectedTags.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {selectedTags.length} tag{selectedTags.length > 1 ? 's' : ''} will be applied to all imported leads
+                </p>
+              )}
             </div>
 
             {/* Preview table */}
