@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Search, Filter, Mail, Phone, Building, User, Calendar as CalendarIcon, PhoneCall, Loader2, LayoutGrid, List, BarChart3, Download, Building2, ChevronDown, ExternalLink, Tags } from "lucide-react";
+import { Plus, Upload, Search, Filter, Mail, Phone, Building, User, Calendar as CalendarIcon, PhoneCall, Loader2, LayoutGrid, List, BarChart3, Download, Building2, ChevronDown, ExternalLink, Tags, ArrowUpDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
@@ -72,6 +72,8 @@ const CRM = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sortField, setSortField] = useState<"name" | "company" | "score" | "created_at" | "status">("created_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [showNewLeadDialog, setShowNewLeadDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showScraperDialog, setShowScraperDialog] = useState(false);
@@ -189,7 +191,7 @@ const CRM = () => {
 
   useEffect(() => {
     filterLeads();
-  }, [leads, searchQuery, statusFilter]);
+  }, [leads, searchQuery, statusFilter, sortField, sortDirection]);
 
   const fetchLeads = async () => {
     if (!workspaceId) return;
@@ -296,6 +298,30 @@ const CRM = () => {
     if (statusFilter !== "all") {
       filtered = filtered.filter((lead) => lead.status === statusFilter);
     }
+
+    // Sort the filtered leads
+    filtered = [...filtered].sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case "name":
+          comparison = `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
+          break;
+        case "company":
+          comparison = (a.company || "").localeCompare(b.company || "");
+          break;
+        case "score":
+          comparison = (a.score || 0) - (b.score || 0);
+          break;
+        case "status":
+          comparison = a.status.localeCompare(b.status);
+          break;
+        case "created_at":
+        default:
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
 
     setFilteredLeads(filtered);
   };
@@ -982,7 +1008,7 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                         className="pl-10"
                       />
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 flex-wrap">
                       <Select value={statusFilter} onValueChange={setStatusFilter}>
                         <SelectTrigger className="w-[180px]">
                           <Filter className="mr-2 h-4 w-4" />
@@ -996,6 +1022,28 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                           <SelectItem value="unqualified">Unqualified</SelectItem>
                           <SelectItem value="converted">Converted</SelectItem>
                           <SelectItem value="lost">Lost</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={`${sortField}-${sortDirection}`} onValueChange={(val) => {
+                        const [field, dir] = val.split("-") as [typeof sortField, typeof sortDirection];
+                        setSortField(field);
+                        setSortDirection(dir);
+                      }}>
+                        <SelectTrigger className="w-[180px]">
+                          <ArrowUpDown className="mr-2 h-4 w-4" />
+                          <SelectValue placeholder="Sort by" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="created_at-desc">Newest First</SelectItem>
+                          <SelectItem value="created_at-asc">Oldest First</SelectItem>
+                          <SelectItem value="name-asc">Name A-Z</SelectItem>
+                          <SelectItem value="name-desc">Name Z-A</SelectItem>
+                          <SelectItem value="company-asc">Company A-Z</SelectItem>
+                          <SelectItem value="company-desc">Company Z-A</SelectItem>
+                          <SelectItem value="score-desc">Highest Score</SelectItem>
+                          <SelectItem value="score-asc">Lowest Score</SelectItem>
+                          <SelectItem value="status-asc">Status A-Z</SelectItem>
+                          <SelectItem value="status-desc">Status Z-A</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
