@@ -304,6 +304,15 @@ async function launchCampaign(
   const channelsLaunched: string[] = [];
   const errors: string[] = [];
 
+  // Get campaign with target_tags
+  const { data: campaign } = await supabase
+    .from('cmo_campaigns')
+    .select('target_tags')
+    .eq('id', campaignId)
+    .single();
+
+  const targetTags: string[] = campaign?.target_tags || [];
+
   // Update campaign status to active
   await supabase
     .from('cmo_campaigns')
@@ -322,22 +331,36 @@ async function launchCampaign(
     return { channelsLaunched, errors };
   }
 
+  // Helper function to get leads filtered by target_tags
+  async function getFilteredLeads(requiredFields: string[], limit: number = 100) {
+    let query = supabase
+      .from('leads')
+      .select(`id, ${requiredFields.join(', ')}`)
+      .eq('workspace_id', workspaceId);
+
+    // Filter by target_tags if campaign has them configured
+    if (targetTags.length > 0) {
+      query = query.overlaps('tags', targetTags);
+      console.log(`[launchCampaign] Filtering leads by tags: ${targetTags.join(', ')}`);
+    }
+
+    return await query.limit(limit);
+  }
+
   // Launch email campaigns
   const emailAssets = assets.filter((a: any) => a.content_type === 'email');
   if (emailAssets.length > 0 && (channels.includes('email') || channels.length === 0)) {
     try {
-      // Get leads with emails
-      const { data: leads } = await supabase
-        .from('leads')
-        .select('id, email, first_name, last_name, company')
-        .eq('workspace_id', workspaceId)
-        .not('email', 'is', null)
-        .limit(100);
+      // Get leads with emails, filtered by target_tags
+      const { data: leads } = await getFilteredLeads(['email', 'first_name', 'last_name', 'company']);
+      const emailLeads = (leads || []).filter((l: any) => l.email);
 
-      if (leads && leads.length > 0) {
+      console.log(`[launchCampaign] Found ${emailLeads.length} leads for email campaign${targetTags.length > 0 ? ` (filtered by tags: ${targetTags.join(', ')})` : ''}`);
+
+      if (emailLeads.length > 0) {
         // Queue emails via channel_outbox
         for (const asset of emailAssets) {
-          for (const lead of leads) {
+          for (const lead of emailLeads) {
             await supabaseAdmin
               .from('channel_outbox')
               .insert({
@@ -429,17 +452,15 @@ async function launchCampaign(
         .maybeSingle();
 
       if (voiceSettings?.default_vapi_assistant_id) {
-        // Get leads with phone numbers
-        const { data: leads } = await supabase
-          .from('leads')
-          .select('id, phone, first_name, last_name, company')
-          .eq('workspace_id', workspaceId)
-          .not('phone', 'is', null)
-          .limit(50);
+        // Get leads with phone numbers, filtered by target_tags
+        const { data: leads } = await getFilteredLeads(['phone', 'first_name', 'last_name', 'company'], 50);
+        const phoneLeads = (leads || []).filter((l: any) => l.phone);
 
-        if (leads && leads.length > 0) {
+        console.log(`[launchCampaign] Found ${phoneLeads.length} leads for voice campaign${targetTags.length > 0 ? ` (filtered by tags: ${targetTags.join(', ')})` : ''}`);
+
+        if (phoneLeads.length > 0) {
           for (const asset of voiceAssets) {
-            for (const lead of leads) {
+            for (const lead of phoneLeads) {
               await supabaseAdmin
                 .from('channel_outbox')
                 .insert({

@@ -40,7 +40,7 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { icp, offer, channels, desiredResult } = await req.json();
+    const { icp, offer, channels, desiredResult, target_tags } = await req.json();
     
     // Validate inputs
     if (!icp || typeof icp !== "string") {
@@ -104,20 +104,28 @@ serve(async (req) => {
     }
 
     // Step 1: Create campaign row first (status draft, autopilot_enabled = true, goal set)
+    const campaignData: Record<string, unknown> = {
+      tenant_id: tenantId,
+      workspace_id: workspaceId,
+      campaign_name: `Autopilot Campaign - ${desiredResult}`,
+      campaign_type: "autopilot",
+      description: `AI-generated campaign targeting ${desiredResult}`,
+      target_icp: icp,
+      target_offer: offer,
+      goal: desiredResult,
+      autopilot_enabled: true,
+      status: "draft",
+    };
+
+    // Add target_tags if provided
+    if (Array.isArray(target_tags) && target_tags.length > 0) {
+      campaignData.target_tags = target_tags;
+      console.log(`Campaign will target leads with tags: ${target_tags.join(", ")}`);
+    }
+
     const { data: campaign, error: campaignError } = await supabase
       .from("cmo_campaigns")
-      .insert({
-        tenant_id: tenantId,
-        workspace_id: workspaceId,
-        campaign_name: `Autopilot Campaign - ${desiredResult}`,
-        campaign_type: "autopilot",
-        description: `AI-generated campaign targeting ${desiredResult}`,
-        target_icp: icp,
-        target_offer: offer,
-        goal: desiredResult,
-        autopilot_enabled: true,
-        status: "draft",
-      })
+      .insert(campaignData)
       .select()
       .single();
 
