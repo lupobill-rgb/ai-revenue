@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Building2, Target, FileText, Palette, CheckCircle2 } from "lucide-react";
-import { getWorkspaceId } from "@/hooks/useWorkspace";
+import { useActiveWorkspaceId } from "@/hooks/useWorkspace";
 
 interface BrandColors {
   primary?: string;
@@ -41,9 +41,9 @@ interface BusinessProfile {
 
 export default function BusinessProfileTab() {
   const { toast } = useToast();
+  const workspaceId = useActiveWorkspaceId();
   const [loading, setLoading] = useState(false);
   const [profileExists, setProfileExists] = useState(false);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [profile, setProfile] = useState<BusinessProfile>({
     business_name: "",
     business_description: "",
@@ -62,18 +62,18 @@ export default function BusinessProfileTab() {
   const [uspInput, setUspInput] = useState("");
 
   useEffect(() => {
-    fetchProfile();
-  }, []);
+    if (workspaceId) {
+      fetchProfile();
+    }
+  }, [workspaceId]);
 
   const fetchProfile = async () => {
-    const wsId = await getWorkspaceId();
-    if (!wsId) return;
-    setWorkspaceId(wsId);
+    if (!workspaceId) return;
 
     const { data, error } = await supabase
       .from("business_profiles")
       .select("*")
-      .eq("workspace_id", wsId)
+      .eq("workspace_id", workspaceId)
       .maybeSingle();
 
     if (!error && data) {

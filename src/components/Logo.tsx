@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Building2 } from "lucide-react";
-import { getWorkspaceId } from "@/hooks/useWorkspace";
+import { useActiveWorkspaceId } from "@/hooks/useWorkspace";
 import ubigrowthLogo from "@/assets/ubigrowth-logo.png";
 
 interface LogoProps {
@@ -14,11 +14,11 @@ interface BusinessProfile {
 }
 
 const Logo = ({ className = "h-8", showCompanyName = false }: LogoProps) => {
+  const workspaceId = useActiveWorkspaceId();
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const workspaceId = await getWorkspaceId();
       if (!workspaceId) return;
 
       const { data } = await supabase
@@ -33,7 +33,7 @@ const Logo = ({ className = "h-8", showCompanyName = false }: LogoProps) => {
     };
 
     fetchProfile();
-  }, []);
+  }, [workspaceId]);
 
   const companyName = profile?.business_name;
 

@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Mail, Share2, Phone, Video, Layout, Construction } from "lucide-react";
-import { getWorkspaceId } from "@/hooks/useWorkspace";
+import { useActiveWorkspaceId } from "@/hooks/useWorkspace";
 
 interface ChannelPreferences {
   email_enabled: boolean;
@@ -57,9 +57,9 @@ const CHANNEL_CONFIG = [
 
 export function ChannelToggles() {
   const { toast } = useToast();
+  const workspaceId = useActiveWorkspaceId();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [preferences, setPreferences] = useState<ChannelPreferences>({
     email_enabled: true,
     social_enabled: true,
@@ -69,21 +69,23 @@ export function ChannelToggles() {
   });
 
   useEffect(() => {
-    fetchPreferences();
-  }, []);
+    if (workspaceId) {
+      fetchPreferences();
+    } else {
+      setLoading(false);
+    }
+  }, [workspaceId]);
 
   const fetchPreferences = async () => {
-    const wsId = await getWorkspaceId();
-    if (!wsId) {
+    if (!workspaceId) {
       setLoading(false);
       return;
     }
-    setWorkspaceId(wsId);
 
     const { data, error } = await supabase
       .from("channel_preferences")
       .select("*")
-      .eq("workspace_id", wsId)
+      .eq("workspace_id", workspaceId)
       .maybeSingle();
 
     if (!error && data) {
