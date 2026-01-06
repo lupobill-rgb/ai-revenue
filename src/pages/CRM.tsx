@@ -193,16 +193,32 @@ const CRM = () => {
 
   const fetchLeads = async () => {
     if (!workspaceId) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setLeads(data || []);
+    setLoading(true);
+
+    try {
+      const pageSize = 1000;
+      let offset = 0;
+      const all: Lead[] = [];
+
+      while (true) {
+        const { data, error } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("workspace_id", workspaceId)
+          .order("created_at", { ascending: false })
+          .range(offset, offset + pageSize - 1);
+
+        if (error) throw error;
+
+        const batch = (data || []) as Lead[];
+        all.push(...batch);
+
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+      }
+
+      setLeads(all);
     } catch (error) {
       console.error("Error fetching leads:", error);
       toast({
