@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -209,14 +209,11 @@ serve(async (req) => {
     const places = textSearchData.results.slice(0, maxResults);
 
     // Step 2: Get detailed information for each place
-    // Use anon key + user's JWT for RLS enforcement
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const authHeader = req.headers.get('Authorization');
-    
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader || '' } }
-    });
+    // Verify auth using shared helper
+    const { user, error: authError, supabaseClient } = await verifyAuth(req);
+    if (authError || !user || !supabaseClient) {
+      return unauthorizedResponse(corsHeaders, authError || "Not authenticated");
+    }
 
     // Get Firecrawl API key for owner extraction (optional)
     const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
@@ -224,17 +221,6 @@ serve(async (req) => {
       console.log('Firecrawl API key found - owner extraction enabled');
     } else {
       console.log('Firecrawl API key not found - owner extraction disabled');
-    }
-
-    // Get authenticated user - using the client with JWT already set
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-
-    if (authError || !user) {
-      console.error('Authentication error:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
     }
 
     let importedCount = 0;

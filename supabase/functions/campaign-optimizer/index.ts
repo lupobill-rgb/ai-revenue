@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,20 +19,15 @@ serve(async (req) => {
   try {
     const { campaignIds, optimizeAll }: OptimizationRequest = await req.json();
 
-    const authHeader = req.headers.get("Authorization");
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader! } } }
-    );
+    const { user, error: authError, supabaseClient } = await verifyAuth(req);
+    if (authError || !user || !supabaseClient) {
+      return unauthorizedResponse(corsHeaders, authError || "Not authenticated");
+    }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
-
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) throw new Error("Not authenticated");
 
     console.log("Campaign optimizer starting...");
 

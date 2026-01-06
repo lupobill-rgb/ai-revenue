@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,15 +23,10 @@ serve(async (req) => {
       landing_page: true,
     };
 
-    const authHeader = req.headers.get("Authorization");
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader! } } }
-    );
-
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) throw new Error("Not authenticated");
+    const { user, error: authError, supabaseClient } = await verifyAuth(req);
+    if (authError || !user || !supabaseClient) {
+      return unauthorizedResponse(corsHeaders, authError || "Not authenticated");
+    }
 
     console.log("Starting campaign orchestration:", { campaignName, vertical, goal });
 

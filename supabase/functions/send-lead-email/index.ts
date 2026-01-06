@@ -114,22 +114,30 @@ serve(async (req) => {
       throw new Error("Lead ID, subject, and body are required");
     }
 
-    // User client for auth validation
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
+    // Verify auth using shared helper
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    const authHeader = req.headers.get("Authorization");
+    let user = null;
+
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.replace("Bearer ", "");
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+      const { data: { user: verifiedUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+      if (!authError && verifiedUser) {
+        user = verifiedUser;
       }
-    );
+    }
+
+    // User client for RLS-enforced queries
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader || "" } },
+    });
 
     // Service role client for internal operations (activity logging)
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // Fetch the lead details
     const { data: lead, error: leadError } = await supabaseClient
@@ -149,10 +157,7 @@ serve(async (req) => {
     // Settings are now keyed by workspace_id (tenant-scoped)
     const workspaceId = lead.workspace_id as string;
 
-    // Get current user (needed for Gmail and activity logging)
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    
-    console.log("sendVia:", sendVia, "user:", user?.id || "null", "userError:", userError?.message || "none");
+    console.log("sendVia:", sendVia, "user:", user?.id || "null");
 
     let emailResult: { id: string };
     let fromAddress = "onboarding@resend.dev";

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimits, rateLimitResponse, getClientIp } from "../_shared/rate-limit.ts";
+import { verifyAuth, unauthorizedResponse, createServiceClient } from "../_shared/auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,20 +25,13 @@ serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-    const authHeader = req.headers.get("Authorization");
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader! } }
-    });
-
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) throw new Error("Not authenticated");
+    const { user, error: authError, supabaseClient } = await verifyAuth(req);
+    if (authError || !user || !supabaseClient) {
+      return unauthorizedResponse(corsHeaders, authError || "Not authenticated");
+    }
 
     // Rate limiting per user + IP
-    const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+    const serviceClient = createServiceClient();
     const clientIp = getClientIp(req);
     const rateLimitResult = await checkRateLimits(
       serviceClient,

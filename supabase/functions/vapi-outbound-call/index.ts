@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyAuth, createServiceClient } from "../_shared/auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -32,19 +33,9 @@ serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-    // Create clients
-    const authHeader = req.headers.get("Authorization");
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader! } }
-    });
-    const serviceClient = createClient(supabaseUrl, serviceRoleKey);
-
-    // Get user for tenant context
-    const { data: { user } } = await supabaseClient.auth.getUser();
+    // Verify auth - user is optional for this endpoint (can be called by system)
+    const { user, supabaseClient } = await verifyAuth(req);
+    const serviceClient = createServiceClient();
 
     const { 
       assistantId, 
