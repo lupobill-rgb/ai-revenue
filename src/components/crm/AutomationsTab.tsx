@@ -163,7 +163,7 @@ function VoiceStepConfig({
               </SelectItem>
             ))}
             {assistants.length === 0 && !isLoading && (
-              <SelectItem value="" disabled>
+              <SelectItem value="__no_agents__" disabled>
                 No agents configured
               </SelectItem>
             )}

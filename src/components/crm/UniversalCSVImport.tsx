@@ -571,14 +571,16 @@ Jane Smith,jane@example.com,+1-555-0101,Tech Corp,CTO`;
             {/* Segment selection */}
             <div className="flex items-center gap-3">
               <Label className="whitespace-nowrap">Assign to segment:</Label>
-              <Select value={selectedSegment} onValueChange={setSelectedSegment}>
+              <Select value={selectedSegment} onValueChange={(v) => setSelectedSegment(v === "__clear__" ? "" : v)}>
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="None (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
-                  {segments.map(seg => (
-                    <SelectItem key={seg.code} value={seg.code}>{seg.name}</SelectItem>
+                  <SelectItem value="__clear__">None</SelectItem>
+                  {segments.map((seg) => (
+                    <SelectItem key={seg.code} value={seg.code}>
+                      {seg.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
