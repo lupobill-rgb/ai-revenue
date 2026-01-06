@@ -234,10 +234,25 @@ serve(async (req) => {
       `[test-email] Sending to ${validRecipients.length} CRM recipient(s) from ${senderName} <${senderAddress}> (workspace: ${workspaceId}, asset: ${assetId || "N/A"})`
     );
 
+    // Get lead IDs for channel_outbox tracking
+    const { data: leadData } = await supabase
+      .from("leads")
+      .select("id, email")
+      .eq("workspace_id", workspaceId)
+      .in("email", validRecipients);
+    
+    const leadIdByEmail = new Map<string, string>();
+    for (const lead of leadData || []) {
+      if (lead?.email && lead?.id) {
+        leadIdByEmail.set(lead.email.toLowerCase(), lead.id);
+      }
+    }
+
     // Send to all validated CRM recipients (personalized per recipient)
     const results = await Promise.allSettled(
       validRecipients.map(async (recipient) => {
         const lead = leadByEmail.get(recipient.toLowerCase()) || {};
+        const leadId = leadIdByEmail.get(recipient.toLowerCase());
         const personalizedSubject = personalizeContent(emailSubject, lead);
         const personalizedHtml = personalizeContent(emailBodyHtml, lead);
 
@@ -253,6 +268,13 @@ serve(async (req) => {
             to: [recipient],
             subject: `[TEST] ${personalizedSubject}`,
             html: personalizedHtml,
+            // Add tracking tags for webhook correlation
+            tags: [
+              { name: "workspace_id", value: workspaceId },
+              ...(leadId ? [{ name: "lead_id", value: leadId }] : []),
+              ...(assetId ? [{ name: "asset_id", value: assetId }] : []),
+              { name: "test_email", value: "true" },
+            ],
           }),
         });
 
@@ -262,7 +284,37 @@ serve(async (req) => {
           throw new Error(errorData.message || `Failed to send to ${recipient}`);
         }
 
-        return { recipient, response: await response.json() };
+        const result = await response.json();
+        
+        // Create channel_outbox record for webhook tracking
+        if (result.id) {
+          const { error: outboxError } = await supabase
+            .from("channel_outbox")
+            .insert({
+              tenant_id: workspaceId,
+              workspace_id: workspaceId,
+              channel: "email",
+              provider: "resend",
+              recipient_id: leadId || null,
+              recipient_email: recipient,
+              payload: {
+                subject: personalizedSubject,
+                test_email: true,
+                asset_id: assetId,
+              },
+              status: "sent",
+              provider_message_id: result.id,
+              provider_response: result,
+            });
+          
+          if (outboxError) {
+            console.error(`[test-email] Failed to create outbox record:`, outboxError);
+          } else {
+            console.log(`[test-email] Created outbox record for ${recipient}, provider_message_id: ${result.id}`);
+          }
+        }
+
+        return { recipient, response: result };
       })
     );
 
