@@ -36,22 +36,58 @@ describe("Revenue OS Kernel contracts are frozen + versioned", () => {
     expect(eventBus).not.toContain('.from("agent_runs")');
   });
 
-  it("orchestrator emits to kernel_events (not just audit)", () => {
+  it("orchestrator emits to kernel_events with payload_json (OS v1 contract)", () => {
     const orchestratorPath = path.join(REPO_ROOT, "supabase/functions/cmo-campaign-orchestrate/index.ts");
     const orchestrator = fs.readFileSync(orchestratorPath, "utf8");
 
-    expect(orchestrator).toContain('.from(\'kernel_events\')');
-    expect(orchestrator).toContain("tenant_id: tenantId");
+    // Must insert into kernel_events table
+    expect(orchestrator).toContain(".from('kernel_events')");
+    // Must use payload_json column (not event_json)
+    expect(orchestrator).toContain("payload_json:");
+    // Must include workspace_id in payload for context
     expect(orchestrator).toContain("workspace_id: workspaceId");
   });
 
-  it("tenant_id and workspace_id are kept separate in orchestrator", () => {
+  it("correlation_id is request-level unique (includes requestId and action)", () => {
     const orchestratorPath = path.join(REPO_ROOT, "supabase/functions/cmo-campaign-orchestrate/index.ts");
     const orchestrator = fs.readFileSync(orchestratorPath, "utf8");
 
-    // Must have distinct tenantId and workspaceId variables
-    expect(orchestrator).toMatch(/const tenantId = tenant_id/);
-    expect(orchestrator).toMatch(/const workspaceId = workspace_id \|\| tenant_id/);
+    // correlation_id must include requestId for unique tracing per request
+    expect(orchestrator).toMatch(/correlationId\s*=\s*`campaign_\$\{campaignId\}_\$\{eventType\}_\$\{action\}_\$\{requestId\}`/);
+    // requestId must be generated per invocation
+    expect(orchestrator).toContain("crypto.randomUUID()");
+  });
+
+  it("idempotency_key uses action-level daily dedup (blocks same action same day)", () => {
+    const orchestratorPath = path.join(REPO_ROOT, "supabase/functions/cmo-campaign-orchestrate/index.ts");
+    const orchestrator = fs.readFileSync(orchestratorPath, "utf8");
+
+    // Idempotency key must include action for action-level dedup
+    expect(orchestrator).toMatch(/makeIdempotencyKey\(\[[\s\S]*?action[\s\S]*?\]\)/);
+    // Must use daily granularity (occurredAt.slice(0, 10))
+    expect(orchestrator).toContain("occurredAt.slice(0, 10)");
+    // Must NOT use correlationId for dedup (only idempotency_key)
+    expect(orchestrator).toContain("idempotency_key: idempotencyKey");
+  });
+
+  it("tenant_id and workspace_id are kept separate (identity boundary)", () => {
+    const orchestratorPath = path.join(REPO_ROOT, "supabase/functions/cmo-campaign-orchestrate/index.ts");
+    const orchestrator = fs.readFileSync(orchestratorPath, "utf8");
+
+    // tenantId is the ownership boundary (inserted into tenant_id column)
+    expect(orchestrator).toContain("tenant_id: tenantId");
+    // workspace_id goes into payload, NOT into tenant_id
+    expect(orchestrator).toMatch(/payload_json:\s*\{[\s\S]*?workspace_id:\s*workspaceId/);
+  });
+
+  it("handles idempotency conflict (23505) as duplicate suppressed", () => {
+    const orchestratorPath = path.join(REPO_ROOT, "supabase/functions/cmo-campaign-orchestrate/index.ts");
+    const orchestrator = fs.readFileSync(orchestratorPath, "utf8");
+
+    // Must handle unique_violation error code
+    expect(orchestrator).toContain("insertError?.code === '23505'");
+    // Must return inserted: false on conflict
+    expect(orchestrator).toContain("inserted: false");
   });
 });
 
