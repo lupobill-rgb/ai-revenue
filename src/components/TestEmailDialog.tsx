@@ -50,16 +50,28 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
   }, [open, workspaceId]);
 
   const fetchEmailSettings = async () => {
+    if (!workspaceId) {
+      console.warn("TestEmailDialog: No workspaceId provided");
+      setLoadingSettings(false);
+      return;
+    }
+    
     setLoadingSettings(true);
+    setEmailSettings(null); // Reset to ensure fresh fetch
     try {
+      console.log("Fetching email settings for workspace:", workspaceId);
       const { data, error } = await supabase
         .from("ai_settings_email")
         .select("sender_name, from_address, reply_to_address")
         .eq("tenant_id", workspaceId)
         .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching email settings:", error);
+        throw error;
+      }
 
+      console.log("Email settings fetched:", data);
       if (data) {
         setEmailSettings(data);
       }
@@ -71,8 +83,16 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
   };
 
   const fetchCRMContacts = async () => {
+    if (!workspaceId) {
+      console.warn("TestEmailDialog: No workspaceId provided for CRM contacts");
+      setLoadingContacts(false);
+      return;
+    }
+    
     setLoadingContacts(true);
+    setCrmContacts([]); // Reset to ensure fresh fetch
     try {
+      console.log("Fetching CRM contacts for workspace:", workspaceId);
       const { data, error } = await supabase
         .from("leads")
         .select("email, first_name, last_name")
@@ -80,8 +100,12 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
         .not("email", "is", null)
         .order("first_name", { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching CRM contacts:", error);
+        throw error;
+      }
 
+      console.log("CRM contacts fetched:", data?.length, "contacts");
       setCrmContacts(data || []);
     } catch (error) {
       console.error("Error fetching CRM contacts:", error);
@@ -233,21 +257,26 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading email settings...
               </div>
-            ) : (
-              <div className="rounded-lg border bg-muted/50 p-3">
-                <p className="text-sm">
-                  <span className="font-medium">{emailSettings?.sender_name || "Not configured"}</span>
-                  {emailSettings?.from_address && (
+            ) : emailSettings?.from_address ? (
+              <div className="rounded-lg border border-green-500/30 bg-green-50 dark:bg-green-950/30 p-3">
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-green-500" />
+                  <p className="text-sm">
+                    <span className="font-medium">{emailSettings.sender_name || "Your Business"}</span>
                     <span className="text-muted-foreground ml-1">
                       &lt;{emailSettings.from_address}&gt;
                     </span>
-                  )}
-                </p>
-                {!emailSettings?.from_address && (
-                  <p className="text-xs text-destructive mt-1">
-                    Please configure your email domain in Settings → Integrations
                   </p>
-                )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+                <p className="text-sm text-destructive">
+                  Email domain not configured.
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Go to <a href="/settings/integrations" className="underline hover:text-foreground">Settings → Integrations</a> to set up your email domain.
+                </p>
               </div>
             )}
           </div>
@@ -347,9 +376,24 @@ export function TestEmailDialog({ open, onOpenChange, asset, workspaceId }: Test
                 )}
 
                 {/* Info about CRM contacts */}
-                <p className="text-xs text-muted-foreground">
-                  {crmContacts.length} contact{crmContacts.length !== 1 ? "s" : ""} available in your CRM
-                </p>
+                {crmContacts.length > 0 ? (
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p className="flex items-center gap-1">
+                      <Check className="h-3 w-3 text-green-500" />
+                      {crmContacts.length} contact{crmContacts.length !== 1 ? "s" : ""} available in your CRM
+                    </p>
+                    <p className="text-[10px] opacity-70">
+                      Tip: Type any of these emails: {crmContacts.slice(0, 3).map(c => c.email).join(", ")}{crmContacts.length > 3 ? "..." : ""}
+                    </p>
+                  </div>
+                ) : (
+                  <Alert variant="default" className="border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-800 dark:text-amber-300">
+                      No contacts found in your CRM. <a href="/crm" className="underline font-medium">Add contacts first</a> to send test emails.
+                    </AlertDescription>
+                  </Alert>
+                )}
               </>
             )}
           </div>
