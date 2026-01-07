@@ -63,23 +63,35 @@ serve(async (req) => {
     workspaceId: string,
     emails: string[]
   ): Promise<{ valid: string[]; missing: string[]; leads: Map<string, any> }> => {
-    const lowerEmails = emails.map((e) => e.toLowerCase());
+    const lowerEmails = emails.map((e) => e.toLowerCase().trim());
 
+    console.log(`[test-email] CRM lookup: workspaceId=${workspaceId}, emails=${JSON.stringify(lowerEmails)}`);
+
+    // Use case-insensitive matching by querying all leads and filtering
+    // Also try both with and without workspace filter for debugging
     const { data: leadRows, error } = await supabase
       .from("leads")
       .select(
-        "email, first_name, last_name, company, industry, job_title, phone, vertical, custom_fields"
+        "id, email, first_name, last_name, company, industry, job_title, phone, vertical, custom_fields, workspace_id"
       )
-      .eq("workspace_id", workspaceId)
-      .in("email", lowerEmails);
+      .eq("workspace_id", workspaceId);
 
     if (error) {
       console.error("[test-email] CRM lookup error:", error);
     }
 
+    console.log(`[test-email] Found ${leadRows?.length || 0} total leads in workspace ${workspaceId}`);
+
+    // Filter leads by email (case-insensitive)
+    const matchedLeads = (leadRows || []).filter((l: any) => 
+      l?.email && lowerEmails.includes(l.email.toLowerCase().trim())
+    );
+
+    console.log(`[test-email] Matched ${matchedLeads.length} leads by email`);
+
     const leads = new Map<string, any>();
-    for (const l of leadRows || []) {
-      if (l?.email) leads.set(String(l.email).toLowerCase(), l);
+    for (const l of matchedLeads) {
+      if (l?.email) leads.set(String(l.email).toLowerCase().trim(), l);
     }
 
     const valid: string[] = [];
@@ -87,9 +99,17 @@ serve(async (req) => {
     for (const e of lowerEmails) {
       if (leads.has(e)) {
         valid.push(e);
+        console.log(`[test-email] ✓ Found lead for: ${e}`);
       } else {
         missing.push(e);
+        console.log(`[test-email] ✗ No lead found for: ${e}`);
       }
+    }
+
+    // If emails are missing, log sample emails from the workspace for debugging
+    if (missing.length > 0 && leadRows?.length > 0) {
+      const sampleEmails = leadRows.slice(0, 5).map((l: any) => l?.email).filter(Boolean);
+      console.log(`[test-email] Sample emails in workspace: ${JSON.stringify(sampleEmails)}`);
     }
 
     return { valid, missing, leads };
