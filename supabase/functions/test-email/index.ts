@@ -193,6 +193,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Fetch workspace email settings
+    console.log(`[test-email] Fetching email settings for workspace: ${workspaceId}`);
     const { data: emailSettings, error: settingsError } = await supabase
       .from("ai_settings_email")
       .select("sender_name, from_address, reply_to_address")
@@ -200,17 +201,29 @@ serve(async (req) => {
       .maybeSingle();
 
     if (settingsError) {
-      console.error("[test-email] Error fetching email settings:", settingsError);
+      console.error("[test-email] Database error fetching email settings:", settingsError);
+      return new Response(
+        JSON.stringify({ 
+          error: `Database error: ${settingsError.message}. Please check RLS policies for ai_settings_email table.`,
+          details: settingsError 
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    console.log(`[test-email] Email settings for workspace ${workspaceId}:`, emailSettings);
+    console.log(`[test-email] Email settings for workspace ${workspaceId}:`, emailSettings ? 'Found' : 'Not found');
+    if (emailSettings) {
+      console.log(`[test-email] Sender: ${emailSettings.sender_name} <${emailSettings.from_address}>`);
+    }
 
     // Use workspace settings - REQUIRE configured email, don't fall back to defaults
     if (!emailSettings?.from_address) {
+      console.warn(`[test-email] No email settings found for workspace ${workspaceId}`);
       return new Response(
         JSON.stringify({ 
           error: "Email integration not configured. Please set up your email address in Settings → Integrations → Email.",
-          requiresSetup: true 
+          requiresSetup: true,
+          workspaceId: workspaceId 
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
