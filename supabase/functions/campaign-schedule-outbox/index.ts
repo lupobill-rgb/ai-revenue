@@ -129,10 +129,10 @@ serve(async (req) => {
 
     const serviceClient = createServiceClient();
 
-    // Fetch campaign with schedule
+    // Fetch campaign with schedule and targeting
     const { data: campaign, error: campaignError } = await supabaseClient
       .from("campaigns")
-      .select("*, assets(*)")
+      .select("*, assets(*), target_tags, target_segment_codes")
       .eq("id", campaignId)
       .single();
 
@@ -169,18 +169,35 @@ serve(async (req) => {
     const assetContent = asset.content as any;
     let targetLeads = assetContent?.target_leads || [];
     
-    // If no target leads in asset, fetch from workspace
+    // If no target leads in asset, fetch from workspace with campaign targeting filters
     if (targetLeads.length === 0 && campaign.workspace_id) {
-      const { data: workspaceLeads } = await supabaseClient
+      // Build query with campaign targeting filters (tags + segments)
+      let leadsQuery = supabaseClient
         .from("leads")
-        .select("id, first_name, last_name, email, company")
+        .select("id, first_name, last_name, email, company, tags, segment_code")
         .eq("workspace_id", campaign.workspace_id)
         .not("email", "is", null)
-        .in("status", ["new", "contacted", "qualified"])
-        .limit(100);
+        .in("status", ["new", "contacted", "qualified"]);
+      
+      // Apply target_tags filter (AND - lead must have at least one matching tag)
+      if (campaign.target_tags && Array.isArray(campaign.target_tags) && campaign.target_tags.length > 0) {
+        leadsQuery = leadsQuery.overlaps("tags", campaign.target_tags);
+        console.log(`[schedule-outbox] Filtering by tags: ${campaign.target_tags.join(", ")}`);
+      }
+      
+      // Apply target_segment_codes filter (OR - lead segment must match one of the codes)
+      if (campaign.target_segment_codes && Array.isArray(campaign.target_segment_codes) && campaign.target_segment_codes.length > 0) {
+        leadsQuery = leadsQuery.in("segment_code", campaign.target_segment_codes);
+        console.log(`[schedule-outbox] Filtering by segments: ${campaign.target_segment_codes.join(", ")}`);
+      }
+      
+      leadsQuery = leadsQuery.limit(100);
+      
+      const { data: workspaceLeads } = await leadsQuery;
       
       if (workspaceLeads) {
         targetLeads = workspaceLeads;
+        console.log(`[schedule-outbox] Found ${workspaceLeads.length} leads matching campaign targeting`);
       }
     }
 

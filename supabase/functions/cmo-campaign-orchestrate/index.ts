@@ -337,15 +337,15 @@ async function launchCampaign(
   const channelsLaunched: string[] = [];
   const errors: string[] = [];
 
-  // Get campaign with target_tags and target_segments
+  // Get campaign with target_tags and target_segment_codes
   const { data: campaign } = await supabase
     .from('cmo_campaigns')
-    .select('target_tags, target_segments')
+    .select('target_tags, target_segment_codes')
     .eq('id', campaignId)
     .single();
 
   const targetTags: string[] = campaign?.target_tags || [];
-  const targetSegments: string[] = campaign?.target_segments || [];
+  const targetSegments: string[] = campaign?.target_segment_codes || [];
 
   // Update campaign status to active
   await supabase
@@ -378,7 +378,7 @@ async function launchCampaign(
       console.log(`[launchCampaign] Filtering leads by tags: ${targetTags.join(', ')}`);
     }
 
-    // Filter by target_segments if campaign has them configured
+    // Filter by target_segment_codes if campaign has them configured
     if (targetSegments.length > 0) {
       query = query.in('segment_code', targetSegments);
       console.log(`[launchCampaign] Filtering leads by segments: ${targetSegments.join(', ')}`);

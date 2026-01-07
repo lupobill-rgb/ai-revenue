@@ -1086,6 +1086,172 @@ async function processSocialBatch(
   return { success: true, posted: 1, failed: 0 };
 }
 
+// Process SMS batch job
+async function processSMSBatch(
+  supabase: any,
+  job: Job,
+  twilioAccountSid: string,
+  twilioAuthToken: string,
+  twilioFromNumber: string
+): Promise<BatchResult> {
+  const campaignId = job.payload.campaign_id as string;
+
+  // Get campaign and leads filtered by target_tags and target_segment_codes
+  const { data: campaign } = await supabase
+    .from("campaigns")
+    .select("*, assets(*), target_tags, target_segment_codes")
+    .eq("id", campaignId)
+    .single();
+
+  if (!campaign) {
+    return { success: false, sent: 0, failed: 1, error: "Campaign not found" };
+  }
+
+  // Build leads query with targeting filters
+  let leadsQuery = supabase
+    .from("leads")
+    .select("id, first_name, last_name, phone")
+    .eq("workspace_id", job.workspace_id)
+    .not("phone", "is", null)
+    .in("status", ["new", "contacted", "qualified"]);
+
+  // Apply target_tags filter
+  if (campaign.target_tags && Array.isArray(campaign.target_tags) && campaign.target_tags.length > 0) {
+    leadsQuery = leadsQuery.overlaps("tags", campaign.target_tags);
+  }
+
+  // Apply target_segment_codes filter
+  if (campaign.target_segment_codes && Array.isArray(campaign.target_segment_codes) && campaign.target_segment_codes.length > 0) {
+    leadsQuery = leadsQuery.in("segment_code", campaign.target_segment_codes);
+  }
+
+  leadsQuery = leadsQuery.limit(100);
+
+  const { data: leads } = await leadsQuery;
+
+  if (!leads || leads.length === 0) {
+    return { success: false, sent: 0, failed: 0, error: "No leads with phone numbers found" };
+  }
+
+  const asset = campaign.assets;
+  const smsMessage = asset?.content?.body || asset?.content?.message || "Hello from our campaign!";
+  
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const lead of leads) {
+    if (!lead.phone) continue;
+
+    const scheduledFor = getDeterministicScheduledFor(job);
+    const idempotencyKey = await generateIdempotencyKey([
+      job.run_id,
+      lead.id,
+      "sms",
+      scheduledFor,
+    ]);
+
+    // IDEMPOTENCY: Try to insert outbox entry BEFORE provider call
+    const { data: insertedOutbox, error: insertError } = await supabase
+      .from("channel_outbox")
+      .insert({
+        tenant_id: job.tenant_id,
+        workspace_id: job.workspace_id,
+        run_id: job.run_id,
+        job_id: job.id,
+        channel: "sms",
+        provider: "twilio",
+        recipient_id: lead.id,
+        recipient_phone: lead.phone,
+        payload: { 
+          campaign_id: campaignId,
+          message: smsMessage,
+          to: lead.phone,
+          from: twilioFromNumber,
+        },
+        status: "queued",
+        idempotency_key: idempotencyKey,
+        skipped: false,
+      } as never)
+      .select("id")
+      .single();
+
+    // If idempotency conflict, skip this lead
+    if (insertError) {
+      if (insertError.code === "23505") {
+        skipped++;
+        continue;
+      }
+      console.error(`[sms] Failed to insert outbox for lead ${lead.id}:`, insertError);
+      failed++;
+      continue;
+    }
+
+    const outboxId = insertedOutbox?.id;
+
+    try {
+      // Send SMS via Twilio
+      const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
+      const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
+
+      const response = await fetch(twilioUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          To: lead.phone,
+          From: twilioFromNumber,
+          Body: smsMessage,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || `Twilio error: ${response.status}`);
+      }
+
+      // Update outbox with success
+      await supabase
+        .from("channel_outbox")
+        .update({
+          status: "sent",
+          provider_message_id: result.sid,
+          provider_response: result,
+        } as never)
+        .eq("id", outboxId);
+
+      sent++;
+
+      // Log lead activity
+      await supabase.from("lead_activities").insert({
+        lead_id: lead.id,
+        activity_type: "sms_sent",
+        description: `SMS sent via Twilio (Campaign: ${campaign.name || campaignId})`,
+        metadata: { campaign_id: campaignId, provider_message_id: result.sid },
+      } as never);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[sms] Failed to send to ${lead.phone}:`, errorMsg);
+
+      // Update outbox with failure
+      await supabase
+        .from("channel_outbox")
+        .update({
+          status: "failed",
+          error: errorMsg,
+        } as never)
+        .eq("id", outboxId);
+
+      failed++;
+    }
+  }
+
+  return { success: sent > 0, sent, failed, skipped };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -1152,6 +1318,9 @@ Deno.serve(async (req) => {
     const resendApiKey = Deno.env.get("RESEND_API_KEY") || "";
     const vapiPrivateKey = Deno.env.get("VAPI_PRIVATE_KEY") || "";
     const elevenLabsApiKey = Deno.env.get("ELEVENLABS_API_KEY") || "";
+    const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID") || "";
+    const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN") || "";
+    const twilioFromNumber = Deno.env.get("TWILIO_FROM_NUMBER") || "";
 
     // Get job queue stats before processing (including oldest queued age)
     const { data: queueStats } = await supabase

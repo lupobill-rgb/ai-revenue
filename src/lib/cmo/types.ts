@@ -61,7 +61,7 @@ export interface CMOOffer {
   key_benefits?: string[];
   pricing_model?: string;
   price_range?: Record<string, unknown>;
-  target_segments?: string[];
+  target_segment_codes?: string[];
   competitive_positioning?: string;
   use_cases?: string[];
   testimonials?: Record<string, unknown>[];

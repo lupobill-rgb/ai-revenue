@@ -123,9 +123,9 @@ serve(async (req) => {
       console.log(`Campaign will target leads with tags: ${target_tags.join(", ")}`);
     }
 
-    // Add target_segments if provided
+    // Add target_segment_codes if provided
     if (Array.isArray(target_segments) && target_segments.length > 0) {
-      campaignData.target_segments = target_segments;
+      campaignData.target_segment_codes = target_segments;
       console.log(`Campaign will target leads in segments: ${target_segments.join(", ")}`);
     }
 

@@ -350,7 +350,7 @@ export async function buildAutopilotCampaign(payload: {
         channels: payload.channels,
         desired_result: payload.desiredResult,
         target_tags: payload.targetTags,
-        target_segments: payload.targetSegments,
+        target_segment_codes: payload.targetSegments,
       },
     },
   });

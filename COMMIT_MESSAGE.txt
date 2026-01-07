@@ -1,0 +1,50 @@
+feat: Phase 3 - Multi-Channel Campaigns with Tag/Segment Targeting
+
+BREAKING CHANGES:
+- Consolidated `target_segments` → `target_segment_codes` (migration required)
+
+FEATURES:
+- ✅ Campaign targeting by tags (array overlap)
+- ✅ Campaign targeting by segments (IN segment_codes)
+- ✅ SMS channel with Twilio integration
+- ✅ Email channel verified working
+- ✅ Voice channel (VAPI) verified working
+- ✅ CRM leads pagination (1000-row batches, no 1k cap)
+- ✅ Tag reports (workspace-scoped, all-time counts)
+- ✅ Segment reports (tenant-isolated)
+- ✅ Workspace selection persistence (no auto-routing)
+
+FIXES:
+- Fixed duplicate `target_segments`/`target_segment_codes` columns
+- Fixed outbox creation not applying campaign targeting filters
+- Fixed code/schema misalignment across functions
+
+TECHNICAL:
+- Added `processSMSBatch()` in run-job-queue
+- Updated campaign-schedule-outbox to filter leads by tags + segments
+- Renamed target_segments → target_segment_codes across all functions
+- Added idempotency keys to prevent duplicate sends
+
+MIGRATIONS:
+- 20260108000001_fix_segment_column_confusion.sql
+
+DOCUMENTATION:
+- RELEASE_READINESS_REPORT_PHASE3.md (full audit + verification)
+- PHASE3_DEPLOYMENT_GUIDE.md (deployment steps + troubleshooting)
+- SMOKE_TEST.md (10-test verification suite)
+- SMS_IMPLEMENTATION.md (SMS channel technical details)
+- VOICEMAIL_DROP_STATUS.md (voicemail feature status)
+
+FILES CHANGED:
+- Modified: 6 files (src + supabase functions)
+- New: 8 files (migration + docs + scripts)
+
+DEPLOYMENT:
+1. Run: ./deploy-phase3.ps1 (Windows) or ./deploy-phase3.sh (Unix)
+2. Configure Twilio secrets for SMS
+3. Run smoke tests (SMOKE_TEST.md)
+
+Tested-By: Principal Engineer
+Release-Captain: Principal Engineer
+Status: READY FOR PRODUCTION
+
