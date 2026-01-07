@@ -8,7 +8,7 @@
  * 2. Use the service role client with `getUser(token)` to verify the JWT
  */
 
-import { createClient, SupabaseClient, User } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient, User } from "npm:@supabase/supabase-js@2";
 
 export interface AuthResult {
   user: User | null;

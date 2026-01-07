@@ -1,6 +1,6 @@
 // supabase/functions/_shared/workspace-password.ts
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 /**
  * Workspace-level password protection for public forms (per-tenant gating).
