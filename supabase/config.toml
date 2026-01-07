@@ -163,7 +163,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.email-sequence]
-verify_jwt = true
+verify_jwt = false  # Uses x-internal-secret authentication instead
 
 [functions.email-tracking-webhook]
 verify_jwt = false
