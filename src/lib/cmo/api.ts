@@ -115,6 +115,7 @@ export async function getICPSegments(workspaceId: string) {
     .from("cmo_icp_segments")
     .select("*")
     .eq("workspace_id", workspaceId)
+    .eq("is_active", true)  // Master Prompt v3: Only return active segments
     .order("priority_score", { ascending: false });
 
   if (error) throw error;

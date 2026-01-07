@@ -65,6 +65,10 @@ export function CRMReports() {
   const [segmentCounts, setSegmentCounts] = useState<SegmentCountRow[]>([]);
   const [segmentsLoading, setSegmentsLoading] = useState(false);
 
+  // Master Prompt v3: Channel visibility metrics
+  const [channelStats, setChannelStats] = useState<Array<{ channel: string; sent: number; delivered: number }>>([]);
+  const [channelLoading, setChannelLoading] = useState(false);
+
   useEffect(() => {
     // Only fetch raw leads for trend visualization - NOT for KPI computation
     const fetchTrendData = async () => {
@@ -223,6 +227,54 @@ export function CRMReports() {
     };
 
     fetchSegmentCounts();
+  }, [dataIntegrity.workspaceId]);
+
+  useEffect(() => {
+    // Master Prompt v3: Fetch channel statistics from channel_outbox
+    const fetchChannelStats = async () => {
+      if (!dataIntegrity.workspaceId) return;
+
+      setChannelLoading(true);
+      try {
+        // Fetch channel_outbox records for this workspace
+        const { data: outboxData } = await supabase
+          .from('channel_outbox')
+          .select('channel, status')
+          .eq('workspace_id', dataIntegrity.workspaceId);
+
+        if (outboxData) {
+          // Aggregate by channel
+          const channelMap = new Map<string, { sent: number; delivered: number }>();
+          
+          outboxData.forEach((record: any) => {
+            const channel = record.channel || 'unknown';
+            const stats = channelMap.get(channel) || { sent: 0, delivered: 0 };
+            
+            if (record.status === 'sent' || record.status === 'delivered') {
+              stats.sent++;
+            }
+            if (record.status === 'delivered') {
+              stats.delivered++;
+            }
+            
+            channelMap.set(channel, stats);
+          });
+
+          // Convert to array and sort by sent count
+          const statsArray = Array.from(channelMap.entries())
+            .map(([channel, stats]) => ({ channel, ...stats }))
+            .sort((a, b) => b.sent - a.sent);
+
+          setChannelStats(statsArray);
+        }
+      } catch (error) {
+        console.error('[CRMReports] Failed to fetch channel stats:', error);
+      } finally {
+        setChannelLoading(false);
+      }
+    };
+
+    fetchChannelStats();
   }, [dataIntegrity.workspaceId]);
 
   // CRM-SPECIFIC STRICTER RULES (no demo carryover, no inference)
@@ -603,6 +655,53 @@ export function CRMReports() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Master Prompt v3: Channel Activity Report */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Messages by Channel
+          </CardTitle>
+          <CardDescription>Messages sent, voicemail drops, SMS delivery counts</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {channelLoading ? (
+            <div className="flex items-center justify-center h-48">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : channelStats.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No channel activity yet. Launch campaigns to see stats.</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="h-[260px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={channelStats}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="channel" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
+                    <YAxis tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
+                    <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
+                    <Legend />
+                    <Bar dataKey="sent" fill="hsl(var(--chart-1))" name="Sent" />
+                    <Bar dataKey="delivered" fill="hsl(var(--chart-3))" name="Delivered" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {channelStats.map((stat) => (
+                  <div key={stat.channel} className="p-3 rounded-lg border bg-muted/30">
+                    <div className="text-sm font-medium capitalize">{stat.channel.replace('_', ' ')}</div>
+                    <div className="text-2xl font-bold mt-1">{stat.sent.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {stat.delivered} delivered
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Leads by Tag */}
       <Card>

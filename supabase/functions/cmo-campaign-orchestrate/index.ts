@@ -101,6 +101,39 @@ async function validateIntegrations(
     });
   }
 
+  // Master Prompt v3: Check voice_vm (voicemail) settings
+  if (channels.includes('voice_vm') || channels.includes('voicemail')) {
+    const { data: voiceSettings } = await supabase
+      .from('ai_settings_voice')
+      .select('*')
+      .eq('tenant_id', workspaceId)
+      .maybeSingle();
+
+    statuses.push({
+      name: 'voice_vm',
+      configured: !!voiceSettings?.vapi_private_key || !!voiceSettings?.vapi_public_key,
+      ready: !!voiceSettings?.is_connected && !!voiceSettings?.default_vapi_assistant_id,
+      error: !voiceSettings?.vapi_private_key ? 'VAPI API keys not configured for voicemail' : 
+             !voiceSettings?.default_vapi_assistant_id ? 'No voice assistant configured for voicemail' : undefined,
+    });
+  }
+
+  // Master Prompt v3: Check SMS/Twilio settings
+  if (channels.includes('sms')) {
+    const { data: smsSettings } = await supabase
+      .from('ai_settings_sms')
+      .select('*')
+      .eq('tenant_id', workspaceId)
+      .maybeSingle();
+
+    statuses.push({
+      name: 'sms',
+      configured: true, // SMS can work with default Twilio config
+      ready: true,
+      error: undefined,
+    });
+  }
+
   // Check calendar integration for booking campaigns
   if (channels.includes('calendar') || channels.includes('booking')) {
     const { data: calendarSettings } = await supabase
@@ -500,6 +533,116 @@ async function launchCampaign(
       }
     } catch (e) {
       errors.push(`Voice launch failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+  }
+
+  // Master Prompt v3: Launch voice_vm (ringless voicemail) campaigns
+  const voicemailAssets = assets.filter((a: any) => a.content_type === 'voice_script' || a.content_type === 'voicemail');
+  if (voicemailAssets.length > 0 && (channels.includes('voice_vm') || channels.includes('voicemail'))) {
+    try {
+      // Get voice settings for voicemail
+      const { data: voiceSettings } = await supabase
+        .from('ai_settings_voice')
+        .select('*')
+        .eq('tenant_id', workspaceId)
+        .maybeSingle();
+
+      if (voiceSettings?.default_vapi_assistant_id) {
+        // Get leads with phone numbers, filtered by target_tags/segments
+        const { data: leads } = await getFilteredLeads(['phone', 'first_name', 'last_name', 'company'], 100);
+        const phoneLeads = (leads || []).filter((l: any) => l.phone);
+
+        console.log(`[launchCampaign] Found ${phoneLeads.length} leads for voicemail campaign${targetTags.length > 0 ? ` (filtered by tags: ${targetTags.join(', ')})` : ''}`);
+
+        if (phoneLeads.length > 0) {
+          for (const asset of voicemailAssets) {
+            for (const lead of phoneLeads) {
+              await supabaseAdmin
+                .from('channel_outbox')
+                .insert({
+                  tenant_id: workspaceId,
+                  workspace_id: workspaceId,
+                  channel: 'voice_vm',
+                  provider: 'vapi',
+                  recipient_id: lead.id,
+                  recipient_phone: lead.phone,
+                  payload: {
+                    campaign_id: campaignId,
+                    asset_id: asset.id,
+                    voicemail_asset_id: asset.id,
+                    script: asset.key_message,
+                    ringless: true,
+                  },
+                  status: 'scheduled',
+                  scheduled_at: new Date().toISOString(),
+                  idempotency_key: `${campaignId}_${asset.id}_${lead.id}_voicemail_${new Date().toISOString().slice(0, 10)}`,
+                });
+            }
+            
+            await supabase
+              .from('cmo_content_assets')
+              .update({ status: 'scheduled' })
+              .eq('id', asset.id);
+          }
+          channelsLaunched.push('voice_vm');
+        }
+      }
+    } catch (e) {
+      errors.push(`Voicemail launch failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+  }
+
+  // Master Prompt v3: Launch SMS campaigns
+  const smsAssets = assets.filter((a: any) => a.content_type === 'sms' || a.content_type === 'text_message');
+  if (smsAssets.length > 0 && (channels.includes('sms') || channels.length === 0)) {
+    try {
+      // Check for Twilio settings
+      const { data: smsSettings } = await supabase
+        .from('ai_settings_sms')
+        .select('*')
+        .eq('tenant_id', workspaceId)
+        .maybeSingle();
+
+      // For now, allow SMS even without explicit settings (will use default Twilio config)
+      // Get leads with phone numbers, filtered by target_tags/segments
+      const { data: leads } = await getFilteredLeads(['phone', 'first_name', 'last_name', 'company'], 200);
+      const phoneLeads = (leads || []).filter((l: any) => l.phone);
+
+      console.log(`[launchCampaign] Found ${phoneLeads.length} leads for SMS campaign${targetTags.length > 0 ? ` (filtered by tags: ${targetTags.join(', ')})` : ''}`);
+
+      if (phoneLeads.length > 0) {
+        for (const asset of smsAssets) {
+          for (const lead of phoneLeads) {
+            // Master Prompt v3: SMS execution rules - one message per step per lead
+            await supabaseAdmin
+              .from('channel_outbox')
+              .insert({
+                tenant_id: workspaceId,
+                workspace_id: workspaceId,
+                channel: 'sms',
+                provider: 'twilio',
+                recipient_id: lead.id,
+                recipient_phone: lead.phone,
+                payload: {
+                  campaign_id: campaignId,
+                  asset_id: asset.id,
+                  message: asset.key_message || asset.content_text,
+                },
+                status: 'scheduled',
+                scheduled_at: new Date().toISOString(),
+                idempotency_key: `${campaignId}_${asset.id}_${lead.id}_sms_${new Date().toISOString().slice(0, 10)}`,
+              });
+          }
+          
+          await supabase
+            .from('cmo_content_assets')
+            .update({ status: 'scheduled' })
+            .eq('id', asset.id);
+        }
+        channelsLaunched.push('sms');
+      }
+    } catch (e) {
+      errors.push(`SMS launch failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   }
 

@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { GripVertical, Phone, Mail, Building, Star } from "lucide-react";
+import { GripVertical, Phone, Mail, Building, Star, ArrowUpDown } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTenantSegments } from "@/hooks/useTenantSegments";
 import { SegmentBadge } from "./SegmentBadge";
 
@@ -31,6 +32,9 @@ interface LeadPipelineProps {
   onLeadUpdate: () => void;
 }
 
+type SortField = 'created_at' | 'first_name' | 'company' | 'score';
+type SortOrder = 'asc' | 'desc';
+
 const PIPELINE_STAGES = [
   { id: "new", label: "New", color: "bg-blue-500" },
   { id: "contacted", label: "Contacted", color: "bg-purple-500" },
@@ -42,7 +46,41 @@ const PIPELINE_STAGES = [
 export default function LeadPipeline({ leads, workspaceId, onLeadClick, onLeadUpdate }: LeadPipelineProps) {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const { getSegmentByCode } = useTenantSegments();
+
+  const sortLeads = (leadsToSort: Lead[]): Lead[] => {
+    // Master Prompt v3: Sortable by created_at, name, company, score, status
+    return [...leadsToSort].sort((a, b) => {
+      let aVal: any, bVal: any;
+      
+      switch (sortField) {
+        case 'created_at':
+          aVal = new Date(a.created_at).getTime();
+          bVal = new Date(b.created_at).getTime();
+          break;
+        case 'first_name':
+          aVal = `${a.first_name} ${a.last_name}`.toLowerCase();
+          bVal = `${b.first_name} ${b.last_name}`.toLowerCase();
+          break;
+        case 'company':
+          aVal = (a.company || '').toLowerCase();
+          bVal = (b.company || '').toLowerCase();
+          break;
+        case 'score':
+          aVal = a.score || 0;
+          bVal = b.score || 0;
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
 
   const getLeadsByStage = (stage: string) => {
     const stageMap: Record<string, string[]> = {
@@ -52,7 +90,8 @@ export default function LeadPipeline({ leads, workspaceId, onLeadClick, onLeadUp
       won: ["converted", "won"],
       lost: ["lost", "unqualified"],
     };
-    return leads.filter((lead) => stageMap[stage]?.includes(lead.status));
+    const stageLeads = leads.filter((lead) => stageMap[stage]?.includes(lead.status));
+    return sortLeads(stageLeads);
   };
 
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
@@ -128,8 +167,38 @@ export default function LeadPipeline({ leads, workspaceId, onLeadClick, onLeadUp
   };
 
   return (
-    <div className="grid grid-cols-5 gap-4 min-h-[600px]">
-      {PIPELINE_STAGES.map((stage) => {
+    <div className="space-y-4">
+      {/* Sorting Controls */}
+      <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg border">
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Sort by:</span>
+        </div>
+        <Select value={sortField} onValueChange={(v) => setSortField(v as SortField)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at">Date Created</SelectItem>
+            <SelectItem value="first_name">Name</SelectItem>
+            <SelectItem value="company">Company</SelectItem>
+            <SelectItem value="score">Score</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as SortOrder)}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="desc">High to Low</SelectItem>
+            <SelectItem value="asc">Low to High</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Pipeline Stages */}
+      <div className="grid grid-cols-5 gap-4 min-h-[600px]">
+        {PIPELINE_STAGES.map((stage) => {
         const stageLeads = getLeadsByStage(stage.id);
         const isOver = dragOverStage === stage.id;
 
@@ -215,6 +284,7 @@ export default function LeadPipeline({ leads, workspaceId, onLeadClick, onLeadUp
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

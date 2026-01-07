@@ -4,13 +4,14 @@
  * Invalidates campaign queries on completion for automatic refresh
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -18,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Bot, Loader2, CheckCircle2, Mail, MessageSquare, Linkedin, Phone, Layout } from 'lucide-react';
+import { Bot, Loader2, CheckCircle2, Mail, MessageSquare, Linkedin, Phone, Layout, Users, Tag } from 'lucide-react';
 import { buildAutopilotCampaign } from '@/lib/cmo/api';
 import { requireTenantId } from '@/lib/tenant';
 import { cmoKeys } from '@/hooks/useCMO';
@@ -26,6 +27,7 @@ import { toast } from 'sonner';
 import type { CampaignGoal } from '@/lib/cmo/types';
 import { useWorkspaceContext, useActiveWorkspaceId } from '@/contexts/WorkspaceContext';
 import { WorkspaceGate } from '@/components/WorkspaceGate';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AutopilotCampaignWizardProps {
   onComplete?: (result: any) => void;
@@ -56,6 +58,93 @@ export function AutopilotCampaignWizard({ onComplete }: AutopilotCampaignWizardP
   const [offer, setOffer] = useState('');
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['email']);
   const [desiredResult, setDesiredResult] = useState<CampaignGoal>('leads');
+  
+  // Tag/Segment targeting state
+  const [enableTagTargeting, setEnableTagTargeting] = useState(false);
+  const [enableSegmentTargeting, setEnableSegmentTargeting] = useState(false);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [availableSegments, setAvailableSegments] = useState<Array<{ code: string; name: string }>>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
+  const [matchingLeadsCount, setMatchingLeadsCount] = useState<number | null>(null);
+  const [loadingCount, setLoadingCount] = useState(false);
+
+  // Fetch available tags and segments
+  useEffect(() => {
+    if (!workspaceId) return;
+    
+    const fetchTagsAndSegments = async () => {
+      // Fetch unique tags from leads
+      const { data: leadsData } = await supabase
+        .from('leads')
+        .select('tags')
+        .eq('workspace_id', workspaceId)
+        .not('tags', 'is', null);
+      
+      if (leadsData) {
+        const tagsSet = new Set<string>();
+        leadsData.forEach((lead: any) => {
+          if (Array.isArray(lead.tags)) {
+            lead.tags.forEach((tag: string) => tagsSet.add(tag));
+          }
+        });
+        setAvailableTags(Array.from(tagsSet).sort());
+      }
+      
+      // Fetch active segments (Master Prompt requirement: tenant_id + is_active)
+      const { data: segmentsData } = await supabase
+        .from('cmo_icp_segments')
+        .select('segment_code, segment_name')
+        .eq('workspace_id', workspaceId)
+        .eq('is_active', true)
+        .order('segment_name');
+      
+      if (segmentsData) {
+        setAvailableSegments(
+          segmentsData.map((s: any) => ({ code: s.segment_code, name: s.segment_name }))
+        );
+      }
+    };
+    
+    fetchTagsAndSegments();
+  }, [workspaceId]);
+
+  // Calculate matching leads count when filters change
+  useEffect(() => {
+    if (!workspaceId || (!enableTagTargeting && !enableSegmentTargeting)) {
+      setMatchingLeadsCount(null);
+      return;
+    }
+    
+    const fetchMatchingCount = async () => {
+      setLoadingCount(true);
+      try {
+        let query = supabase
+          .from('leads')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId);
+        
+        // Apply tag filter if enabled
+        if (enableTagTargeting && selectedTags.length > 0) {
+          query = query.overlaps('tags', selectedTags);
+        }
+        
+        // Apply segment filter if enabled
+        if (enableSegmentTargeting && selectedSegments.length > 0) {
+          query = query.in('segment_code', selectedSegments);
+        }
+        
+        const { count } = await query;
+        setMatchingLeadsCount(count);
+      } catch (error) {
+        console.error('Error fetching matching leads count:', error);
+      } finally {
+        setLoadingCount(false);
+      }
+    };
+    
+    fetchMatchingCount();
+  }, [workspaceId, enableTagTargeting, enableSegmentTargeting, selectedTags, selectedSegments]);
 
   const handleChannelToggle = (channelId: string) => {
     setSelectedChannels((prev) =>
@@ -97,6 +186,8 @@ export function AutopilotCampaignWizard({ onComplete }: AutopilotCampaignWizardP
         channels: selectedChannels,
         desiredResult,
         workspaceId,
+        targetTags: enableTagTargeting && selectedTags.length > 0 ? selectedTags : undefined,
+        targetSegments: enableSegmentTargeting && selectedSegments.length > 0 ? selectedSegments : undefined,
       });
       setResult(data);
       
@@ -238,6 +329,131 @@ export function AutopilotCampaignWizard({ onComplete }: AutopilotCampaignWizardP
               </SelectContent>
             </Select>
           </div>
+
+          {/* Tag Targeting */}
+          <div className="space-y-3 p-4 rounded-lg border bg-muted/20">
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="enable-tag-targeting"
+                checked={enableTagTargeting}
+                onCheckedChange={setEnableTagTargeting}
+              />
+              <div className="flex-1">
+                <Label htmlFor="enable-tag-targeting" className="flex items-center gap-2 cursor-pointer">
+                  <Tag className="h-4 w-4" />
+                  Target specific lead tags
+                </Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Only reach leads with these tags
+                </p>
+              </div>
+            </div>
+            
+            {enableTagTargeting && (
+              <div className="space-y-2 pl-7">
+                {availableTags.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No tags found in your leads</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {availableTags.map((tag) => (
+                      <Badge
+                        key={tag}
+                        variant={selectedTags.includes(tag) ? 'default' : 'outline'}
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setSelectedTags(prev =>
+                            prev.includes(tag)
+                              ? prev.filter(t => t !== tag)
+                              : [...prev, tag]
+                          );
+                        }}
+                      >
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {selectedTags.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Selected: {selectedTags.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Segment Targeting */}
+          <div className="space-y-3 p-4 rounded-lg border bg-muted/20">
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="enable-segment-targeting"
+                checked={enableSegmentTargeting}
+                onCheckedChange={setEnableSegmentTargeting}
+              />
+              <div className="flex-1">
+                <Label htmlFor="enable-segment-targeting" className="flex items-center gap-2 cursor-pointer">
+                  <Users className="h-4 w-4" />
+                  Target specific segments
+                </Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Only reach leads in these ICP segments
+                </p>
+              </div>
+            </div>
+            
+            {enableSegmentTargeting && (
+              <div className="space-y-2 pl-7">
+                {availableSegments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No active segments configured</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {availableSegments.map((segment) => (
+                      <Badge
+                        key={segment.code}
+                        variant={selectedSegments.includes(segment.code) ? 'default' : 'outline'}
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setSelectedSegments(prev =>
+                            prev.includes(segment.code)
+                              ? prev.filter(s => s !== segment.code)
+                              : [...prev, segment.code]
+                          );
+                        }}
+                      >
+                        {segment.name}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {selectedSegments.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Selected: {availableSegments.filter(s => selectedSegments.includes(s.code)).map(s => s.name).join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Matching Leads Count */}
+          {(enableTagTargeting || enableSegmentTargeting) && (
+            <div className="p-4 rounded-lg border bg-primary/5 border-primary/20">
+              <div className="flex items-center gap-3">
+                <Users className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Target Audience Size</p>
+                  {loadingCount ? (
+                    <p className="text-xs text-muted-foreground">Calculating...</p>
+                  ) : matchingLeadsCount !== null ? (
+                    <p className="text-lg font-bold text-primary">
+                      {matchingLeadsCount.toLocaleString()} leads
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Select filters to see count</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Submit */}
           <Button type="submit" disabled={loading} className="w-full" size="lg">

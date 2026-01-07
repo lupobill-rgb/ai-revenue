@@ -164,14 +164,32 @@ const CRM = () => {
     if (!workspaceId) return;
     
     try {
-      const { data, error } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .order("created_at", { ascending: false });
+      // Master Prompt v3: Implement 1000-row batch pagination
+      // Fetch ALL leads in batches to avoid silent caps
+      const pageSize = 1000;
+      let offset = 0;
+      const allLeads: any[] = [];
 
-      if (error) throw error;
-      setLeads(data || []);
+      while (true) {
+        const { data, error } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("workspace_id", workspaceId)
+          .order("created_at", { ascending: false })
+          .range(offset, offset + pageSize - 1);
+
+        if (error) throw error;
+        
+        const batch = data || [];
+        allLeads.push(...batch);
+        
+        // If we got fewer results than pageSize, we've reached the end
+        if (batch.length < pageSize) break;
+        
+        offset += pageSize;
+      }
+
+      setLeads(allLeads);
     } catch (error) {
       console.error("Error fetching leads:", error);
       toast({
