@@ -139,7 +139,8 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
   }, [baseLeads, dateRange, segmentFilter]);
 
   // Core metrics
-  const totalLeads = displayLeads.length;
+  const totalLeadsInDatabase = baseLeads.length; // Total in database (unfiltered)
+  const totalLeads = displayLeads.length; // Filtered count
   const newLeads = displayLeads.filter(l => l.status === "new").length;
   const contactedLeads = displayLeads.filter(l => l.status === "contacted").length;
   const qualifiedLeads = displayLeads.filter(l => l.status === "qualified").length;
@@ -255,9 +256,18 @@ export default function CRMDashboard({ leads, showSampleData, onToggleSampleData
             <Users className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{totalLeads}</div>
+            <div className="text-3xl font-bold">{totalLeadsInDatabase}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              <span className="text-green-500 font-medium">+{newLeads}</span> new this period
+              {totalLeads !== totalLeadsInDatabase ? (
+                <>
+                  <span className="text-blue-500 font-medium">{totalLeads}</span> shown ({dateRange !== "all" ? "filtered" : segmentFilter !== "all" ? "segment filtered" : "all"}) • {" "}
+                  <span className="text-green-500 font-medium">+{newLeads}</span> new
+                </>
+              ) : (
+                <>
+                  <span className="text-green-500 font-medium">+{newLeads}</span> new this period
+                </>
+              )}
             </p>
           </CardContent>
         </Card>
