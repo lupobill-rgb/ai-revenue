@@ -1,38 +1,128 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
 const AuthCallback = () => {
   const navigate = useNavigate();
+  const [status, setStatus] = useState("Completing sign in...");
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let mounted = true;
+
+    const handleAuthCallback = async (session: any) => {
+      if (!session || !mounted) return;
+
+      console.log("[AuthCallback] Handling sign-in for user:", session.user.id);
+      setStatus("Setting up your account...");
+
+      try {
+        // Wait a moment for the trigger to complete
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Try to get business profile with retries
+        let profile = null;
+        let attempts = 0;
+        const maxAttempts = 5;
+
+        while (attempts < maxAttempts && !profile && mounted) {
+          attempts++;
+          console.log(`[AuthCallback] Checking for profile (attempt ${attempts}/${maxAttempts})...`);
+          
+          const { data: profileArr, error } = await supabase
+            .from("business_profiles")
+            .select("id, workspace_id")
+            .eq("user_id", session.user.id)
+            .limit(1);
+
+          if (error) {
+            console.error("[AuthCallback] Error querying business_profiles:", error);
+            
+            // If RLS is blocking, try checking workspaces instead
+            console.log("[AuthCallback] Trying to check workspaces table...");
+            const { data: workspaces } = await supabase
+              .from("workspaces")
+              .select("id")
+              .eq("owner_id", session.user.id)
+              .limit(1);
+
+            if (workspaces && workspaces.length > 0) {
+              console.log("[AuthCallback] Found workspace, redirecting to dashboard");
+              if (mounted) navigate("/dashboard", { replace: true });
+              return;
+            }
+          }
+
+          profile = profileArr?.[0] ?? null;
+
+          if (!profile && attempts < maxAttempts) {
+            console.log(`[AuthCallback] Profile not found, waiting 1s before retry...`);
+            setStatus(`Setting up your account (${attempts}/${maxAttempts})...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+
+        if (!mounted) return;
+
+        if (profile) {
+          console.log("[AuthCallback] Profile found, redirecting to dashboard");
+          setStatus("Redirecting to dashboard...");
+          navigate("/dashboard", { replace: true });
+        } else {
+          console.log("[AuthCallback] No profile found after retries, redirecting to onboarding");
+          setStatus("Redirecting to onboarding...");
+          navigate("/onboarding", { replace: true });
+        }
+      } catch (error) {
+        console.error("[AuthCallback] Error during auth callback:", error);
+        if (mounted) {
+          setStatus("Error completing sign in, retrying...");
+          
+          // Retry once more after error
+          if (retryCount < 2) {
+            setTimeout(() => {
+              setRetryCount(prev => prev + 1);
+              handleAuthCallback(session);
+            }, 2000);
+          } else {
+            // Give up and go to onboarding
+            console.error("[AuthCallback] Max retries reached, redirecting to onboarding");
+            navigate("/onboarding", { replace: true });
+          }
+        }
+      }
+    };
+
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("[AuthCallback] Auth state changed:", event);
+      
       if (event === "SIGNED_IN" && session) {
-        const { data: profileArr } = await supabase
-          .from("business_profiles")
-          .select("id")
-          .eq("user_id", session.user.id)
-          .limit(1);
-
-        const profile = profileArr?.[0] ?? null;
-
-        navigate(profile ? "/dashboard" : "/onboarding", { replace: true });
+        await handleAuthCallback(session);
       }
     });
 
-    // Fallback: if session already exists
+    // Check for existing session (in case callback is slow)
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) navigate("/login", { replace: true });
+      if (!session && mounted) {
+        console.log("[AuthCallback] No session found, redirecting to login");
+        navigate("/login", { replace: true });
+      }
     });
 
-    return () => sub.subscription.unsubscribe();
-  }, [navigate]);
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [navigate, retryCount]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="text-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto mb-4"></div>
-        <p className="text-muted-foreground">Completing sign in...</p>
+        <p className="text-muted-foreground">{status}</p>
+        <p className="text-xs text-muted-foreground/60 mt-2">
+          This may take a few seconds...
+        </p>
       </div>
     </div>
   );
