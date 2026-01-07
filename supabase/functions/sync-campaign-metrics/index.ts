@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,38 +12,15 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    // Use shared auth helper for proper JWT verification
+    const { user, error: authError, supabaseClient: supabase } = await verifyAuth(req);
     
-    // Get auth header and extract JWT
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.error('Missing or invalid Authorization header');
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (authError || !user || !supabase) {
+      console.error('Authentication failed:', authError);
+      return unauthorizedResponse(corsHeaders, authError || 'Unauthorized');
     }
 
-    // Extract user ID from JWT
-    const jwt = authHeader.replace('Bearer ', '');
-    let userId: string;
-    try {
-      const payload = JSON.parse(atob(jwt.split('.')[1]));
-      userId = payload.sub;
-      if (!userId) throw new Error('No user ID in token');
-    } catch (e) {
-      console.error('Failed to parse JWT:', e);
-      return new Response(
-        JSON.stringify({ error: 'Invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Create client with user's JWT for RLS enforcement
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
-    });
+    const userId = user.id;
 
     console.log(`[sync-campaign-metrics] User ${userId} requesting metrics sync...`);
 

@@ -110,7 +110,8 @@ export async function updateBrandProfile(id: string, updates: Partial<CMOBrandPr
 }
 
 // ICP Segments
-export async function getICPSegments(workspaceId: string) {
+export async function getICPSegments(workspaceId: string): Promise<CMOICPSegment[]> {
+  // @ts-ignore - Supabase type instantiation depth issue with chained .eq() calls
   const { data, error } = await supabase
     .from("cmo_icp_segments")
     .select("*")
@@ -119,7 +120,7 @@ export async function getICPSegments(workspaceId: string) {
     .order("priority_score", { ascending: false });
 
   if (error) throw error;
-  return data as unknown as CMOICPSegment[];
+  return (data ?? []) as CMOICPSegment[];
 }
 
 export async function createICPSegment(segment: Partial<CMOICPSegment>) {

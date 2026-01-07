@@ -336,7 +336,7 @@ export function AutopilotCampaignWizard({ onComplete }: AutopilotCampaignWizardP
               <Checkbox
                 id="enable-tag-targeting"
                 checked={enableTagTargeting}
-                onCheckedChange={setEnableTagTargeting}
+                onCheckedChange={(checked) => setEnableTagTargeting(checked === true)}
               />
               <div className="flex-1">
                 <Label htmlFor="enable-tag-targeting" className="flex items-center gap-2 cursor-pointer">
@@ -388,7 +388,7 @@ export function AutopilotCampaignWizard({ onComplete }: AutopilotCampaignWizardP
               <Checkbox
                 id="enable-segment-targeting"
                 checked={enableSegmentTargeting}
-                onCheckedChange={setEnableSegmentTargeting}
+                onCheckedChange={(checked) => setEnableSegmentTargeting(checked === true)}
               />
               <div className="flex-1">
                 <Label htmlFor="enable-segment-targeting" className="flex items-center gap-2 cursor-pointer">
