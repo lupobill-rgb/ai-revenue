@@ -94,23 +94,37 @@ const AuthCallback = () => {
     };
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("[AuthCallback] Auth state changed:", event);
+      console.log("[AuthCallback] Auth state changed:", event, session ? "Session exists" : "No session");
       
       if (event === "SIGNED_IN" && session) {
         await handleAuthCallback(session);
-      }
-    });
-
-    // Check for existing session (in case callback is slow)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session && mounted) {
-        console.log("[AuthCallback] No session found, redirecting to login");
+      } else if (event === "SIGNED_OUT") {
+        console.log("[AuthCallback] User signed out, redirecting to login");
         navigate("/login", { replace: true });
       }
     });
 
+    // Wait for auth state to settle before checking session
+    const timeoutId = setTimeout(async () => {
+      if (!mounted) return;
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log("[AuthCallback] Timeout check - session exists:", !!session);
+      
+      if (session && mounted) {
+        // Session exists but event didn't fire - handle it manually
+        console.log("[AuthCallback] Session found on timeout, handling manually");
+        await handleAuthCallback(session);
+      } else if (!session && mounted) {
+        // No session after timeout - something went wrong
+        console.error("[AuthCallback] No session found after timeout, redirecting to login");
+        navigate("/login", { replace: true });
+      }
+    }, 3000); // Wait 3 seconds for auth state to settle
+
     return () => {
       mounted = false;
+      clearTimeout(timeoutId);
       sub.subscription.unsubscribe();
     };
   }, [navigate, retryCount]);
