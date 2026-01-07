@@ -107,6 +107,7 @@ const NavBar = () => {
   return (
     <nav className="border-b border-border bg-card sticky top-0 z-50">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Main Navigation Row */}
         <div className="flex h-16 items-center justify-between gap-4">
           <div className="flex items-center min-w-0 flex-1 mr-4">
             <Link to="/dashboard" className="flex-shrink-0">
@@ -179,22 +180,6 @@ const NavBar = () => {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-
-                {/* Admin items if enabled */}
-                {adminItems.map((link) => (
-                  <Link
-                    key={link.path}
-                    to={link.path}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
-                      isActive(link.path)
-                        ? "bg-secondary text-foreground"
-                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                    }`}
-                  >
-                    <link.icon className="h-4 w-4" />
-                    {link.label}
-                  </Link>
-                ))}
               </div>
             </div>
           </div>
@@ -298,6 +283,28 @@ const NavBar = () => {
             </Button>
           </div>
         </div>
+
+        {/* Admin Navigation Row (appears below main nav when admin items exist) */}
+        {adminItems.length > 0 && (
+          <div className="hidden lg:flex border-t border-border/50 py-2">
+            <div className="flex items-center space-x-1 ml-[180px]">
+              {adminItems.map((link) => (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-2 ${
+                    isActive(link.path)
+                      ? "bg-secondary text-foreground"
+                      : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                  }`}
+                >
+                  <link.icon className="h-3.5 w-3.5" />
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {mobileMenuOpen && (
