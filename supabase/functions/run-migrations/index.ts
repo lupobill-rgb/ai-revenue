@@ -56,9 +56,9 @@ serve(async (req) => {
       });
 
       results.push({ migration: 1, status: 'success', message: 'Security fixes applied' });
-    } catch (e) {
+    } catch (e: unknown) {
       console.error('[run-migrations] Migration 1 failed:', e);
-      results.push({ migration: 1, status: 'error', message: e.message });
+      results.push({ migration: 1, status: 'error', message: e instanceof Error ? e.message : String(e) });
     }
 
     // ========================================================================
@@ -80,9 +80,9 @@ serve(async (req) => {
       }
 
       results.push({ migration: 2, status: 'success', message: 'Critical indexes created' });
-    } catch (e) {
+    } catch (e: unknown) {
       console.error('[run-migrations] Migration 2 failed:', e);
-      results.push({ migration: 2, status: 'error', message: e.message });
+      results.push({ migration: 2, status: 'error', message: e instanceof Error ? e.message : String(e) });
     }
 
     console.log('[run-migrations] Migrations complete:', results);
