@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,11 +69,11 @@ const CRM = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [totalLeadCount, setTotalLeadCount] = useState<number>(0); // Total count from database
   const [activeTab, setActiveTab] = useState<"dashboard" | "list" | "pipeline" | "deals" | "tasks" | "sequences" | "calendar" | "reports" | "email_analytics">("dashboard");
-  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingProgress, setLoadingProgress] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 100;
   const [showNewLeadDialog, setShowNewLeadDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showScraperDialog, setShowScraperDialog] = useState(false);
@@ -125,7 +125,7 @@ const CRM = () => {
     if (workspaceLoading) return;
 
     if (workspaceId) {
-      fetchLeads();
+      // fetchLeads is handled by the pagination useEffect below
       fetchCalendarEvents();
       fetchCampaignMetrics();
       fetchEmailConnectionStatus();
@@ -158,61 +158,70 @@ const CRM = () => {
     };
   }, [workspaceId, workspaceLoading]);
 
+  // Debounce search query
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    filterLeads();
-  }, [leads, searchQuery, statusFilter]);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  // Reset to page 1 when search or filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, statusFilter]);
+
+  // Fetch leads when page, search, or status filter changes
+  useEffect(() => {
+    if (workspaceLoading || !workspaceId) return;
+    fetchLeads();
+  }, [workspaceId, workspaceLoading, currentPage, debouncedSearch, statusFilter]);
 
   const fetchLeads = async () => {
     if (!workspaceId) return;
     
     setLoading(true);
-    setLoadingProgress(0);
     
     try {
-      // STEP 1: Get total count FIRST (fast query, no data fetch)
-      const { count, error: countError } = await supabase
+      const offset = (currentPage - 1) * PAGE_SIZE;
+      
+      // Build query with server-side filtering
+      let query = supabase
         .from("leads")
-        .select("*", { count: "exact", head: true })
-        .eq("workspace_id", workspaceId);
+        .select("*", { count: "exact" })
+        .eq("workspace_id", workspaceId)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
 
-      if (countError) throw countError;
-      
-      const totalCount = count || 0;
-      setTotalLeadCount(totalCount);
-      
-      // STEP 2: Fetch leads in batches with progress updates
-      const pageSize = 1000;
-      let offset = 0;
-      const allLeads: any[] = [];
-
-      while (offset < totalCount) {
-        const { data, error } = await supabase
-          .from("leads")
-          .select("*")
-          .eq("workspace_id", workspaceId)
-          .order("created_at", { ascending: false })
-          .range(offset, offset + pageSize - 1);
-
-        if (error) throw error;
-        
-        const batch = data || [];
-        allLeads.push(...batch);
-        
-        // Update UI incrementally
-        setLeads([...allLeads]);
-        
-        // Update progress
-        const progress = Math.min(100, Math.round((allLeads.length / totalCount) * 100));
-        setLoadingProgress(progress);
-        
-        // If we got fewer results than pageSize, we've reached the end
-        if (batch.length < pageSize) break;
-        
-        offset += pageSize;
+      // Apply status filter server-side
+      if (statusFilter && statusFilter !== "all") {
+        query = query.eq("status", statusFilter);
       }
 
-      setLeads(allLeads);
-      setLoadingProgress(100);
+      // Apply search filter server-side
+      if (debouncedSearch && debouncedSearch.trim()) {
+        const q = debouncedSearch.trim().toLowerCase();
+        query = query.or(
+          `first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`
+        );
+      }
+
+      const { data, error, count } = await query;
+
+      if (error) throw error;
+      
+      setLeads(data || []);
+      setTotalLeadCount(count || 0);
     } catch (error) {
       console.error("Error fetching leads:", error);
       toast({
@@ -220,10 +229,14 @@ const CRM = () => {
         title: "Error",
         description: "Failed to load leads",
       });
+      setLeads([]);
+      setTotalLeadCount(0);
     } finally {
       setLoading(false);
     }
   };
+
+  const totalPages = Math.ceil(totalLeadCount / PAGE_SIZE);
 
   const fetchCalendarEvents = async () => {
     if (!workspaceId) return;
@@ -275,26 +288,7 @@ const CRM = () => {
     }
   };
 
-  const filterLeads = () => {
-    let filtered = leads;
-
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (lead) =>
-          lead.first_name.toLowerCase().includes(query) ||
-          lead.last_name.toLowerCase().includes(query) ||
-          lead.email.toLowerCase().includes(query) ||
-          lead.company?.toLowerCase().includes(query)
-      );
-    }
-
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((lead) => lead.status === statusFilter);
-    }
-
-    setFilteredLeads(filtered);
-  };
+  // No longer needed - filtering is server-side
 
   const fetchVapiData = async () => {
     setIsLoadingVapi(true);
@@ -1199,34 +1193,13 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
 
             {/* Dashboard Tab */}
             <TabsContent value="dashboard">
-              {loading && loadingProgress < 100 && (
-                <Card className="mb-4">
-                  <CardContent className="pt-6">
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Loading leads...</span>
-                        <span className="font-medium">{loadingProgress}%</span>
-                      </div>
-                      <div className="w-full bg-secondary rounded-full h-2">
-                        <div 
-                          className="bg-primary h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${loadingProgress}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Loaded {leads.length.toLocaleString()} of {totalLeadCount.toLocaleString()} leads
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
               <CRMDashboard 
                 leads={leads}
                 totalLeadCount={totalLeadCount}
                 showSampleData={showSampleData}
                 workspaceId={workspaceId}
                 isLoading={loading}
-                loadingProgress={loadingProgress}
+                loadingProgress={100}
               />
             </TabsContent>
 
@@ -1269,12 +1242,13 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
               )}
 
               {/* Leads Table */}
-              {leads.length > 0 && (
+              {(leads.length > 0 || totalLeadCount > 0) && (
           <Card className="border-border bg-card shadow-md">
             <CardHeader>
               <CardTitle className="text-foreground">Leads</CardTitle>
               <CardDescription>
-                {filteredLeads.length} lead{filteredLeads.length !== 1 ? "s" : ""} found
+                Showing {leads.length} of {totalLeadCount.toLocaleString()} lead{totalLeadCount !== 1 ? "s" : ""}
+                {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1282,7 +1256,7 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                 <div className="flex justify-center py-12">
                   <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
                 </div>
-              ) : filteredLeads.length === 0 ? (
+              ) : leads.length === 0 ? (
                 <div className="py-16 text-center">
                   <User className="mx-auto h-12 w-12 text-muted-foreground" />
                   <p className="mt-4 text-sm text-muted-foreground">
@@ -1324,7 +1298,7 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredLeads.map((lead) => (
+                      {leads.map((lead) => (
                         <tr
                           key={lead.id}
                           className="border-b border-border transition-colors hover:bg-muted/50 cursor-pointer"
@@ -1417,6 +1391,49 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
                   </table>
                 </div>
               )}
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && !loading && (
+                <div className="flex items-center justify-between mt-6 pt-4 border-t border-border">
+                  <div className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      First
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                    >
+                      Last
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
           )}
@@ -1426,7 +1443,7 @@ Emily Rodriguez,emily@example.com,+1-555-0103,Sports Club,General Manager,Sports
             <TabsContent value="pipeline">
               {leads.length > 0 && workspaceId ? (
                 <LeadPipeline
-                  leads={filteredLeads}
+                  leads={leads}
                   workspaceId={workspaceId}
                   onLeadClick={(lead) => navigate(`/crm/${lead.id}`)}
                   onLeadUpdate={fetchLeads}
