@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,11 +12,53 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, userName } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    // Validate authentication
+    const authHeader = req.headers.get("Authorization");
+    console.log(`[onboarding] Auth header present: ${!!authHeader}`);
     
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!authHeader) {
+      console.error("[onboarding] FAIL: No Authorization header");
+      return new Response(
+        JSON.stringify({ error: "Missing Authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify user is authenticated
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    
+    if (authError) {
+      console.error("[onboarding] Auth error:", authError.message);
+    }
+    
+    if (!user) {
+      console.error("[onboarding] FAIL: No user from getUser()");
+      return new Response(
+        JSON.stringify({ 
+          error: "Authentication failed",
+          details: authError?.message || "No user found"
+        }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    console.log(`[onboarding] User authenticated: ${user.id}`);
+
+    const { messages, userName } = await req.json();
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    
+    if (!GEMINI_API_KEY) {
+      console.error("FATAL: GEMINI_API_KEY environment variable not set");
+      return new Response(
+        JSON.stringify({ error: "GEMINI_API_KEY is not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const systemPrompt = `You are a friendly AI onboarding assistant for UbiGrowth AI, an AI-powered marketing automation platform. 
@@ -39,19 +82,31 @@ Guidelines:
 
 Start by greeting ${userName || 'them'} warmly and asking what brings them to UbiGrowth AI today.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Convert to Gemini format
+    const geminiContents = [
+      { role: "user", parts: [{ text: systemPrompt }] }
+    ];
+    
+    for (const msg of messages) {
+      geminiContents.push({
+        role: msg.role === "assistant" ? "model" : "user",
+        parts: [{ text: msg.content }]
+      });
+    }
+
+    console.log("[onboarding] Calling Gemini API");
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?key=${GEMINI_API_KEY}&alt=sse`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        stream: true,
+        contents: geminiContents,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 1024,
+        }
       }),
     });
 
@@ -69,8 +124,8 @@ Start by greeting ${userName || 'them'} warmly and asking what brings them to Ub
         });
       }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      return new Response(JSON.stringify({ error: "AI service error" }), {
+      console.error("[onboarding] Gemini API error:", response.status, errorText);
+      return new Response(JSON.stringify({ error: "AI service error: " + errorText }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

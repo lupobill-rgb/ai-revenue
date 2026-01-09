@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/hooks/useAuth";
 import { storageSet } from "@/lib/storage";
+import { supabase } from "@/integrations/supabase/client";
 
 interface WelcomeModalProps {
   onStartTour: () => void;
@@ -84,14 +85,33 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ onStartTour }) => {
     onDelta: (text: string) => void;
     onDone: () => void;
   }) => {
+    // Get user session token
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    console.log('[Onboarding] Session check:', {
+      hasSession: !!session,
+      hasAccessToken: !!session?.access_token,
+      tokenPreview: session?.access_token?.substring(0, 20) + '...'
+    });
+    
+    if (!session?.access_token) {
+      console.error('[Onboarding] No access token');
+      throw new Error("Authentication required");
+    }
+
+    console.log('[Onboarding] Sending request to:', CHAT_URL);
+
     const resp = await fetch(CHAT_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
       },
       body: JSON.stringify({ messages: chatMessages, userName }),
     });
+    
+    console.log('[Onboarding] Response status:', resp.status);
 
     if (!resp.ok || !resp.body) {
       throw new Error("Failed to start stream");
@@ -120,7 +140,9 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ onStartTour }) => {
 
         try {
           const parsed = JSON.parse(jsonStr);
-          const content = parsed.choices?.[0]?.delta?.content;
+          // Support both OpenAI and Gemini formats
+          const content = parsed.choices?.[0]?.delta?.content || 
+                         parsed.candidates?.[0]?.content?.parts?.[0]?.text;
           if (content) onDelta(content);
         } catch {
           textBuffer = line + "\n" + textBuffer;

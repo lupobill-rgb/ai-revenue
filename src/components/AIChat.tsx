@@ -144,19 +144,55 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
     setInput("");
 
     try {
+      // Get current user session token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      console.log('[AIChat] Session check:', {
+        hasSession: !!session,
+        hasAccessToken: !!session?.access_token,
+        tokenPreview: session?.access_token?.substring(0, 20) + '...',
+        workspaceId: appContext?.workspaceId
+      });
+      
+      if (!session?.access_token) {
+        console.error('[AIChat] No access token found');
+        toast({
+          title: "Authentication Required",
+          description: "Please sign in to use AI chat.",
+          variant: "destructive",
+        });
+        setMessages(prev => prev.slice(0, -1));
+        setIsStreaming(false);
+        return;
+      }
+
+      console.log('[AIChat] Sending request to:', CHAT_URL);
+      
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          "Authorization": `Bearer ${session.access_token}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
         body: JSON.stringify({ 
           messages: [...messages, newUserMessage],
           context: appContext,
         }),
       });
+      
+      console.log('[AIChat] Response status:', resp.status);
 
       if (!resp.ok) {
+        // Log full error details for debugging
+        const errorText = await resp.text().catch(() => 'Unable to read error response');
+        console.error('AI Chat API Error:', {
+          status: resp.status,
+          statusText: resp.statusText,
+          url: CHAT_URL,
+          errorBody: errorText
+        });
+
         if (resp.status === 429) {
           toast({
             title: "Rate Limit",
@@ -164,6 +200,7 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
             variant: "destructive",
           });
           setMessages(prev => prev.slice(0, -1));
+          setIsStreaming(false);
           return;
         }
         if (resp.status === 402) {
@@ -173,9 +210,27 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
             variant: "destructive",
           });
           setMessages(prev => prev.slice(0, -1));
+          setIsStreaming(false);
           return;
         }
-        throw new Error("Failed to start stream");
+        if (resp.status === 401 || resp.status === 403) {
+          toast({
+            title: "Authentication Error",
+            description: "Please sign out and sign in again.",
+            variant: "destructive",
+          });
+          setMessages(prev => prev.slice(0, -1));
+          setIsStreaming(false);
+          return;
+        }
+        
+        // Show detailed error in development, generic in production
+        const isDev = import.meta.env.DEV;
+        throw new Error(
+          isDev 
+            ? `AI Chat failed (${resp.status}): ${errorText}`
+            : `Failed to send message (${resp.status}). Please try again.`
+        );
       }
 
       if (!resp.body) throw new Error("No response body");
@@ -211,7 +266,10 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
 
           try {
             const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            // Support both OpenAI and Gemini formats
+            const content = parsed.choices?.[0]?.delta?.content || 
+                           parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+            
             if (content) {
               assistantContent += content;
               setMessages(prev => {
@@ -231,9 +289,10 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
       }
     } catch (error) {
       console.error("Chat error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to send message. Please try again.";
       toast({
         title: "Error",
-        description: "Failed to send message. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
       // Remove the failed user message

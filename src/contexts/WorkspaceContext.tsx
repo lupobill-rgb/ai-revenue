@@ -117,8 +117,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
       setWorkspaces(uniqueWorkspaces);
 
-      // Resolve active workspace ONLY from explicit persisted selection.
-      // No default/first fallbacks: if nothing is selected, force user selection.
+      // Resolve active workspace from persisted selection OR auto-select if only one
       const savedId = localStorage.getItem(STORAGE_KEY);
       let selectedWorkspace: Workspace | null = null;
 
@@ -127,6 +126,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         if (!selectedWorkspace) {
           localStorage.removeItem(STORAGE_KEY);
         }
+      }
+
+      // AUTO-SELECT: If no saved workspace but user has exactly one, select it automatically
+      if (!selectedWorkspace && uniqueWorkspaces.length === 1) {
+        selectedWorkspace = uniqueWorkspaces[0];
+        localStorage.setItem(STORAGE_KEY, selectedWorkspace.id);
+        console.log('[WorkspaceContext] Auto-selected single workspace:', selectedWorkspace.id);
       }
 
       if (selectedWorkspace) {

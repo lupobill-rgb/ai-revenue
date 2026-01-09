@@ -30,14 +30,36 @@ serve(async (req) => {
   try {
     const { messages, context }: { messages: ChatMessage[]; context?: AppContext } = await req.json();
     
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      console.error("FATAL: GEMINI_API_KEY environment variable not set");
+      return new Response(
+        JSON.stringify({ 
+          error: "GEMINI_API_KEY is not configured" 
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        }
+      );
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const authHeader = req.headers.get('Authorization');
+    
+    console.log(`[ai-chat] Request received. Auth header present: ${!!authHeader}`);
+    
+    if (!authHeader) {
+      console.error("[ai-chat] FAIL: No Authorization header");
+      return new Response(
+        JSON.stringify({ error: "Missing Authorization header" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 401,
+        }
+      );
+    }
     
     let businessName = context?.businessName || "your business";
     let industry = context?.industry || "your industry";
@@ -48,67 +70,101 @@ serve(async (req) => {
     let icpSegments: string[] = context?.icpSegments || [];
     let workspaceId = context?.workspaceId;
 
-    // Fetch complete context from database using workspace scope
-    if (authHeader) {
-      const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader } }
-      });
+    console.log(`[ai-chat] Workspace from context: ${workspaceId || 'none'}`);
 
-      const { data: { user } } = await supabaseClient.auth.getUser();
-      if (user) {
-        // Get workspace ID if not provided
-        if (!workspaceId) {
-          const { data: workspace } = await supabaseClient
-            .from("workspaces")
-            .select("id")
-            .eq("owner_id", user.id)
-            .maybeSingle();
-          workspaceId = workspace?.id;
+    // Create Supabase client with auth
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // Try to get user - but don't fail if it doesn't work
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    
+    if (userError) {
+      console.error("[ai-chat] Auth error:", userError.message);
+      // Try to continue anyway for now
+    }
+    
+    if (!user) {
+      console.error("[ai-chat] FAIL: No user from getUser()");
+      return new Response(
+        JSON.stringify({ 
+          error: "Authentication failed", 
+          details: userError?.message || "No user found"
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 401,
         }
+      );
+    }
 
-        if (workspaceId) {
-          // Fetch business profile by workspace
-          const { data: profile } = await supabaseClient
-            .from("business_profiles")
-            .select("business_name, industry")
-            .eq("workspace_id", workspaceId)
-            .maybeSingle();
-          
-          if (profile) {
-            businessName = profile.business_name || businessName;
-            industry = profile.industry || industry;
-          }
+    console.log(`[ai-chat] User authenticated: ${user.id}`);
 
-          // Fetch ICP segments
-          if (icpSegments.length === 0) {
-            const { data: segments } = await supabaseClient
-              .from("cmo_icp_segments")
-              .select("segment_name")
-              .eq("workspace_id", workspaceId)
-              .limit(5);
+    // Get workspace ID if not provided
+    if (!workspaceId && user) {
+      const { data: workspace, error: wsError } = await supabaseClient
+        .from("workspaces")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+      
+      if (wsError) {
+        console.error("[ai-chat] Workspace lookup error:", wsError.message);
+      }
+      
+      workspaceId = workspace?.id;
+      console.log(`[ai-chat] Workspace lookup result: ${workspaceId || 'none found'}`);
+    }
 
-            if (segments) {
-              icpSegments = segments
-                .map((s) => s.segment_name)
-                .filter(Boolean) as string[];
-            }
-          }
+    if (workspaceId) {
+      console.log(`[ai-chat] Using workspace context: ${workspaceId}`);
+    } else {
+      console.log(`[ai-chat] No workspace - using generic context`);
+    }
 
-          // Get counts scoped to workspace
-          const { count: leads } = await supabaseClient
-            .from("crm_leads")
-            .select("*", { count: "exact", head: true })
-            .eq("workspace_id", workspaceId);
-          
-          const { count: campaigns } = await supabaseClient
-            .from("cmo_campaigns")
-            .select("*", { count: "exact", head: true })
-            .eq("workspace_id", workspaceId);
+    if (workspaceId) {
 
-          leadCount = leads || 0;
-          campaignCount = campaigns || 0;
+      // Fetch business profile by workspace
+      const { data: profile } = await supabaseClient
+        .from("business_profiles")
+        .select("business_name, industry")
+        .eq("workspace_id", workspaceId)
+        .maybeSingle();
+      
+      if (profile) {
+        businessName = profile.business_name || businessName;
+        industry = profile.industry || industry;
+      }
+
+      // Fetch ICP segments
+      if (icpSegments.length === 0) {
+        const { data: segments } = await supabaseClient
+          .from("cmo_icp_segments")
+          .select("segment_name")
+          .eq("workspace_id", workspaceId)
+          .limit(5);
+
+        if (segments) {
+          icpSegments = segments
+            .map((s) => s.segment_name)
+            .filter(Boolean) as string[];
         }
       }
+
+      // Get counts scoped to workspace
+      const { count: leads } = await supabaseClient
+        .from("crm_leads")
+        .select("*", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId);
+      
+      const { count: campaigns } = await supabaseClient
+        .from("cmo_campaigns")
+        .select("*", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId);
+
+      leadCount = leads || 0;
+      campaignCount = campaigns || 0;
     }
 
     console.log(`[ai-chat] Context: ${businessName}, ${industry}, segments: ${icpSegments.length}, leads: ${leadCount}`);
@@ -145,39 +201,52 @@ When the user asks "What is my industry?" respond with: "${industry}".
 When the user asks about their segments, mention: ${icpSegments.length > 0 ? icpSegments.join(", ") : "No segments defined yet - recommend they set up ICP segments in CMO → Brand Setup"}.
 When asked about leads or campaigns, reference the actual counts provided.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Convert messages to Gemini format
+    const geminiContents = [
+      { role: "user", parts: [{ text: systemPrompt + "\n\nConversation:" }] }
+    ];
+    
+    for (const msg of messages) {
+      geminiContents.push({
+        role: msg.role === "assistant" ? "model" : "user",
+        parts: [{ text: msg.content }]
+      });
+    }
+
+    console.log("[ai-chat] Calling Gemini API");
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?key=${GEMINI_API_KEY}&alt=sse`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        stream: true,
+        contents: geminiContents,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2048,
+        }
       }),
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[ai-chat] Gemini API error:", response.status, errorText);
+      
       if (response.status === 429) {
         return new Response(
           JSON.stringify({ error: "Rate limits exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Payment required. Please add funds to your Lovable AI workspace." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error("AI gateway error");
+      
+      return new Response(
+        JSON.stringify({ error: "AI service error: " + errorText }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    console.log("[ai-chat] Gemini responded, streaming to client");
 
     return new Response(response.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
