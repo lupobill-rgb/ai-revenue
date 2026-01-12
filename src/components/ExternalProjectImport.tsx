@@ -25,18 +25,18 @@ export const ExternalProjectImport = ({ onProjectDataExtracted }: ExternalProjec
       toast({
         variant: "destructive",
         title: "URL Required",
-        description: "Please enter a Lovable project URL",
+        description: "Please enter an external project URL",
       });
       return;
     }
 
-    // Validate URL format for Lovable projects (supports lovableproject.com and lovable.app, with or without path)
+    // Validate URL format (supports lovableproject.com and lovable.app, with or without path)
     const lovableUrlPattern = /^https:\/\/[a-z0-9-]+\.(lovableproject\.com|lovable\.app)(\/.*)?$/i;
     if (!lovableUrlPattern.test(projectUrl.trim())) {
       toast({
         variant: "destructive",
         title: "Invalid URL",
-        description: "Please enter a valid Lovable project URL (e.g., https://project-id.lovable.app)",
+        description: "Please enter a valid external project URL (e.g., https://project-id.lovable.app)",
       });
       return;
     }
@@ -45,7 +45,7 @@ export const ExternalProjectImport = ({ onProjectDataExtracted }: ExternalProjec
 
     try {
       const urlMatch = projectUrl.match(/https:\/\/([a-z0-9-]+)\.(lovableproject\.com|lovable\.app)/i);
-      const projectId = urlMatch ? urlMatch[1] : "Lovable Project";
+      const projectId = urlMatch ? urlMatch[1] : "External Project";
       
       // Fetch the page to extract title
       let projectName = projectId;
@@ -54,7 +54,8 @@ export const ExternalProjectImport = ({ onProjectDataExtracted }: ExternalProjec
         const html = await response.text();
         const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
         if (titleMatch) {
-          projectName = titleMatch[1].replace(" | Lovable", "").trim();
+          // Strip trailing " | <builder>" suffix if present
+          projectName = titleMatch[1].replace(/\s+\|\s+[^|]+$/, "").trim();
         }
       } catch (e) {
         console.log("Could not fetch title, using project ID");
@@ -90,15 +91,15 @@ export const ExternalProjectImport = ({ onProjectDataExtracted }: ExternalProjec
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-foreground">
           <ExternalLink className="h-5 w-5" />
-          Import from Lovable Project
+          Import from External Project
         </CardTitle>
         <CardDescription>
-          Import a landing page or website built in another Lovable project
+          Import a landing page or website built in another external project
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="projectUrl">Lovable Project URL *</Label>
+          <Label htmlFor="projectUrl">External Project URL *</Label>
           <Input
             id="projectUrl"
             value={projectUrl}
@@ -107,7 +108,7 @@ export const ExternalProjectImport = ({ onProjectDataExtracted }: ExternalProjec
             className="bg-background border-input"
           />
           <p className="text-xs text-muted-foreground">
-            Enter the full URL of your Lovable project (e.g., https://abc123-xyz.lovableproject.com)
+            Enter the full URL of your external project (e.g., https://abc123-xyz.lovableproject.com)
           </p>
         </div>
 
@@ -145,7 +146,7 @@ export const ExternalProjectImport = ({ onProjectDataExtracted }: ExternalProjec
 
         <div className="rounded-lg border border-muted-foreground/20 bg-muted/30 p-3">
           <p className="text-xs text-muted-foreground">
-            <strong>How it works:</strong> Import your Lovable project URL to add it to this hub for review and approval. 
+            <strong>How it works:</strong> Import your external project URL to add it to this hub for review and approval.
             Once approved, you can publish it to your custom domain directly from this hub.
           </p>
         </div>

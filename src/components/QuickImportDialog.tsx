@@ -26,7 +26,7 @@ export const QuickImportDialog = ({ open, onOpenChange }: QuickImportDialogProps
 
     const lovableUrlPattern = /^https:\/\/[a-z0-9-]+\.(lovableproject\.com|lovable\.app)(\/.*)?$/i;
     if (!lovableUrlPattern.test(projectUrl.trim())) {
-      toast.error("Please enter a valid Lovable project URL");
+      toast.error("Please enter a valid external project URL");
       return;
     }
 
@@ -61,7 +61,7 @@ export const QuickImportDialog = ({ open, onOpenChange }: QuickImportDialogProps
           type: "landing_page",
           status: "draft",
           name: displayName,
-          description: "Imported from Lovable project",
+          description: "Imported from external project",
           external_project_url: projectUrl.trim(),
           preview_url: projectUrl.trim(),
           deployment_status: "staging",
@@ -89,12 +89,12 @@ export const QuickImportDialog = ({ open, onOpenChange }: QuickImportDialogProps
         <DialogHeader>
           <DialogTitle>Import Website</DialogTitle>
           <DialogDescription>
-            Paste your Lovable project URL to import it as a landing page asset
+            Paste your external project URL to import it as a landing page asset
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="project-url">Lovable Project URL</Label>
+            <Label htmlFor="project-url">External Project URL</Label>
             <Input
               id="project-url"
               placeholder="https://your-project.lovable.app"

@@ -63,7 +63,7 @@ export const BulkImportDialog = ({ open, onOpenChange, onComplete }: BulkImportD
           type: "landing_page",
           status: "draft",
           name: displayName,
-          description: "Imported from Lovable project",
+          description: "Imported from external project",
           external_project_url: url.trim(),
           preview_url: url.trim(),
           deployment_status: "staging",
@@ -149,12 +149,12 @@ export const BulkImportDialog = ({ open, onOpenChange, onComplete }: BulkImportD
         <DialogHeader>
           <DialogTitle>Bulk Import Websites</DialogTitle>
           <DialogDescription>
-            Paste multiple Lovable project URLs (one per line) to import them as landing page assets
+            Paste multiple external project URLs (one per line) to import them as landing page assets
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4 flex-1 overflow-y-auto">
           <div className="space-y-2">
-            <Label htmlFor="urls">Lovable Project URLs</Label>
+            <Label htmlFor="urls">External Project URLs</Label>
             <Textarea
               id="urls"
               placeholder="https://project-1.lovable.app&#10;https://project-2.lovable.app&#10;https://project-3.lovable.app"

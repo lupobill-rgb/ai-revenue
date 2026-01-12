@@ -10,6 +10,29 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const normalizeAssistantData = (input: any): any => {
+    if (!input || typeof input !== "object") return input;
+    const out = { ...input };
+
+    // Default model provider server-side so the UI never has to.
+    if (out.model && typeof out.model === "object") {
+      out.model = { ...out.model };
+      if (!out.model.provider) {
+        out.model.provider = Deno.env.get("VAPI_DEFAULT_MODEL_PROVIDER") || "openai";
+      }
+    }
+
+    // Default voice provider server-side when voice is an object.
+    if (out.voice && typeof out.voice === "object") {
+      out.voice = { ...out.voice };
+      if (!out.voice.provider) {
+        out.voice.provider = Deno.env.get("VAPI_DEFAULT_VOICE_PROVIDER") || "openai";
+      }
+    }
+
+    return out;
+  };
+
   try {
     const vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY');
     
@@ -29,7 +52,7 @@ serve(async (req) => {
     switch (action) {
       case 'create':
         method = 'POST';
-        body = JSON.stringify(assistantData);
+        body = JSON.stringify(normalizeAssistantData(assistantData));
         break;
       case 'update':
         if (!assistantId) {
@@ -40,7 +63,7 @@ serve(async (req) => {
         }
         url = `https://api.vapi.ai/assistant/${assistantId}`;
         method = 'PATCH';
-        body = JSON.stringify(assistantData);
+        body = JSON.stringify(normalizeAssistantData(assistantData));
         break;
       case 'delete':
         if (!assistantId) {
