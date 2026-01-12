@@ -833,11 +833,10 @@ const VoiceAgents = () => {
             name: newAssistant.name,
             firstMessage: newAssistant.firstMessage,
             model: {
-              provider: "openai",
               model: newAssistant.model,
               messages: [{ role: "system", content: newAssistant.systemPrompt }],
             },
-            voice: { provider: "openai", voiceId: newAssistant.voice },
+            voice: { voiceId: newAssistant.voice },
           },
         },
       });
@@ -933,11 +932,10 @@ const VoiceAgents = () => {
             name: editingAssistant.name,
             firstMessage: editingAssistant.firstMessage,
             model: {
-              provider: "openai",
               model: editingAssistant.model,
               messages: [{ role: "system", content: editingAssistant.systemPrompt }],
             },
-            voice: { provider: "openai", voiceId: editingAssistant.voice },
+            voice: { voiceId: editingAssistant.voice },
           },
         },
       });

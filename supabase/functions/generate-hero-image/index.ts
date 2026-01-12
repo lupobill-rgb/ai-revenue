@@ -1,8 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { runImage } from "../_shared/llmRouter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-workspace-id, x-tenant-id",
+  "Access-Control-Expose-Headers": "x-ai-revenue-build",
+  "x-ai-revenue-build": "generate-hero-image-llm-router-v1",
 };
 
 interface ImageRequest {
@@ -11,6 +15,8 @@ interface ImageRequest {
   goal?: string;
   assetGoal?: string;
   businessName?: string;
+  workspaceId?: string;
+  size?: string;
 }
 
 serve(async (req) => {
@@ -19,11 +25,96 @@ serve(async (req) => {
   }
 
   try {
-    const { vertical, contentType, goal, assetGoal, businessName }: ImageRequest = await req.json();
+    const body: ImageRequest = await req.json();
+    const { vertical, contentType, goal, assetGoal, businessName } = body;
     
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseServiceKey) {
+      return new Response(JSON.stringify({ error: "SUPABASE_SERVICE_ROLE_KEY is not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Missing or invalid Authorization header" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Missing or invalid Authorization header" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized", details: userError?.message || "Invalid JWT" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const workspaceId = req.headers.get("x-workspace-id") || req.headers.get("x-tenant-id") || body.workspaceId || null;
+    if (!workspaceId) {
+      return new Response(JSON.stringify({ error: "Missing workspace context", missing: ["x-workspace-id"] }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Validate workspace membership (owner or member)
+    const { data: workspace, error: wsError } = await supabase
+      .from("workspaces")
+      .select("id, owner_id")
+      .eq("id", workspaceId)
+      .maybeSingle();
+
+    if (wsError || !workspace) {
+      return new Response(JSON.stringify({ error: "Invalid workspace", details: wsError?.message || "Not found" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let hasAccess = workspace.owner_id === user.id;
+    if (!hasAccess) {
+      const { data: membership, error: membershipError } = await supabase
+        .from("workspace_members")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (membershipError) {
+        return new Response(JSON.stringify({ error: "Workspace membership check failed", details: membershipError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      hasAccess = !!membership;
+    }
+
+    if (!hasAccess) {
+      return new Response(JSON.stringify({ error: "Forbidden: workspace access denied" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Dynamic image prompts based on vertical/industry
@@ -75,48 +166,67 @@ serve(async (req) => {
 
     console.log("Generating image with prompt:", imagePrompt);
 
-    // Call Lovable AI image generation
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image-preview",
-        messages: [
-          {
-            role: "user",
-            content: imagePrompt
-          }
-        ],
-        modalities: ["image", "text"]
-      }),
+    const allowedSizes = new Set(["1024x1024", "1024x1536", "1536x1024"]);
+    const requestedSize = typeof body?.size === "string" ? body.size.trim() : "";
+    const size = allowedSizes.has(requestedSize) ? requestedSize : "1024x1024";
+
+    // Centralized image routing (provider/model selection + fallback)
+    const out = await runImage({
+      tenantId: workspaceId,
+      capability: "image.generate",
+      prompt: imagePrompt,
+      size,
+      timeoutMs: 40_000,
     });
 
-    if (!aiResponse.ok) {
-      if (aiResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limits exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Payment required. Please add funds to your Lovable AI workspace." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errorText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errorText);
-      throw new Error("AI gateway error");
+    const b64 = out.b64;
+    const imageUrlFromApi = out.url;
+    if ((!b64 || typeof b64 !== "string") && (!imageUrlFromApi || typeof imageUrlFromApi !== "string")) {
+      return new Response(JSON.stringify({ error: "Image generation failed", details: "No image returned by AI provider" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const aiData = await aiResponse.json();
-    const imageUrl = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    // Store to Supabase Storage to avoid giant data URLs in DB fields.
+    const admin = createClient(supabaseUrl, supabaseServiceKey);
+    const bucket = "cmo-assets";
+    const objectPath = `generated/${workspaceId}/${crypto.randomUUID()}.png`;
+    let blob: Blob;
+    if (b64 && typeof b64 === "string") {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      blob = new Blob([bytes], { type: "image/png" });
+    } else {
+      // Fallback: fetch the returned URL and store bytes.
+      const imgResp = await fetch(imageUrlFromApi);
+      if (!imgResp.ok) {
+        return new Response(JSON.stringify({ error: "Failed to fetch generated image" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const buf = await imgResp.arrayBuffer();
+      blob = new Blob([buf], { type: "image/png" });
+    }
 
+    const { error: uploadError } = await admin.storage.from(bucket).upload(objectPath, blob, {
+      contentType: "image/png",
+      upsert: true,
+    });
+    if (uploadError) {
+      return new Response(JSON.stringify({ error: "Failed to store image", details: uploadError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: urlData } = admin.storage.from(bucket).getPublicUrl(objectPath);
+    const imageUrl = urlData?.publicUrl || null;
     if (!imageUrl) {
-      throw new Error("No image generated");
+      return new Response(JSON.stringify({ error: "Failed to resolve image URL" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(
@@ -136,7 +246,8 @@ serve(async (req) => {
     console.error("Error in generate-hero-image:", error);
     return new Response(
       JSON.stringify({
-        error: error instanceof Error ? error.message : "Unknown error occurred"
+        error: "Unhandled error",
+        details: error instanceof Error ? error.message : "Unknown error occurred"
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

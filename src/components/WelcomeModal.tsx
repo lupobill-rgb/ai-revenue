@@ -140,7 +140,7 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ onStartTour }) => {
 
         try {
           const parsed = JSON.parse(jsonStr);
-          // Support both OpenAI and Gemini formats
+          // Support multiple provider stream formats
           const content = parsed.choices?.[0]?.delta?.content || 
                          parsed.candidates?.[0]?.content?.parts?.[0]?.text;
           if (content) onDelta(content);

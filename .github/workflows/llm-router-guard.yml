@@ -1,0 +1,88 @@
+name: LLM Router Guard
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  router-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ripgrep
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+
+      - name: Determine changed files
+        id: changed
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+
+          git fetch --no-tags --prune --depth=1 origin "${BASE_SHA}" "${HEAD_SHA}" || true
+          git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" > .changed_files_all.txt || true
+
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          all_files = Path(".changed_files_all.txt").read_text(encoding="utf-8").splitlines()
+          def is_ts(p: str) -> bool:
+            return p.endswith(".ts") or p.endswith(".tsx")
+
+          fn_files = []
+          src_files = []
+
+          for p in all_files:
+            if not is_ts(p):
+              continue
+            if p.startswith("supabase/functions/_shared/providers/"):
+              # Adapters are allowed to contain vendor code/URLs
+              continue
+            if p.startswith("supabase/functions/"):
+              fn_files.append(p)
+            elif p.startswith("src/"):
+              src_files.append(p)
+
+          Path(".changed_supabase_functions.txt").write_text("\n".join(fn_files) + ("\n" if fn_files else ""), encoding="utf-8")
+          Path(".changed_src.txt").write_text("\n".join(src_files) + ("\n" if src_files else ""), encoding="utf-8")
+          PY
+
+          echo "changed_functions=$(wc -l < .changed_supabase_functions.txt || echo 0)" >> "$GITHUB_OUTPUT"
+          echo "changed_src=$(wc -l < .changed_src.txt || echo 0)" >> "$GITHUB_OUTPUT"
+
+      - name: Guard vendor URLs stay behind adapters
+        run: |
+          set -euo pipefail
+          if [ -s .changed_supabase_functions.txt ] && rg -n "ai\.gateway\.lovable\.dev|api\.openai\.com/v1|generativelanguage\.googleapis\.com" $(cat .changed_supabase_functions.txt) ; then
+            echo "ERROR: Vendor URLs must only exist in _shared/providers/* (or be removed)."
+            exit 1
+          fi
+
+      - name: Guard provider SDK imports stay behind adapters
+        run: |
+          set -euo pipefail
+          if [ -s .changed_supabase_functions.txt ] && rg -n "from ['\"]openai['\"]|@google/generative-ai|from ['\"]@google/generative-ai['\"]|from ['\"]anthropic['\"]|Anthropic\\b" $(cat .changed_supabase_functions.txt) ; then
+            echo "ERROR: Provider SDK imports must only exist in _shared/providers/*."
+            exit 1
+          fi
+
+      - name: Guard frontend stays provider-agnostic
+        run: |
+          set -euo pipefail
+          if [ -s .changed_src.txt ] && rg -n "\\bOpenAI\\b|\\bGemini\\b|\\bClaude\\b|\\bAnthropic\\b|\\bopenai\\b|\\bgemini\\b|\\bclaude\\b|\\banthropic\\b|ai\.gateway" $(cat .changed_src.txt) ; then
+            echo "ERROR: Frontend must not reference LLM providers or gateways."
+            exit 1
+          fi
+

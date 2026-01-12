@@ -1025,7 +1025,6 @@ export default function SettingsIntegrations() {
             name: newAssistantName,
             firstMessage: "Hello! How can I help you today?",
             model: {
-              provider: "openai",
               model: "gpt-4o",
               messages: [{ role: "system", content: newAssistantPrompt }]
             },

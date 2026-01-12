@@ -514,7 +514,7 @@ const AssetDetail = () => {
     setContent((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  const handleEditInLovable = () => {
+  const handleEditExternalProject = () => {
     if (!externalProjectUrl) return;
 
     // Extract project ID from URL (supports both lovableproject.com and lovable.app)
@@ -535,7 +535,7 @@ const AssetDetail = () => {
     window.open(editorUrl, '_blank', 'noopener,noreferrer');
     
     toast({
-      title: "Opening Lovable Editor",
+      title: "Opening External Editor",
       description: "Edit your website and return here to see the updated preview",
       duration: 5000,
     });
@@ -580,7 +580,8 @@ const AssetDetail = () => {
           assetGoal: goal || undefined,
           tone: businessProfile?.content_tone || 'professional',
           businessProfile
-        }
+        },
+        headers: { "x-workspace-id": workspaceId }
       });
 
       if (error) throw error;
@@ -1032,26 +1033,26 @@ const AssetDetail = () => {
           <div className="grid gap-6 lg:grid-cols-5">
             {/* Left Pane - Preview (40% on desktop) */}
             <div className="lg:col-span-2 space-y-4">
-              {/* Edit in Lovable button for external projects */}
+              {/* Edit in external editor button for external projects */}
               {externalProjectUrl && (asset.type === 'landing_page' || asset.type === 'website') && (
                 <div className="rounded-lg border-2 border-primary bg-primary/10 p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <h3 className="text-sm font-semibold text-foreground mb-1">
-                        External Lovable Project
+                        External Project
                       </h3>
                       <p className="text-xs text-muted-foreground mb-3">
-                        This website is hosted in a separate Lovable project. Click below to edit content, then return here to see the updated preview.
+                        This website is hosted in a separate external project. Click below to edit content, then return here to see the updated preview.
                       </p>
                     </div>
                   </div>
                   <Button
-                    onClick={handleEditInLovable}
+                    onClick={handleEditExternalProject}
                     className="w-full bg-primary hover:bg-primary/90"
                     size="lg"
                   >
                     <ArrowLeft className="mr-2 h-4 w-4 rotate-180" />
-                    Edit Website in Lovable
+                    Edit Website in External Editor
                   </Button>
                 </div>
               )}
@@ -1225,7 +1226,7 @@ const AssetDetail = () => {
                       {(asset.type === 'landing_page' || asset.type === 'website') && (
                         <>
                           <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-4">
-                            <h3 className="text-sm font-medium text-foreground">External Lovable Project</h3>
+                            <h3 className="text-sm font-medium text-foreground">External Project</h3>
                             
                             <div className="space-y-2">
                               <Label htmlFor="external_project_url">Project URL</Label>
@@ -1237,22 +1238,22 @@ const AssetDetail = () => {
                                 className="bg-background border-input"
                               />
                               <p className="text-xs text-muted-foreground">
-                                The Lovable project URL for this landing page/website
+                                The external project URL for this landing page/website
                               </p>
                             </div>
 
                             {externalProjectUrl && (
                               <div className="pt-2">
                                 <Button
-                                  onClick={handleEditInLovable}
+                                  onClick={handleEditExternalProject}
                                   variant="outline"
                                   className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
                                 >
                                   <ArrowLeft className="mr-2 h-4 w-4 rotate-180" />
-                                  Edit Website Content in Lovable
+                                  Edit Website Content in External Editor
                                 </Button>
                                 <p className="text-xs text-muted-foreground mt-2">
-                                  Opens the Lovable editor. Preview will auto-refresh when you return.
+                                  Opens the external editor. Preview will auto-refresh when you return.
                                 </p>
                               </div>
                             )}
@@ -1289,7 +1290,7 @@ const AssetDetail = () => {
                             {customDomain && externalProjectUrl && (
                               <div className="rounded-lg border border-muted-foreground/20 bg-muted/30 p-3">
                                 <p className="text-xs text-muted-foreground">
-                                  <strong>Next Steps:</strong> After approval, connect {customDomain} to your Lovable project 
+                                  <strong>Next Steps:</strong> After approval, connect {customDomain} to your external project
                                   in Project Settings → Domains. See <a href="https://docs.lovable.dev/features/custom-domain" 
                                   target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                                   custom domain docs

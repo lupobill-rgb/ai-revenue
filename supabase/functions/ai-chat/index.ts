@@ -1,9 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { runLLM, type LLMMessage } from "../_shared/llmRouter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-workspace-id",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 interface ChatMessage {
@@ -28,38 +30,20 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, context }: { messages: ChatMessage[]; context?: AppContext } = await req.json();
-    
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      console.error("FATAL: GEMINI_API_KEY environment variable not set");
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ 
-          error: "GEMINI_API_KEY is not configured" 
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 500,
-        }
+        JSON.stringify({ error: "Missing Authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    const { messages, context }: { messages: ChatMessage[]; context?: AppContext } = await req.json();
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const authHeader = req.headers.get('Authorization');
     
-    console.log(`[ai-chat] Request received. Auth header present: ${!!authHeader}`);
-    
-    if (!authHeader) {
-      console.error("[ai-chat] FAIL: No Authorization header");
-      return new Response(
-        JSON.stringify({ error: "Missing Authorization header" }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 401,
-        }
-      );
-    }
+    console.log(`[ai-chat] Request received - validating auth`);
     
     let businessName = context?.businessName || "your business";
     let industry = context?.industry || "your industry";
@@ -70,39 +54,59 @@ serve(async (req) => {
     let icpSegments: string[] = context?.icpSegments || [];
     let workspaceId = context?.workspaceId;
 
-    console.log(`[ai-chat] Workspace from context: ${workspaceId || 'none'}`);
-
-    // Create Supabase client with auth
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
+      global: { headers: { Authorization: authHeader } },
     });
 
-    // Try to get user - but don't fail if it doesn't work
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    
-    if (userError) {
-      console.error("[ai-chat] Auth error:", userError.message);
-      // Try to continue anyway for now
-    }
-    
-    if (!user) {
-      console.error("[ai-chat] FAIL: No user from getUser()");
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      console.error("[ai-chat] Authentication failed", authError);
       return new Response(
-        JSON.stringify({ 
-          error: "Authentication failed", 
-          details: userError?.message || "No user found"
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 401,
-        }
+        JSON.stringify({ error: "Authentication failed" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[ai-chat] User authenticated: ${user.id}`);
+    if (workspaceId) {
+      const { data: workspace, error: workspaceError } = await supabaseClient
+        .from("workspaces")
+        .select("id, owner_id")
+        .eq("id", workspaceId)
+        .maybeSingle();
 
-    // Get workspace ID if not provided
-    if (!workspaceId && user) {
+      if (workspaceError) {
+        console.error("[ai-chat] Workspace lookup error:", workspaceError);
+      }
+
+      let hasAccess = workspace && workspace.owner_id === user.id;
+
+      if (!hasAccess) {
+        const { data: membership, error: membershipError } = await supabaseClient
+          .from("workspace_members")
+          .select("id")
+          .eq("workspace_id", workspaceId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (membership) {
+          hasAccess = true;
+        }
+
+        if (membershipError) {
+          console.error("[ai-chat] Workspace membership lookup error:", membershipError);
+        }
+      }
+
+      if (!hasAccess) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden: workspace access denied" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Get workspace ID if not provided (but skip since we have no user now)
+    if (false) {  // Disabled - no auth
       const { data: workspace, error: wsError } = await supabaseClient
         .from("workspaces")
         .select("id")
@@ -201,55 +205,39 @@ When the user asks "What is my industry?" respond with: "${industry}".
 When the user asks about their segments, mention: ${icpSegments.length > 0 ? icpSegments.join(", ") : "No segments defined yet - recommend they set up ICP segments in CMO → Brand Setup"}.
 When asked about leads or campaigns, reference the actual counts provided.`;
 
-    // Convert messages to Gemini format
-    const geminiContents = [
-      { role: "user", parts: [{ text: systemPrompt + "\n\nConversation:" }] }
+    const llmMessages: LLMMessage[] = [
+      { role: "system", content: systemPrompt },
+      ...messages,
     ];
-    
-    for (const msg of messages) {
-      geminiContents.push({
-        role: msg.role === "assistant" ? "model" : "user",
-        parts: [{ text: msg.content }]
-      });
-    }
 
-    console.log("[ai-chat] Calling Gemini API");
+    console.log("[ai-chat] Calling LLM router (stream)");
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?key=${GEMINI_API_KEY}&alt=sse`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: geminiContents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048,
-        }
-      }),
+    const tenantId = workspaceId || user.id;
+    const out = await runLLM({
+      tenantId,
+      capability: "ai.chat",
+      messages: llmMessages,
+      temperature: 0.7,
+      maxTokens: 2048,
+      stream: true,
+      timeoutMs: 25_000,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[ai-chat] Gemini API error:", response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limits exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
+    if (out.kind !== "stream") {
       return new Response(
-        JSON.stringify({ error: "AI service error: " + errorText }),
+        JSON.stringify({ error: "AI service error: expected stream response" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("[ai-chat] Gemini responded, streaming to client");
-
-    return new Response(response.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+    // Pass-through provider stream to client.
+    return new Response(out.response.body, {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "text/event-stream",
+        "x-llm-provider": out.provider,
+        "x-llm-model": out.model,
+      },
     });
 
   } catch (error) {
