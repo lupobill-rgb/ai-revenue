@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { runLLM, type LLMMessage } from "../_shared/llmRouter.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -155,13 +156,8 @@ serve(async (req) => {
   try {
     const { workspaceId, campaignId, funnelStage, channels, ctaIntent, contentTypes } = await req.json() as ContentEngineRequest;
     
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
-    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     
@@ -233,42 +229,26 @@ Generate brand-consistent, performance-oriented content assets with A/B variants
 Include personalization tokens where appropriate.
 Make all content production-ready with specific copy.`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: contextPrompt },
-        ],
-        stream: true,
-      }),
+    const llmMessages: LLMMessage[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: contextPrompt },
+    ];
+
+    const out = await runLLM({
+      tenantId: workspaceId,
+      capability: 'cmo.content_engine',
+      messages: llmMessages,
+      temperature: 0.7,
+      maxTokens: 2000,
+      stream: true,
+      timeoutMs: 25_000,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI Gateway error:', response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: 'Rate limit exceeded.' }), {
-          status: 429,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: 'Payment required.' }), {
-          status: 402,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      throw new Error('AI gateway error');
+    if (out.kind !== 'stream') {
+      throw new Error('AI service error: expected stream response');
     }
 
-    return new Response(response.body, {
+    return new Response(out.response.body, {
       headers: { ...corsHeaders, 'Content-Type': 'text/event-stream' },
     });
   } catch (error) {

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.84.0';
 import { checkRateLimits, rateLimitResponse, getClientIp } from "../_shared/rate-limit.ts";
+import { runImage } from "../_shared/llmRouter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,14 +25,8 @@ serve(async (req) => {
 
   try {
     const { vertical, assetGoal, description, assetId }: VideoRequest = await req.json();
-    
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      console.error("LOVABLE_API_KEY is missing from environment variables");
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
-    console.log("Generating marketing visual with Lovable AI...");
+    console.log("Generating marketing visual...");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -143,51 +138,51 @@ serve(async (req) => {
     }
     imagePrompt = `${imagePrompt}. Professional cinematic quality for ${businessName}. High production value, engaging visuals, modern aesthetic. 16:9 aspect ratio hero image.`;
 
-    console.log("Generating image with Lovable AI using prompt:", imagePrompt);
+    console.log("Generating image via router using prompt:", imagePrompt);
 
-    // Generate image with Lovable AI
-    const imageResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image",
-        messages: [{ role: "user", content: imagePrompt }],
-        modalities: ["image", "text"]
-      })
+    // Prefer a 16:9 size for video/hero visuals.
+    const out = await runImage({
+      tenantId: assetId || user.id,
+      capability: "image.generate",
+      prompt: imagePrompt,
+      size: "1536x1024",
+      timeoutMs: 40_000,
     });
 
-    if (!imageResponse.ok) {
-      const errorText = await imageResponse.text();
-      console.error("Lovable AI image generation error:", imageResponse.status, errorText);
-      
-      if (imageResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again later.", retryable: true }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+    // Store result to Supabase Storage, return a stable public URL.
+    const admin = createClient(supabaseUrl, serviceRoleKey);
+    const bucket = "cmo-assets";
+    const objectPath = `generated/${user.id}/${crypto.randomUUID()}.png`;
+
+    let blob: Blob;
+    if (out.b64 && typeof out.b64 === "string") {
+      const bytes = Uint8Array.from(atob(out.b64), (c) => c.charCodeAt(0));
+      blob = new Blob([bytes], { type: "image/png" });
+    } else if (out.url && typeof out.url === "string") {
+      const imgResp = await fetch(out.url);
+      if (!imgResp.ok) {
+        throw new Error("Failed to fetch generated image");
       }
-      if (imageResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI credits exhausted. Please add credits to your Lovable workspace.", retryable: false }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      throw new Error(`Image generation failed: ${imageResponse.status}`);
+      const buf = await imgResp.arrayBuffer();
+      blob = new Blob([buf], { type: "image/png" });
+    } else {
+      throw new Error("No image returned by AI provider");
     }
 
-    const imageData = await imageResponse.json();
-    const imageUrl = imageData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    
-    if (!imageUrl) {
-      console.error("No image in response:", JSON.stringify(imageData));
-      throw new Error("No image generated");
+    const { error: uploadError } = await admin.storage.from(bucket).upload(objectPath, blob, {
+      contentType: "image/png",
+      upsert: true,
+    });
+    if (uploadError) {
+      throw new Error(`Failed to store image: ${uploadError.message}`);
     }
-    
-    console.log("Image generated successfully with Lovable AI");
+
+    const { data: urlData } = admin.storage.from(bucket).getPublicUrl(objectPath);
+    const imageUrl = urlData?.publicUrl || null;
+    if (!imageUrl) {
+      throw new Error("Failed to resolve image URL");
+    }
+    console.log("Image generated successfully");
 
     // Update asset with image URL
     if (assetId) {
