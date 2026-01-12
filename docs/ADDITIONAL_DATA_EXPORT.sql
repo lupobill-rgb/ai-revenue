@@ -88,18 +88,12 @@ INSERT INTO lead_activities (id, workspace_id, lead_id, activity_type, descripti
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
--- CHANNEL_OUTBOX (500+ rows - Sample)
--- NOTE: This table has ~500+ rows of email/message delivery records
--- Full export requires pg_dump or CSV export
--- ============================================================================
-
-INSERT INTO channel_outbox (id, workspace_id, tenant_id, channel, provider, status, idempotency_key, payload, recipient_email, recipient_phone, recipient_id, run_id, job_id, scheduled_at, provider_message_id, provider_response, error, skipped, skip_reason, data_mode, created_at) VALUES
-('73d7c60c-0102-4c9c-be7e-8a20c50cc33a', '66850507-0dc4-4162-b6a0-a5417c95268e', 'bfb3cd53-186d-4973-94e7-cce631224676', 'email', 'sandbox', 'sent', '8676f493-958d-4e57-98c7-1b8ef3ac06ac:email:l3-scale:l3-test-0@qa-sandbox.local', '{"body": "Scale-safe run test email 0", "l3_scale_test": true, "lead_id": "baf4bc8b-5909-4fd4-8ae3-b5fc9b5118df", "subject": "L3 Scale Test 0"}', 'l3-test-0@qa-sandbox.local', NULL, NULL, '8676f493-958d-4e57-98c7-1b8ef3ac06ac', NULL, NULL, 'sandbox-l3-8676f493-958d-4e57-98c7-1b8ef3ac06ac-0', '{}', NULL, false, NULL, 'live', '2025-12-21 16:59:51.159451+00'),
-('00f21999-e59a-4d03-a9d7-6a333d0cf1b0', '66850507-0dc4-4162-b6a0-a5417c95268e', 'bfb3cd53-186d-4973-94e7-cce631224676', 'email', 'sandbox', 'sent', '8676f493-958d-4e57-98c7-1b8ef3ac06ac:email:l3-scale:l3-test-1@qa-sandbox.local', '{"body": "Scale-safe run test email 1", "l3_scale_test": true, "lead_id": "53619e44-f1db-46a2-b3ff-b6af8515ae1a", "subject": "L3 Scale Test 1"}', 'l3-test-1@qa-sandbox.local', NULL, NULL, '8676f493-958d-4e57-98c7-1b8ef3ac06ac', NULL, NULL, 'sandbox-l3-8676f493-958d-4e57-98c7-1b8ef3ac06ac-1', '{}', NULL, false, NULL, 'live', '2025-12-21 16:59:51.159451+00'),
-('b34f850d-d3b4-4881-91d7-8832d12f344e', '66850507-0dc4-4162-b6a0-a5417c95268e', 'bfb3cd53-186d-4973-94e7-cce631224676', 'email', 'sandbox', 'sent', '8676f493-958d-4e57-98c7-1b8ef3ac06ac:email:l3-scale:l3-test-2@qa-sandbox.local', '{"body": "Scale-safe run test email 2", "l3_scale_test": true, "lead_id": "f9d9a42b-7834-45cc-8c15-fa99cb9a8ba3", "subject": "L3 Scale Test 2"}', 'l3-test-2@qa-sandbox.local', NULL, NULL, '8676f493-958d-4e57-98c7-1b8ef3ac06ac', NULL, NULL, 'sandbox-l3-8676f493-958d-4e57-98c7-1b8ef3ac06ac-2', '{}', NULL, false, NULL, 'live', '2025-12-21 16:59:51.159451+00'),
-('16272f8c-620e-4490-99f3-5057e4b9976b', '66850507-0dc4-4162-b6a0-a5417c95268e', 'bfb3cd53-186d-4973-94e7-cce631224676', 'email', 'sandbox', 'sent', '8676f493-958d-4e57-98c7-1b8ef3ac06ac:email:l3-scale:l3-test-3@qa-sandbox.local', '{"body": "Scale-safe run test email 3", "l3_scale_test": true, "lead_id": "c4519ff4-d2c4-42fb-add1-705060fe4558", "subject": "L3 Scale Test 3"}', 'l3-test-3@qa-sandbox.local', NULL, NULL, '8676f493-958d-4e57-98c7-1b8ef3ac06ac', NULL, NULL, 'sandbox-l3-8676f493-958d-4e57-98c7-1b8ef3ac06ac-3', '{}', NULL, false, NULL, 'live', '2025-12-21 16:59:51.159451+00'),
-('5be58dc5-8c83-4c21-bfae-f01320ceaecd', '66850507-0dc4-4162-b6a0-a5417c95268e', 'bfb3cd53-186d-4973-94e7-cce631224676', 'email', 'sandbox', 'sent', '8676f493-958d-4e57-98c7-1b8ef3ac06ac:email:l3-scale:l3-test-4@qa-sandbox.local', '{"body": "Scale-safe run test email 4", "l3_scale_test": true, "lead_id": "9d5ac1ee-c93e-491f-b60e-60a358e8dac3", "subject": "L3 Scale Test 4"}', 'l3-test-4@qa-sandbox.local', NULL, NULL, '8676f493-958d-4e57-98c7-1b8ef3ac06ac', NULL, NULL, 'sandbox-l3-8676f493-958d-4e57-98c7-1b8ef3ac06ac-4', '{}', NULL, false, NULL, 'live', '2025-12-21 16:59:51.159451+00')
-ON CONFLICT (id) DO NOTHING;
+-- DELIVERY OUTBOX (omitted)
+-- This export previously included an INSERT sample for the delivery outbox table.
+-- That violates Revenue OS kernel invariants (only dispatcher/allowlist may write outbox records).
+--
+-- If you need outbox records for debugging, export them via dashboard CSV or pg_dump and load manually
+-- into a scratch environment (do not commit the insert statements).
 
 -- ============================================================================
 -- IMPORTANT: FULL DATA EXPORT INSTRUCTIONS
