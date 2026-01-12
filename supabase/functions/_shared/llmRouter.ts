@@ -107,6 +107,20 @@ function nowMs(): number {
   return Date.now();
 }
 
+function sseFromText(text: string): Response {
+  // Emit a single OpenAI-compatible delta + DONE so existing frontend stream parsers work.
+  const encoder = new TextEncoder();
+  const payload = JSON.stringify({ choices: [{ delta: { content: text } }] });
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
+}
+
 function stableHash(input: string): string {
   const digest = createHash("sha256").update(input).digest();
   return encodeHex(digest);
@@ -198,20 +212,24 @@ export async function runLLM(input: RunLLMInput): Promise<RunLLMResult> {
 
   for (let i = 0; i < chain.length; i++) {
     const target = chain[i]!;
+    const fallbackUsed = i > 0;
 
     if (!isProviderAllowed(input.tenantId, target.provider, target.model)) {
-      logCall({ requestId, tenantId: input.tenantId, capability: input.capability, provider: target.provider, model: target.model, outcome: "skipped_not_allowed" });
+      logCall({ requestId, tenantId: input.tenantId, capability: input.capability, provider: target.provider, model: target.model, attempt: i, fallbackUsed, outcome: "skipped_not_allowed" });
       continue;
     }
 
     if (!providerKeyAvailable(target.provider)) {
-      logCall({ requestId, tenantId: input.tenantId, capability: input.capability, provider: target.provider, model: target.model, outcome: "skipped_missing_key" });
+      logCall({ requestId, tenantId: input.tenantId, capability: input.capability, provider: target.provider, model: target.model, attempt: i, fallbackUsed, outcome: "skipped_missing_key" });
       continue;
     }
 
     try {
       const attemptStart = nowMs();
       if (input.stream) {
+        // V1 streaming rule:
+        // - If provider supports native streaming (OpenAI), pass-through stream.
+        // - If provider does not support streaming, fallback to non-stream and wrap as SSE (single chunk).
         if (target.provider === "openai") {
           const resp = await openaiChatStream({
             apiKey: Deno.env.get("OPENAI_API_KEY")!,
@@ -222,10 +240,52 @@ export async function runLLM(input: RunLLMInput): Promise<RunLLMResult> {
             timeoutMs: input.timeoutMs,
           });
           const latencyMs = nowMs() - attemptStart;
-          logCall({ requestId, tenantId: input.tenantId, capability: input.capability, provider: target.provider, model: target.model, latencyMs, outcome: "ok_stream" });
+          logCall({
+            requestId,
+            tenantId: input.tenantId,
+            capability: input.capability,
+            provider: target.provider,
+            model: target.model,
+            attempt: i,
+            fallbackUsed,
+            latencyMs,
+            outcome: "ok_stream",
+          });
           return { kind: "stream", provider: target.provider, model: target.model, response: resp, latencyMs };
         }
-        throw new RouterError("Streaming is not supported for this provider yet", { provider: target.provider, model: target.model, retryable: false });
+
+        // Non-stream fallback wrapped as SSE
+        let text = "";
+        let usage: LLMUsage | undefined;
+        if (target.provider === "google") {
+          const out = await googleChat({
+            apiKey: Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_GENERATIVE_AI_API_KEY")!,
+            model: target.model,
+            messages: input.messages,
+            temperature: input.temperature,
+            maxTokens: input.maxTokens,
+            timeoutMs: input.timeoutMs,
+          });
+          text = out.text;
+          usage = out.usage;
+        } else {
+          throw new RouterError("Unknown provider", { provider: target.provider, model: target.model, retryable: false });
+        }
+
+        const latencyMs = nowMs() - attemptStart;
+        logCall({
+          requestId,
+          tenantId: input.tenantId,
+          capability: input.capability,
+          provider: target.provider,
+          model: target.model,
+          attempt: i,
+          fallbackUsed,
+          latencyMs,
+          outcome: "ok_stream_wrapped",
+          tokens: usage?.totalTokens,
+        });
+        return { kind: "stream", provider: target.provider, model: target.model, response: sseFromText(text), latencyMs };
       }
 
       // Non-streaming text generation
@@ -258,7 +318,18 @@ export async function runLLM(input: RunLLMInput): Promise<RunLLMResult> {
       }
 
       const latencyMs = nowMs() - attemptStart;
-      logCall({ requestId, tenantId: input.tenantId, capability: input.capability, provider: target.provider, model: target.model, latencyMs, outcome: "ok" });
+      logCall({
+        requestId,
+        tenantId: input.tenantId,
+        capability: input.capability,
+        provider: target.provider,
+        model: target.model,
+        attempt: i,
+        fallbackUsed,
+        latencyMs,
+        outcome: "ok",
+        tokens: usage?.totalTokens,
+      });
       return { kind: "text", provider: target.provider, model: target.model, text, usage, latencyMs };
     } catch (err) {
       const routed = classifyError(err, target.provider, target.model);
@@ -268,6 +339,8 @@ export async function runLLM(input: RunLLMInput): Promise<RunLLMResult> {
         capability: input.capability,
         provider: target.provider,
         model: target.model,
+        attempt: i,
+        fallbackUsed,
         outcome: "error",
         retryable: routed.retryable,
         message: routed.message,

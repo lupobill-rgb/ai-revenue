@@ -232,7 +232,12 @@ When asked about leads or campaigns, reference the actual counts provided.`;
 
     // Pass-through provider stream to client.
     return new Response(out.response.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "text/event-stream",
+        "x-llm-provider": out.provider,
+        "x-llm-model": out.model,
+      },
     });
 
   } catch (error) {
