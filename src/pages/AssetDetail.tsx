@@ -514,7 +514,7 @@ const AssetDetail = () => {
     setContent((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  const handleEditInLovable = () => {
+  const handleEditExternalProject = () => {
     if (!externalProjectUrl) return;
 
     // Extract project ID from URL (supports both lovableproject.com and lovable.app)
@@ -1047,7 +1047,7 @@ const AssetDetail = () => {
                     </div>
                   </div>
                   <Button
-                    onClick={handleEditInLovable}
+                    onClick={handleEditExternalProject}
                     className="w-full bg-primary hover:bg-primary/90"
                     size="lg"
                   >
@@ -1245,7 +1245,7 @@ const AssetDetail = () => {
                             {externalProjectUrl && (
                               <div className="pt-2">
                                 <Button
-                                  onClick={handleEditInLovable}
+                                  onClick={handleEditExternalProject}
                                   variant="outline"
                                   className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
                                 >
