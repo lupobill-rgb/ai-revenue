@@ -10,6 +10,7 @@
     "check:kernel": "tsx scripts/kernel-invariants.ts",
     "lint": "eslint .",
     "lint:kernel": "eslint \"supabase/functions/_shared/revenue_os_kernel/**/*.ts\" \"scripts/**/*.ts\" \"tests/integration/revenue_os_kernel*.test.ts\" \"tests/integration/revenue_os_kernel_*\" --max-warnings=0",
+    "smoke:automation": "tsx scripts/smoke-automation-functions.ts",
     "preview": "vite preview"
   },
   "dependencies": {

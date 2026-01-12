@@ -1,0 +1,43 @@
+name: Automation Smoke Harness (PR Gate)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: automation-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  automation-smoke:
+    name: Automation Smoke Harness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run automation smoke harness (authoritative)
+        env:
+          # Supabase project (public/anon key is safe; still keep in secrets to simplify CI config)
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+          # Smoke user (test account)
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+
+          # Optional: pin a specific workspace for smoke runs
+          SMOKE_WORKSPACE_ID: ${{ secrets.SMOKE_WORKSPACE_ID }}
+        run: npm run smoke:automation
+
