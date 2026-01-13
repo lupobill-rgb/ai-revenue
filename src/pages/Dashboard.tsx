@@ -95,6 +95,13 @@ const Dashboard = () => {
   ];
 
   const handleAIAction = (prompt: string) => {
+    // DIAGNOSTIC LOGGING
+    console.log('[Dashboard] === AI QUICK ACTION TRIGGERED ===', {
+      timestamp: new Date().toISOString(),
+      promptPreview: prompt.substring(0, 50) + '...',
+      workspaceId: (window as any).__workspaceContext?.workspaceId || 'NOT SET',
+    });
+    
     // Open the AI chat widget
     const event = new CustomEvent('open-ai-chat', { detail: { prompt } });
     window.dispatchEvent(event);

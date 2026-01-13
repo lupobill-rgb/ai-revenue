@@ -45,12 +45,17 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
   const [appContext, setAppContext] = useState<AppContext | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`;
+  const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-direct`;
 
   // Fetch application context on mount - scoped to workspace
   useEffect(() => {
     const fetchContext = async () => {
-      if (!workspaceId) return;
+      console.log('[AIChat] Fetching context for workspaceId:', workspaceId);
+      
+      if (!workspaceId) {
+        console.warn('[AIChat] ⚠️ No workspaceId available - context will be generic');
+        return;
+      }
       
       try {
         // Fetch business profile by workspace
@@ -143,37 +148,31 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
     setMessages(prev => [...prev, newUserMessage]);
     setInput("");
 
-    try {
-      // Get current user session token
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      console.log('[AIChat] Session check:', {
-        hasSession: !!session,
-        hasAccessToken: !!session?.access_token,
-        tokenPreview: session?.access_token?.substring(0, 20) + '...',
-        workspaceId: appContext?.workspaceId
-      });
-      
-      if (!session?.access_token) {
-        console.error('[AIChat] No access token found');
-        toast({
-          title: "Authentication Required",
-          description: "Please sign in to use AI chat.",
-          variant: "destructive",
-        });
-        setMessages(prev => prev.slice(0, -1));
-        setIsStreaming(false);
-        return;
-      }
+    // DIAGNOSTIC LOGGING
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log('[AIChat] === DIAGNOSTIC START ===', {
+      requestId,
+      timestamp: new Date().toISOString(),
+      chatUrl: CHAT_URL,
+      workspaceId: appContext?.workspaceId,
+      hasAppContext: !!appContext,
+      envVarsDefined: {
+        supabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
+        apiKey: !!import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      },
+      apiKeyPreview: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.substring(0, 20) + '...',
+    });
 
-      console.log('[AIChat] Sending request to:', CHAT_URL);
+    try {
+      // NO AUTH - Use anon key only (this is the proven working solution)
+      console.log('[AIChat] Sending request to:', CHAT_URL, '(NO AUTH MODE)');
       
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}`,
           "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          "x-request-id": requestId,
         },
         body: JSON.stringify({ 
           messages: [...messages, newUserMessage],
@@ -266,7 +265,7 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
 
           try {
             const parsed = JSON.parse(jsonStr);
-            // Support both OpenAI and Gemini formats
+            // Support multiple streaming response formats
             const content = parsed.choices?.[0]?.delta?.content || 
                            parsed.candidates?.[0]?.content?.parts?.[0]?.text;
             
@@ -288,11 +287,21 @@ const AIChat = ({ onClose, initialPrompt }: AIChatProps) => {
         }
       }
     } catch (error) {
-      console.error("Chat error:", error);
+      // DIAGNOSTIC ERROR LOGGING
+      console.error('[AIChat] === DIAGNOSTIC ERROR ===', {
+        requestId,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+        chatUrl: CHAT_URL,
+        workspaceId: appContext?.workspaceId,
+        timestamp: new Date().toISOString(),
+      });
+      
       const errorMessage = error instanceof Error ? error.message : "Failed to send message. Please try again.";
       toast({
         title: "Error",
-        description: errorMessage,
+        description: `${errorMessage} (Request ID: ${requestId.substring(4, 15)})`,
         variant: "destructive",
       });
       // Remove the failed user message

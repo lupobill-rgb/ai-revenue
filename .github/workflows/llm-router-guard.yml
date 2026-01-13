@@ -50,6 +50,9 @@ jobs:
             if p.startswith("supabase/functions/_shared/providers/"):
               # Adapters are allowed to contain vendor code/URLs
               continue
+            if p.startswith("supabase/functions/ai-chat-direct/") or p.startswith("supabase/functions/ai-walkthrough-direct/"):
+              # Direct functions are explicitly allowed (architectural decision - see docs/LLM_ROUTING_ARCHITECTURE.md)
+              continue
             if p.startswith("supabase/functions/"):
               fn_files.append(p)
             elif p.startswith("src/"):

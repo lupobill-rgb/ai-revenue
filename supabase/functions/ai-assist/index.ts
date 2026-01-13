@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { runLLM } from "../_shared/llmRouter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,11 +18,6 @@ serve(async (req) => {
 
   try {
     const { context, userPrompt }: AssistRequest = await req.json();
-    
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
     // Context-specific system prompts - Dynamic based on user's business
     const contextPrompts: Record<string, string> = {
@@ -35,42 +31,21 @@ serve(async (req) => {
 
     const systemPrompt = contextPrompts[context] || 'You are a helpful AI marketing assistant. Provide clear, actionable suggestions that drive business results. Write in plain text without markdown formatting.';
 
-    // Call Lovable AI
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-      }),
+    const out = await runLLM({
+      tenantId: "public",
+      capability: "ai.assist",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      maxTokens: 600,
+      timeoutMs: 20_000,
     });
 
-    if (!aiResponse.ok) {
-      if (aiResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limits exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Payment required. Please add funds to your Lovable AI workspace." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errorText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errorText);
-      throw new Error("AI gateway error");
-    }
+    if (out.kind !== "text") throw new Error("Unexpected streaming response");
 
-    const aiData = await aiResponse.json();
-    const generatedSuggestion = aiData.choices[0].message.content;
+    const generatedSuggestion = out.text;
 
     // Function to clean up markdown and special characters
     const cleanContent = (text: string): string => {

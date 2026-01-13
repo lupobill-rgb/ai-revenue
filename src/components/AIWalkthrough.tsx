@@ -19,7 +19,7 @@ interface AIWalkthroughProps {
   forceShow?: boolean;
 }
 
-const WALKTHROUGH_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-walkthrough`;
+const WALKTHROUGH_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-walkthrough-direct`;
 
 const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
   const [isVisible, setIsVisible] = useState(false);
