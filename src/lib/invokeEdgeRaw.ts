@@ -32,6 +32,7 @@ export async function invokeEdgeRaw<T>({ fn, body, signal }: InvokeOpts): Promis
     ((supabase as any).supabaseUrl as string | undefined) ??
     ((supabase as any).url as string | undefined) ??
     import.meta.env.VITE_SUPABASE_URL;
+  const functionsUrlEnv = import.meta.env.VITE_SUPABASE_URL;
 
   const jwtPayload = decodeJwtPayload(token);
   const clientHost = new URL(clientUrl).host;
@@ -40,10 +41,12 @@ export async function invokeEdgeRaw<T>({ fn, body, signal }: InvokeOpts): Promis
   if (issuerHost && issuerHost !== clientHost) {
     console.error("[auth] JWT issuer mismatch for edge call", {
       fn,
-      clientUrl,
+      supabaseUrlClient: clientUrl,
+      functionsUrlEnv,
       clientHost,
       jwtIss: jwtPayload?.iss,
       issuerHost,
+      tokenPresent: Boolean(token),
       tokenPrefix: `${token.slice(0, 20)}...`,
     });
     throw new Error(
@@ -84,7 +87,8 @@ export async function invokeEdgeRaw<T>({ fn, body, signal }: InvokeOpts): Promis
       requestBody: body,
       hasSession: true,
       tokenPreview: `${token.slice(0, 12)}...`,
-      clientUrl,
+      supabaseUrlClient: clientUrl,
+      functionsUrlEnv,
       jwtIss: jwtPayload?.iss ?? null,
       jwtAud: jwtPayload?.aud ?? null,
       jwtExp: jwtPayload?.exp ?? null,
