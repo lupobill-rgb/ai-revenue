@@ -300,22 +300,21 @@ export function AutopilotCampaignWizard({ onComplete }: AutopilotCampaignWizardP
             <Label>Which channels can we use?</Label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {CHANNEL_OPTIONS.map((channel) => (
-                <div
+                <label
                   key={channel.id}
                   className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                     selectedChannels.includes(channel.id)
                       ? 'border-primary bg-primary/10'
                       : 'border-border hover:border-primary/50'
                   }`}
-                  onClick={() => handleChannelToggle(channel.id)}
                 >
                   <Checkbox
                     checked={selectedChannels.includes(channel.id)}
-                    onCheckedChange={() => {}}
+                    onCheckedChange={() => handleChannelToggle(channel.id)}
                   />
                   <channel.icon className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm">{channel.label}</span>
-                </div>
+                </label>
               ))}
             </div>
           </fieldset>
