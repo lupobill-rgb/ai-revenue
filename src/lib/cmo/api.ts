@@ -1,8 +1,8 @@
 // CMO API Client - Tenant-scoped Supabase operations
 
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { getTenantContext } from "@/lib/tenant";
-import { invokeEdgeRaw } from "@/lib/invokeEdgeRaw";
+import { invokeEdgeAuthed } from "@/lib/edge";
 import type {
   CMOBrandProfile,
   CMOICPSegment,
@@ -354,11 +354,7 @@ export async function buildAutopilotCampaign(payload: {
     },
   };
 
-  // Use raw fetch to see real HTTP status + response body
-  const data = await invokeEdgeRaw<any>({
-    fn: "cmo-kernel",
-    body: requestBody,
-  });
+  const data = await invokeEdgeAuthed<any>({ fn: "cmo-kernel", body: requestBody });
   
   // Return the result from the kernel response
   return data?.result || data;

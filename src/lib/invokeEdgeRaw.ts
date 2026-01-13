@@ -3,7 +3,7 @@
  * Use this instead of supabase.functions.invoke() when debugging errors
  */
 
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_ANON_KEY } from "@/lib/supabase";
 
 type InvokeOpts = {
   fn: string;              // e.g. "cmo-kernel"
@@ -88,7 +88,7 @@ export async function invokeEdgeRaw<T>({ fn, body, signal }: InvokeOpts): Promis
       // IMPORTANT: include JWT so the function sees the user/tenant
       Authorization: `Bearer ${token}`,
       // Some setups require apikey even when Authorization is present.
-      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      apikey: SUPABASE_ANON_KEY,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
