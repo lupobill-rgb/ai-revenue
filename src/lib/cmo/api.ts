@@ -2,7 +2,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { getTenantContext } from "@/lib/tenant";
-import { invokeEdgeAuthed } from "@/lib/edge";
+import { callCmoKernel } from "@/lib/cmoKernel";
 import type {
   CMOBrandProfile,
   CMOICPSegment,
@@ -354,7 +354,7 @@ export async function buildAutopilotCampaign(payload: {
     },
   };
 
-  const data = await invokeEdgeAuthed<any>({ fn: "cmo-kernel", body: requestBody });
+  const data = await callCmoKernel(requestBody);
   
   // Return the result from the kernel response
   return data?.result || data;
