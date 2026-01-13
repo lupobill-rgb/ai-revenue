@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdge } from "@/lib/edgeInvoke";
 import { Loader2, Sparkles, Brain, Zap, Mail, Share2, Phone, Video, Layout, Bot } from "lucide-react";
 import AIPromptCard from "@/components/AIPromptCard";
 import WorkflowProgress from "@/components/WorkflowProgress";
@@ -251,24 +252,22 @@ const NewCampaign = () => {
       });
 
       // Call orchestrator function
-      const { data, error } = await supabase.functions.invoke("campaign-orchestrator", {
-        body: {
-          campaignName,
-          vertical,
-          goal,
-          location: location || undefined,
-          businessType: businessType || undefined,
-          budget: budget ? parseFloat(budget) : undefined,
-          channels: selectedChannels,
-          schedule,
-          draftedEmail: draftedEmailContent ? {
-            subject: draftedEmailSubject || campaignName,
-            content: draftedEmailContent,
-          } : undefined,
-        },
+      const data: any = await invokeEdge("campaign-orchestrator", {
+        campaignName,
+        vertical,
+        goal,
+        location: location || undefined,
+        businessType: businessType || undefined,
+        budget: budget ? parseFloat(budget) : undefined,
+        channels: selectedChannels,
+        schedule,
+        draftedEmail: draftedEmailContent
+          ? {
+              subject: draftedEmailSubject || campaignName,
+              content: draftedEmailContent,
+            }
+          : undefined,
       });
-
-      if (error) throw error;
 
       toast({
         title: "Campaign Created",
