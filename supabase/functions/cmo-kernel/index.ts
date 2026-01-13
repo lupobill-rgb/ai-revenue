@@ -3,10 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  // Keep this in sync with any custom headers the frontend sends (e.g. x-request-id)
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 type CMOMode = 
@@ -52,13 +49,13 @@ const MODE_TO_FUNCTION: Record<CMOMode, string> = {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders });
   }
 
   const startTime = Date.now();
 
   try {
-    const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
+    const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
         status: 401,
@@ -66,19 +63,16 @@ serve(async (req) => {
       });
     }
 
-    // Normalize "Bearer <jwt>" to "<jwt>" for auth verification, then re-add Bearer when passing through.
-    const jwt = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7) : authHeader;
-
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
     
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: `Bearer ${jwt}` } }
+      global: { headers: { Authorization: authHeader } }
     });
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: userError?.message || 'Unauthorized' }), {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -127,9 +121,6 @@ serve(async (req) => {
       method: 'POST',
       headers: {
         'Authorization': authHeader,
-        // Include apikey when calling another Edge Function through the gateway.
-        // Without it, the gateway can reject otherwise-valid JWTs depending on project config.
-        'apikey': SUPABASE_ANON_KEY,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
