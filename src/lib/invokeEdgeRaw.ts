@@ -12,21 +12,14 @@ type InvokeOpts = {
 };
 
 export async function invokeEdgeRaw<T>({ fn, body, signal }: InvokeOpts): Promise<T> {
-  // Ensure we send a fresh JWT. Stale/expired tokens commonly present as "Invalid JWT" in Edge Functions.
-  const nowSec = Math.floor(Date.now() / 1000);
-  const {
-    data: { session: initialSession },
-  } = await supabase.auth.getSession();
-
-  let session = initialSession ?? null;
-  const expiresAt = session?.expires_at ?? null;
-
-  // Refresh if the token is missing or within ~60s of expiry.
-  if (!session || (typeof expiresAt === "number" && expiresAt <= nowSec + 60)) {
-    const { data, error } = await supabase.auth.refreshSession();
-    if (!error && data?.session?.access_token) {
-      session = data.session;
-    }
+  // Always refresh first so we don't send a stale/expired JWT.
+  // If the user isn't authenticated, fail fast (don't hit the function with no/invalid Authorization header).
+  await supabase.auth.refreshSession();
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const token = sessionData.session?.access_token;
+  if (!token) {
+    throw new Error(`[${fn}] Missing session token (user not authenticated)`);
   }
 
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fn}`;
@@ -36,7 +29,7 @@ export async function invokeEdgeRaw<T>({ fn, body, signal }: InvokeOpts): Promis
     headers: {
       "Content-Type": "application/json",
       // IMPORTANT: include JWT so the function sees the user/tenant
-      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      Authorization: `Bearer ${token}`,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
@@ -51,8 +44,8 @@ export async function invokeEdgeRaw<T>({ fn, body, signal }: InvokeOpts): Promis
       statusText: res.statusText,
       responseText: text,
       requestBody: body,
-      hasSession: Boolean(session),
-      tokenPreview: session?.access_token ? `${session.access_token.slice(0, 12)}...` : null,
+      hasSession: true,
+      tokenPreview: `${token.slice(0, 12)}...`,
     });
 
     // Surface a useful error in the UI (not just generic)
