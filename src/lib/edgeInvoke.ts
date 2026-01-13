@@ -1,5 +1,16 @@
 import { supabase } from "@/integrations/supabase/client";
 
+function decodeJwtPayload(jwt: string) {
+  const p = jwt.split(".")[1];
+  if (!p) return null;
+  const json = atob(p.replace(/-/g, "+").replace(/_/g, "/"));
+  try {
+    return JSON.parse(json) as { iss?: string; exp?: number; aud?: string; sub?: string; role?: string; ref?: string };
+  } catch {
+    return null;
+  }
+}
+
 function summarizeEdgeInvokeError(fn: string, error: any) {
   const status =
     error?.status ??
@@ -30,8 +41,11 @@ function summarizeEdgeInvokeError(fn: string, error: any) {
 async function invokeEdgeRawForDebug(fn: string, body: unknown) {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  // Ensure token is fresh when replaying; expired tokens can appear as "Invalid JWT".
+  await supabase.auth.refreshSession();
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
+  const tokenPayload = token ? decodeJwtPayload(token) : null;
 
   const res = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
     method: "POST",
@@ -44,12 +58,20 @@ async function invokeEdgeRawForDebug(fn: string, body: unknown) {
   });
 
   const text = await res.text();
-  return { status: res.status, statusText: res.statusText, text, hasToken: Boolean(token) };
+  return {
+    status: res.status,
+    statusText: res.statusText,
+    text,
+    hasToken: Boolean(token),
+    tokenIss: tokenPayload?.iss ?? null,
+    tokenExp: tokenPayload?.exp ?? null,
+  };
 }
 
 export async function invokeEdge<T>(fn: string, body: unknown): Promise<T> {
   // Fail fast if we have no authenticated session. Otherwise Edge Functions that require JWT
   // will return 401 and supabase-js often surfaces only the generic non-2xx message.
+  await supabase.auth.refreshSession();
   const { data: sessionData } = await supabase.auth.getSession();
   const sessionToken = sessionData.session?.access_token;
   if (!sessionToken) {
@@ -84,7 +106,7 @@ export async function invokeEdge<T>(fn: string, body: unknown): Promise<T> {
         console.error("[edge] raw fetch debug", { fn, ...raw });
         throw new Error(
           `[${fn}] Edge Function failed (status=${raw.status}, message=${(error as any)?.message || "non-2xx"}, ` +
-            `details=${raw.text || "(empty)"}, hasToken=${raw.hasToken})`
+            `details=${raw.text || "(empty)"}, hasToken=${raw.hasToken}, tokenIss=${raw.tokenIss}, tokenExp=${raw.tokenExp})`
         );
       } catch (e) {
         // fall through to original message if raw fetch also fails unexpectedly
