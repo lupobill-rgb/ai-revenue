@@ -8,8 +8,8 @@ export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 export const SUPABASE_ANON_KEY =
   import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-// Some environments (embedded Chromium / hardened profiles) block Web Storage.
-// Fall back to in-memory storage so auth still works (session won't persist across reloads, by design).
+// In-memory storage (works when localStorage / site data is blocked).
+// Note: session will NOT persist across reloads (by design).
 const memoryStorage = (() => {
   let store: Record<string, string> = {};
   return {
@@ -23,20 +23,9 @@ const memoryStorage = (() => {
   };
 })();
 
-function canUseLocalStorage(): boolean {
-  try {
-    const k = "__sb_ls_test__";
-    window.localStorage.setItem(k, "1");
-    window.localStorage.removeItem(k);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    storage: canUseLocalStorage() ? localStorage : memoryStorage,
+    storage: memoryStorage,
     persistSession: true,
     autoRefreshToken: true,
     // Prevent stale cross-project / cross-origin session collisions during local dev.
