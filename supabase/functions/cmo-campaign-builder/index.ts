@@ -286,8 +286,8 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
       throw new Error('Failed to parse generated campaign content');
     }
 
-    // Create the campaign in the database
-    const { data: campaign, error: campaignError } = await supabase
+    // Create the campaign in the database (service role to bypass RLS)
+    const { data: campaign, error: campaignError } = await supabaseAdmin
       .from('cmo_campaigns')
       .insert({
         tenant_id,
@@ -305,7 +305,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
 
     if (campaignError) {
       console.error('Failed to create campaign:', campaignError);
-      throw new Error('Failed to create campaign record');
+      throw new Error(`Failed to create campaign record: ${campaignError.message}`);
     }
 
     // Store content assets
@@ -315,7 +315,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Store posts
     if (assets.posts?.length) {
       for (const post of assets.posts) {
-        const { data: asset } = await supabase
+        const { data: asset } = await supabaseAdmin
           .from('cmo_content_assets')
           .insert({
             tenant_id,
@@ -337,7 +337,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Store emails
     if (assets.emails?.length) {
       for (const email of assets.emails) {
-        const { data: asset } = await supabase
+        const { data: asset } = await supabaseAdmin
           .from('cmo_content_assets')
           .insert({
             tenant_id,
@@ -358,7 +358,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Store voice scripts
     if (assets.voice_scripts?.length) {
       for (const script of assets.voice_scripts) {
-        const { data: asset } = await supabase
+        const { data: asset } = await supabaseAdmin
           .from('cmo_content_assets')
           .insert({
             tenant_id,
@@ -380,7 +380,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Store SMS messages
     if (assets.sms?.length) {
       for (const sms of assets.sms) {
-        const { data: asset } = await supabase
+        const { data: asset } = await supabaseAdmin
           .from('cmo_content_assets')
           .insert({
             tenant_id,
@@ -406,7 +406,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
         const publishedUrl = `https://pages.ubigrowth.ai/${tenant_id.slice(0, 8)}/${urlSlug}`;
         
         // Store full landing page structure in cmo_content_assets
-        const { data: asset } = await supabase
+        const { data: asset } = await supabaseAdmin
           .from('cmo_content_assets')
           .insert({
             tenant_id,
@@ -425,7 +425,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
 
         if (asset) {
           // Store full landing page data in variant for richer structure
-          const { data: variant } = await supabase
+          const { data: variant } = await supabaseAdmin
             .from('cmo_content_variants')
             .insert({
               asset_id: asset.id,
@@ -463,7 +463,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
             .single();
 
           // Create automation trigger for form submission
-          await supabase
+          await supabaseAdmin
             .from('automation_steps')
             .insert({
               tenant_id,
@@ -494,7 +494,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Store automation flow steps
     if (assets.automation_steps?.length) {
       for (const step of assets.automation_steps) {
-        await supabase
+        await supabaseAdmin
           .from('automation_steps')
           .insert({
             tenant_id,
@@ -511,7 +511,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     }
 
     // Log agent run
-    await supabase
+    await supabaseAdmin
       .from('agent_runs')
       .insert({
         tenant_id,
