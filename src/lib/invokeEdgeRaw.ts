@@ -12,7 +12,22 @@ type InvokeOpts = {
 };
 
 export async function invokeEdgeRaw<T>({ fn, body, signal }: InvokeOpts): Promise<T> {
-  const { data: { session } } = await supabase.auth.getSession();
+  // Ensure we send a fresh JWT. Stale/expired tokens commonly present as "Invalid JWT" in Edge Functions.
+  const nowSec = Math.floor(Date.now() / 1000);
+  const {
+    data: { session: initialSession },
+  } = await supabase.auth.getSession();
+
+  let session = initialSession ?? null;
+  const expiresAt = session?.expires_at ?? null;
+
+  // Refresh if the token is missing or within ~60s of expiry.
+  if (!session || (typeof expiresAt === "number" && expiresAt <= nowSec + 60)) {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (!error && data?.session?.access_token) {
+      session = data.session;
+    }
+  }
 
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fn}`;
 
@@ -36,6 +51,8 @@ export async function invokeEdgeRaw<T>({ fn, body, signal }: InvokeOpts): Promis
       statusText: res.statusText,
       responseText: text,
       requestBody: body,
+      hasSession: Boolean(session),
+      tokenPreview: session?.access_token ? `${session.access_token.slice(0, 12)}...` : null,
     });
 
     // Surface a useful error in the UI (not just generic)
