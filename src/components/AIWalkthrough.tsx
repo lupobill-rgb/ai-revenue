@@ -19,7 +19,7 @@ interface AIWalkthroughProps {
   forceShow?: boolean;
 }
 
-const WALKTHROUGH_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-walkthrough-direct`;
+const WALKTHROUGH_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-walkthrough`;
 
 const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -72,8 +72,7 @@ const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({ messages: [], isFirstMessage: true, workspaceId }),
       });
@@ -155,8 +154,7 @@ const AIWalkthrough = ({ onClose, forceShow = false }: AIWalkthroughProps) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({ messages: newMessages, isFirstMessage: false, workspaceId }),
       });

@@ -1,8 +1,7 @@
 // CMO API Client - Tenant-scoped Supabase operations
 
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import { getTenantContext } from "@/lib/tenant";
-import { callCmoKernel } from "@/lib/cmoKernel";
 import type {
   CMOBrandProfile,
   CMOICPSegment,
@@ -46,13 +45,16 @@ export async function invokeCMOKernel(
     workspaceId = workspace?.id || "";
   }
 
-  const data = await callCmoKernel({
-    mode,
-    tenant_id: tenantId,
-    workspace_id: workspaceId,
-    payload,
-  } as CMOKernelRequest);
+  const { data, error } = await supabase.functions.invoke("cmo-kernel", {
+    body: {
+      mode,
+      tenant_id: tenantId,
+      workspace_id: workspaceId,
+      payload,
+    } as CMOKernelRequest,
+  });
 
+  if (error) throw error;
   return data as CMOKernelResponse;
 }
 
@@ -337,21 +339,23 @@ export async function buildAutopilotCampaign(payload: {
   }
 
   // Call via kernel with campaign-builder mode
-  const requestBody = {
-    mode: 'campaign-builder',
-    tenant_id: tenantId,
-    workspace_id: workspaceId,
-    payload: {
-      icp: payload.icp,
-      offer: payload.offer,
-      channels: payload.channels,
-      desired_result: payload.desiredResult,
-      target_tags: payload.targetTags,
-      target_segment_codes: payload.targetSegments,
+  const { data, error } = await supabase.functions.invoke("cmo-kernel", {
+    body: {
+      mode: 'campaign-builder',
+      tenant_id: tenantId,
+      workspace_id: workspaceId,
+      payload: {
+        icp: payload.icp,
+        offer: payload.offer,
+        channels: payload.channels,
+        desired_result: payload.desiredResult,
+        target_tags: payload.targetTags,
+        target_segment_codes: payload.targetSegments,
+      },
     },
-  };
+  });
 
-  const data = await callCmoKernel(requestBody);
+  if (error) throw error;
   
   // Return the result from the kernel response
   return data?.result || data;

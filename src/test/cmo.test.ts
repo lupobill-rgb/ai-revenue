@@ -25,14 +25,8 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
-// Mock validated kernel caller (avoid real auth/fetch in unit tests)
-vi.mock("@/lib/cmoKernel", () => ({
-  callCmoKernel: vi.fn(),
-}));
-
 // Import after mocking
 import { supabase } from "@/integrations/supabase/client";
-import { callCmoKernel } from "@/lib/cmoKernel";
 
 describe("CMO Plan Creation", () => {
   beforeEach(() => {
@@ -188,23 +182,24 @@ describe("CMO Campaign Management", () => {
   });
 
   it("should update campaign status", async () => {
-    (callCmoKernel as any).mockResolvedValueOnce({
-      success: true,
-      data: { id: "campaign-123", status: "paused" },
+    (supabase.functions.invoke as any).mockResolvedValueOnce({
+      data: { success: true, data: { id: "campaign-123", status: "paused" } },
+      error: null,
     });
 
-    const result = await callCmoKernel({
-      mode: "update-campaign",
-      tenant_id: "tenant-123",
-      workspace_id: "workspace-123",
-      payload: {
-        campaign_id: "campaign-123",
-        updates: { status: "paused" },
+    const result = await supabase.functions.invoke("cmo-kernel", {
+      body: {
+        mode: "update-campaign",
+        tenant_id: "tenant-123",
+        workspace_id: "workspace-123",
+        payload: {
+          campaign_id: "campaign-123",
+          updates: { status: "paused" },
+        },
       },
     });
 
-    expect(result.data.status).toBe("paused");
-    expect(callCmoKernel).toHaveBeenCalledTimes(1);
+    expect(result.data.data.status).toBe("paused");
   });
 });
 
