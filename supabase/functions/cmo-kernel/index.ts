@@ -121,6 +121,9 @@ serve(async (req) => {
       method: 'POST',
       headers: {
         'Authorization': authHeader,
+        // Include apikey when calling another Edge Function through the gateway.
+        // Without it, the gateway can reject otherwise-valid JWTs depending on project config.
+        'apikey': SUPABASE_ANON_KEY,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
