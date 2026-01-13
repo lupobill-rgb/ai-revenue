@@ -78,7 +78,7 @@ const NewCampaign = () => {
   const [draftedEmailContent, setDraftedEmailContent] = useState("");
   const emailContentRef = useRef<HTMLTextAreaElement>(null);
   
-  // Derive default channels from prefs (stable)
+  // Derive default channels from prefs (stable, primitive deps only)
   const defaultChannels = useMemo(() => ({
     email: !!channelPrefs.email_enabled,
     social: !!channelPrefs.social_enabled,
@@ -99,17 +99,36 @@ const NewCampaign = () => {
   // Campaign schedule
   const [schedule, setSchedule] = useState<ScheduleConfig>(DEFAULT_SCHEDULE);
 
+  // Idempotent setter - prevents accidental loops
+  const setSelectedChannelsIfChanged = useCallback((next: typeof defaultChannels) => {
+    setSelectedChannels((prev) => {
+      // Check if anything actually changed
+      if (
+        prev.email === next.email &&
+        prev.social === next.social &&
+        prev.voice === next.voice &&
+        prev.video === next.video &&
+        prev.landing_page === next.landing_page
+      ) {
+        return prev; // No change, return same object
+      }
+      
+      console.log('[NewCampaign] setSelectedChannels:', { prev, next });
+      return next;
+    });
+  }, []);
+
   // Track initialization and user edits per workspace/draft
   const initRef = useRef<{
-    key: string | null;
+    key: string;
     didInit: boolean;
     userEdited: boolean;
-  }>({ key: null, didInit: false, userEdited: false });
+  }>({ key: '', didInit: false, userEdited: false });
 
-  // Create stable init key (workspace + draft/session)
-  const initKey = `new-campaign:${campaignName || 'draft'}`;
+  // Create stable init key (no objects, primitives only)
+  const initKey = 'new-campaign-session';
 
-  // Initialize channel selection once per workspace/draft
+  // Initialize channel selection once per session
   useEffect(() => {
     // Reset guard if identity changed
     if (initRef.current.key !== initKey) {
@@ -127,9 +146,10 @@ const NewCampaign = () => {
     // Initialize exactly once per key
     if (initRef.current.didInit) return;
 
-    setSelectedChannels(defaultChannels);
+    console.log('[NewCampaign] INIT_FROM_PREFS', defaultChannels);
+    setSelectedChannelsIfChanged(defaultChannels);
     initRef.current.didInit = true;
-  }, [initKey, loadingPrefs, defaultChannels]);
+  }, [initKey, loadingPrefs, setSelectedChannelsIfChanged]);
 
   const insertTagAtCursor = (tag: string) => {
     const textarea = emailContentRef.current;
@@ -430,6 +450,7 @@ const NewCampaign = () => {
                               id="channel-email"
                               checked={selectedChannels.email}
                               onCheckedChange={(checked) => {
+                                console.log('[NewCampaign] USER_TOGGLE_EMAIL', checked);
                                 initRef.current.userEdited = true;
                                 setSelectedChannels(prev => ({ ...prev, email: !!checked }));
                               }}
@@ -448,6 +469,7 @@ const NewCampaign = () => {
                               id="channel-social"
                               checked={selectedChannels.social}
                               onCheckedChange={(checked) => {
+                                console.log('[NewCampaign] USER_TOGGLE_SOCIAL', checked);
                                 initRef.current.userEdited = true;
                                 setSelectedChannels(prev => ({ ...prev, social: !!checked }));
                               }}
@@ -466,6 +488,7 @@ const NewCampaign = () => {
                               id="channel-voice"
                               checked={selectedChannels.voice}
                               onCheckedChange={(checked) => {
+                                console.log('[NewCampaign] USER_TOGGLE_VOICE', checked);
                                 initRef.current.userEdited = true;
                                 setSelectedChannels(prev => ({ ...prev, voice: !!checked }));
                               }}
@@ -484,6 +507,7 @@ const NewCampaign = () => {
                               id="channel-video"
                               checked={selectedChannels.video}
                               onCheckedChange={(checked) => {
+                                console.log('[NewCampaign] USER_TOGGLE_VIDEO', checked);
                                 initRef.current.userEdited = true;
                                 setSelectedChannels(prev => ({ ...prev, video: !!checked }));
                               }}
@@ -502,6 +526,7 @@ const NewCampaign = () => {
                               id="channel-landing"
                               checked={selectedChannels.landing_page}
                               onCheckedChange={(checked) => {
+                                console.log('[NewCampaign] USER_TOGGLE_LANDING', checked);
                                 initRef.current.userEdited = true;
                                 setSelectedChannels(prev => ({ ...prev, landing_page: !!checked }));
                               }}
