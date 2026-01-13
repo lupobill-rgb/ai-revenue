@@ -48,6 +48,14 @@ async function invokeEdgeRawForDebug(fn: string, body: unknown) {
 }
 
 export async function invokeEdge<T>(fn: string, body: unknown): Promise<T> {
+  // Fail fast if we have no authenticated session. Otherwise Edge Functions that require JWT
+  // will return 401 and supabase-js often surfaces only the generic non-2xx message.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const sessionToken = sessionData.session?.access_token;
+  if (!sessionToken) {
+    throw new Error(`[${fn}] NO SESSION TOKEN (sign in required before calling Edge Functions)`);
+  }
+
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
     console.log("[edge] invoke", {
@@ -62,7 +70,13 @@ export async function invokeEdge<T>(fn: string, body: unknown): Promise<T> {
     const msg = summarizeEdgeInvokeError(fn, error);
 
     // If supabase-js swallowed the body (common), replay via raw fetch to capture the real status/body.
-    const hasDetails = Boolean((error as any)?.details) || Boolean((error as any)?.context?.body);
+    const detailsVal = (error as any)?.details ?? (error as any)?.context?.body ?? null;
+    const hasDetails =
+      typeof detailsVal === "string"
+        ? detailsVal.trim().length > 0
+        : detailsVal && typeof detailsVal === "object"
+          ? Object.keys(detailsVal).length > 0
+          : Boolean(detailsVal);
     if (!hasDetails) {
       try {
         const raw = await invokeEdgeRawForDebug(fn, body);
