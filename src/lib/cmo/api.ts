@@ -339,23 +339,40 @@ export async function buildAutopilotCampaign(payload: {
   }
 
   // Call via kernel with campaign-builder mode
-  const { data, error } = await supabase.functions.invoke("cmo-kernel", {
-    body: {
-      mode: 'campaign-builder',
-      tenant_id: tenantId,
-      workspace_id: workspaceId,
-      payload: {
-        icp: payload.icp,
-        offer: payload.offer,
-        channels: payload.channels,
-        desired_result: payload.desiredResult,
-        target_tags: payload.targetTags,
-        target_segment_codes: payload.targetSegments,
-      },
+  const requestBody = {
+    mode: 'campaign-builder',
+    tenant_id: tenantId,
+    workspace_id: workspaceId,
+    payload: {
+      icp: payload.icp,
+      offer: payload.offer,
+      channels: payload.channels,
+      desired_result: payload.desiredResult,
+      target_tags: payload.targetTags,
+      target_segment_codes: payload.targetSegments,
     },
+  };
+
+  const started = Date.now();
+  const { data, error } = await supabase.functions.invoke("cmo-kernel", {
+    body: requestBody,
   });
 
-  if (error) throw error;
+  if (error) {
+    // Enhanced error logging to capture status/body/context
+    console.error(`[edge] cmo-kernel failed`, {
+      message: error.message,
+      name: (error as any).name,
+      status: (error as any).status,
+      statusCode: (error as any).statusCode,
+      context: (error as any).context,
+      details: (error as any).details,
+      elapsed_ms: Date.now() - started,
+      requestBody,
+      responseData: data,
+    });
+    throw error;
+  }
   
   // Return the result from the kernel response
   return data?.result || data;
