@@ -46,16 +46,13 @@ export async function invokeCMOKernel(
     workspaceId = workspace?.id || "";
   }
 
-  const { data, error } = await supabase.functions.invoke("cmo-kernel", {
-    body: {
-      mode,
-      tenant_id: tenantId,
-      workspace_id: workspaceId,
-      payload,
-    } as CMOKernelRequest,
-  });
+  const data = await callCmoKernel({
+    mode,
+    tenant_id: tenantId,
+    workspace_id: workspaceId,
+    payload,
+  } as CMOKernelRequest);
 
-  if (error) throw error;
   return data as CMOKernelResponse;
 }
 
