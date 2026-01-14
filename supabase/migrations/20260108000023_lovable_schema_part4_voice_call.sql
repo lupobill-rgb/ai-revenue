@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS public.voice_agents (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- VOICE PHONE NUMBERS
 -- ============================================
@@ -43,7 +42,6 @@ CREATE TABLE IF NOT EXISTS public.voice_phone_numbers (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- VOICE CALL RECORDS
 -- ============================================
@@ -74,7 +72,6 @@ CREATE TABLE IF NOT EXISTS public.voice_call_records (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- VOICE CAMPAIGNS
 -- ============================================
@@ -98,7 +95,6 @@ CREATE TABLE IF NOT EXISTS public.voice_campaigns (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- INDEXES
 -- ============================================
@@ -111,7 +107,6 @@ CREATE INDEX IF NOT EXISTS idx_voice_call_records_tenant_id ON public.voice_call
 CREATE INDEX IF NOT EXISTS idx_voice_call_records_lead_id ON public.voice_call_records(lead_id);
 CREATE INDEX IF NOT EXISTS idx_voice_call_records_status ON public.voice_call_records(status);
 CREATE INDEX IF NOT EXISTS idx_voice_campaigns_workspace_id ON public.voice_campaigns(workspace_id);
-
 -- ============================================
 -- ENABLE RLS
 -- ============================================
@@ -120,7 +115,6 @@ ALTER TABLE public.voice_agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.voice_phone_numbers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.voice_call_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.voice_campaigns ENABLE ROW LEVEL SECURITY;
-
 -- ============================================
 -- RLS POLICIES
 -- ============================================
@@ -142,7 +136,6 @@ DO $$ BEGIN
       USING (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- Voice Phone Numbers
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'voice_phone_numbers' AND policyname = 'workspace_access_select') THEN
@@ -155,7 +148,6 @@ DO $$ BEGIN
       WITH CHECK (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- Voice Call Records
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'voice_call_records' AND policyname = 'workspace_access_select') THEN
@@ -168,7 +160,6 @@ DO $$ BEGIN
       WITH CHECK (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- Voice Campaigns
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'voice_campaigns' AND policyname = 'workspace_access_select') THEN
@@ -181,9 +172,7 @@ DO $$ BEGIN
       WITH CHECK (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- ============================================
 -- MIGRATION COMPLETE: PART 4
 -- Voice/Call management tables created
--- ============================================
-
+-- ============================================;

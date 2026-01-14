@@ -1,12 +1,10 @@
 -- 1. Add source flag to deals table
 ALTER TABLE deals 
 ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'user';
-
 -- 2. Add check constraint for valid source values
 ALTER TABLE deals 
 ADD CONSTRAINT deals_source_check 
 CHECK (source IN ('user', 'seed', 'test'));
-
 -- 3. Update existing test workspace deals to be flagged
 UPDATE deals 
 SET source = 'test' 
@@ -14,7 +12,6 @@ WHERE workspace_id IN (
   SELECT id FROM workspaces 
   WHERE name LIKE '%QA%' OR name LIKE '%Test%' OR name LIKE '%Scale%'
 );
-
 -- 4. Recreate the view to exclude test/seed data in live mode
 CREATE OR REPLACE VIEW v_pipeline_metrics_by_workspace AS
 SELECT 

@@ -1,4 +1,3 @@
-
 -- =============================================================================
 -- CRM SOURCE OF TRUTH: Complete Data Integrity Enforcement
 -- =============================================================================
@@ -14,14 +13,12 @@ ADD COLUMN IF NOT EXISTS qualified_at TIMESTAMPTZ,
 ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ,
 ADD COLUMN IF NOT EXISTS lost_at TIMESTAMPTZ,
 ADD COLUMN IF NOT EXISTS tenant_id UUID;
-
 -- Backfill tenant_id from workspace
 UPDATE public.leads l
 SET tenant_id = w.tenant_id
 FROM public.workspaces w
 WHERE l.workspace_id = w.id
   AND l.tenant_id IS NULL;
-
 -- Create trigger to auto-set tenant_id, data_mode, and lifecycle timestamps
 CREATE OR REPLACE FUNCTION public.set_lead_lifecycle_state()
 RETURNS TRIGGER
@@ -71,13 +68,11 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trg_lead_lifecycle ON public.leads;
 CREATE TRIGGER trg_lead_lifecycle
   BEFORE INSERT OR UPDATE ON public.leads
   FOR EACH ROW
   EXECUTE FUNCTION public.set_lead_lifecycle_state();
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. CRM SOURCE OF TRUTH VIEW: Master authoritative view
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -248,7 +243,6 @@ FROM ws
 LEFT JOIN lead_counts lc ON lc.workspace_id = ws.workspace_id
 LEFT JOIN deal_counts dc ON dc.workspace_id = ws.workspace_id
 LEFT JOIN stripe_revenue sr ON sr.workspace_id = ws.workspace_id;
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 3. LEAD PIPELINE VIEW: Gated lead funnel for dashboards
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -281,7 +275,8 @@ SELECT
 FROM public.leads l
 JOIN ws ON ws.workspace_id = l.workspace_id
 WHERE l.data_mode = ws.required_mode 
-   OR (l.data_mode IS NULL AND NOT ws.demo_mode); -- Handle legacy NULL data_mode in live mode
+   OR (l.data_mode IS NULL AND NOT ws.demo_mode);
+-- Handle legacy NULL data_mode in live mode
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4. INDEXES FOR PERFORMANCE
@@ -290,7 +285,6 @@ WHERE l.data_mode = ws.required_mode
 CREATE INDEX IF NOT EXISTS idx_leads_data_mode ON public.leads(data_mode);
 CREATE INDEX IF NOT EXISTS idx_leads_workspace_status ON public.leads(workspace_id, status);
 CREATE INDEX IF NOT EXISTS idx_leads_status_timestamps ON public.leads(status, contacted_at, qualified_at, converted_at);
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 5. GRANT ACCESS
 -- ─────────────────────────────────────────────────────────────────────────────

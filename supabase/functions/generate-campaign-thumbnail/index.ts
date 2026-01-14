@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
+import { openaiImageGenerate } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,10 +67,9 @@ serve(async (req) => {
 
   try {
     const { assetId, assetType, vertical, campaignName, goal } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY not configured");
     }
 
     const { user, error: authError, supabaseClient } = await verifyAuth(req);
@@ -116,31 +116,16 @@ serve(async (req) => {
 
     console.log(`Generating thumbnail for ${businessName} - ${campaignName} (${assetType})`);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image-preview",
-        messages: [{ role: "user", content: prompt }],
-        modalities: ["image", "text"],
-      }),
+    const imageModel = Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-1";
+    const img = await openaiImageGenerate({
+      apiKey: OPENAI_API_KEY,
+      model: imageModel,
+      prompt,
+      timeoutMs: 55_000,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Image generation error:", response.status, errorText);
-      throw new Error(`Image generation failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const imageUrl = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-
-    if (!imageUrl) {
-      throw new Error("No image generated");
-    }
+    const imageUrl = img.url || (img.b64 ? `data:image/png;base64,${img.b64}` : "");
+    if (!imageUrl) throw new Error("No image generated");
 
     // Update asset with generated thumbnail - RLS enforced
     if (assetId) {

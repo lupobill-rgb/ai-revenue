@@ -30,22 +30,17 @@ CREATE TABLE public.tenant_rate_limits (
   
   UNIQUE(tenant_id)
 );
-
 -- Enable RLS
 ALTER TABLE public.tenant_rate_limits ENABLE ROW LEVEL SECURITY;
-
 -- Policies
 CREATE POLICY "Platform admins can manage all rate limits"
   ON public.tenant_rate_limits FOR ALL
   USING (public.is_platform_admin(auth.uid()));
-
 CREATE POLICY "Tenant members can view their limits"
   ON public.tenant_rate_limits FOR SELECT
   USING (public.user_belongs_to_tenant(tenant_id));
-
 -- Index for fast lookups
 CREATE INDEX idx_tenant_rate_limits_tenant ON public.tenant_rate_limits(tenant_id);
-
 -- Create rate limit events table for tracking cap hits
 CREATE TABLE public.rate_limit_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -59,21 +54,16 @@ CREATE TABLE public.rate_limit_events (
   run_id uuid,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Enable RLS
 ALTER TABLE public.rate_limit_events ENABLE ROW LEVEL SECURITY;
-
 CREATE POLICY "Platform admins can view all rate limit events"
   ON public.rate_limit_events FOR ALL
   USING (public.is_platform_admin(auth.uid()));
-
 CREATE POLICY "Tenant members can view their events"
   ON public.rate_limit_events FOR SELECT
   USING (public.user_belongs_to_tenant(tenant_id));
-
 -- Index for queries
 CREATE INDEX idx_rate_limit_events_tenant_time ON public.rate_limit_events(tenant_id, created_at DESC);
-
 -- Function to check and increment rate limit (returns error message if capped)
 CREATE OR REPLACE FUNCTION public.check_tenant_rate_limit(
   p_tenant_id uuid,
@@ -208,7 +198,6 @@ BEGIN
   );
 END;
 $$;
-
 -- Function to get current usage summary
 CREATE OR REPLACE FUNCTION public.get_tenant_rate_limit_status(p_tenant_id uuid)
 RETURNS jsonb

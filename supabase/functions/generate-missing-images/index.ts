@@ -1,4 +1,5 @@
 import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
+import { openaiImageGenerate } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,10 +12,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY not configured");
     }
+    const imageModel = Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-1";
 
     const { user, error: authError, supabaseClient } = await verifyAuth(req);
     if (authError || !user || !supabaseClient) {
@@ -74,34 +76,13 @@ Deno.serve(async (req) => {
 
         console.log(`Generating image for asset ${asset.id}: ${asset.name}`);
 
-        // Call Lovable AI image generation
-        const imageResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash-image-preview',
-            messages: [
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            modalities: ['image', 'text']
-          }),
+        const img = await openaiImageGenerate({
+          apiKey: OPENAI_API_KEY,
+          model: imageModel,
+          prompt,
+          timeoutMs: 55_000,
         });
-
-        if (!imageResponse.ok) {
-          const errorText = await imageResponse.text();
-          console.error(`Image generation failed for ${asset.id}:`, imageResponse.status, errorText);
-          results.push({ id: asset.id, name: asset.name, success: false, error: `API error: ${imageResponse.status}` });
-          continue;
-        }
-
-        const imageData = await imageResponse.json();
-        const generatedImageUrl = imageData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+        const generatedImageUrl = img.url || (img.b64 ? `data:image/png;base64,${img.b64}` : "");
 
         if (!generatedImageUrl) {
           console.error(`No image URL returned for ${asset.id}`);

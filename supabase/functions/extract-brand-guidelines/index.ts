@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.84.0";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,15 +31,16 @@ serve(async (req) => {
     const { websiteUrl, logoImageBase64, forceRefresh }: BrandRequest = await req.json();
     
     const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
     if (!FIRECRAWL_API_KEY) {
       throw new Error("FIRECRAWL_API_KEY is not configured");
     }
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
     }
 
     const domain = extractDomain(websiteUrl);
@@ -145,18 +147,14 @@ Guidelines:
 
 Return ONLY the JSON object, no markdown code blocks, no explanation.`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+    const aiResponse = await openaiChatCompletionsRaw(
+      {
+        model,
         messages: [{ role: "user", content: analysisPrompt }],
         temperature: 0.1, // Low temperature for determinism
-      }),
-    });
+      },
+      OPENAI_API_KEY,
+    );
 
     if (aiResponse.ok) {
       const aiData = await aiResponse.json();
@@ -188,24 +186,20 @@ Return ONLY the JSON object, no markdown code blocks, no explanation.`;
 }
 Return ONLY JSON, no markdown.`;
 
-      const logoResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+      const logoResponse = await openaiChatCompletionsRaw(
+        {
+          model,
           messages: [{
             role: "user",
             content: [
               { type: "text", text: logoAnalysisPrompt },
-              { type: "image_url", image_url: { url: logoImageBase64.startsWith("data:") ? logoImageBase64 : `data:image/png;base64,${logoImageBase64}` } }
-            ]
+              { type: "image_url", image_url: { url: logoImageBase64.startsWith("data:") ? logoImageBase64 : `data:image/png;base64,${logoImageBase64}` } },
+            ],
           }],
           temperature: 0.1,
-        }),
-      });
+        },
+        OPENAI_API_KEY,
+      );
 
       if (logoResponse.ok) {
         const logoData = await logoResponse.json();

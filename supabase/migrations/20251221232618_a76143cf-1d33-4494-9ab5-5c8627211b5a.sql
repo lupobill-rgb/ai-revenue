@@ -96,6 +96,5 @@ BEGIN
   );
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.get_horizontal_scaling_metrics(integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_horizontal_scaling_metrics(integer) TO service_role;

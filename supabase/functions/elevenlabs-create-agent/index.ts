@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -10,16 +11,30 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Method not allowed' }),
+      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
 
   try {
-    const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY')
-    
-    if (!ELEVENLABS_API_KEY) {
-      throw new Error('ElevenLabs API key not configured')
+    const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Missing or invalid Authorization header (sign in required)',
+        }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
     }
 
     // Get request body
-    const { 
+    const {
       name, 
       first_message, 
       system_prompt,
@@ -27,8 +42,24 @@ serve(async (req) => {
       language = 'en',
       workspace_id,
       industry,
-      use_case = 'sales_outreach'
-    } = await req.json()
+      use_case = 'sales_outreach',
+      // Advanced config (optional, per ElevenLabs Agents Platform docs)
+      llm,
+      temperature,
+      max_tokens,
+      tool_ids,
+      built_in_tools,
+      tags,
+      tts_model_id,
+      optimize_streaming_latency,
+    } = await req.json().catch(() => ({}))
+
+    if (!workspace_id) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'workspace_id is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // Get Supabase client for workspace data
     const supabaseClient = createClient(
@@ -36,10 +67,38 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
         global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
+          headers: { Authorization: authHeader },
         },
       }
     )
+
+    // Resolve ElevenLabs API key:
+    // - prefer project secret (Edge Functions secret) for reliability
+    // - if not set, fall back to workspace-configured key stored in ai_settings_voice
+    let ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY') ?? ''
+    let defaultVoiceId: string | null = null
+    let defaultLlm: string | null = null
+
+    if (!ELEVENLABS_API_KEY && workspace_id) {
+      const serviceClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      )
+
+      const { data: voiceSettings } = await serviceClient
+        .from('ai_settings_voice')
+        .select('elevenlabs_api_key, default_elevenlabs_voice_id, elevenlabs_model')
+        .eq('workspace_id', workspace_id)
+        .maybeSingle()
+
+      ELEVENLABS_API_KEY = voiceSettings?.elevenlabs_api_key ?? ''
+      defaultVoiceId = voiceSettings?.default_elevenlabs_voice_id ?? null
+      defaultLlm = voiceSettings?.elevenlabs_model ?? null
+    }
+
+    if (!ELEVENLABS_API_KEY) {
+      throw new Error('ElevenLabs API key not configured (set ELEVENLABS_API_KEY secret or add it in Settings > Integrations > Voice)')
+    }
 
     // Get workspace/brand info if workspace_id provided
     let brandName = 'Your Company'
@@ -132,7 +191,10 @@ Keep it conversational. Don't sound like you're reading from a script.`,
     const agentPrompt = system_prompt || template.default_prompt
 
     // Default voice (use ElevenLabs' default voice if none specified)
-    const agentVoiceId = voice_id || 'EXAVITQu4vr4xnSDxMaL' // Sarah - professional female voice
+    const agentVoiceId = voice_id || defaultVoiceId || 'EXAVITQu4vr4xnSDxMaL' // Sarah fallback
+
+    // Model (LLM) selection: allow explicit override, else workspace default.
+    const agentLlm = (typeof llm === 'string' && llm.trim().length > 0) ? llm.trim() : (defaultLlm || undefined)
 
     // Create agent via ElevenLabs API
     const createResponse = await fetch('https://api.elevenlabs.io/v1/convai/agents/create', {
@@ -143,16 +205,24 @@ Keep it conversational. Don't sound like you're reading from a script.`,
       },
       body: JSON.stringify({
         name: agentName,
+        ...(Array.isArray(tags) ? { tags } : {}),
         conversation_config: {
           agent: {
             prompt: {
               prompt: agentPrompt,
+              ...(agentLlm ? { llm: agentLlm } : {}),
+              ...(typeof temperature === 'number' ? { temperature } : {}),
+              ...(typeof max_tokens === 'number' ? { max_tokens } : {}),
+              ...(Array.isArray(tool_ids) ? { tool_ids } : {}),
+              ...(Array.isArray(built_in_tools) ? { built_in_tools } : {}),
             },
             first_message: agentFirstMessage,
             language: language,
           },
           tts: {
             voice_id: agentVoiceId,
+            ...(typeof tts_model_id === 'string' && tts_model_id.trim().length > 0 ? { model_id: tts_model_id.trim() } : {}),
+            ...(typeof optimize_streaming_latency === 'number' ? { optimize_streaming_latency } : {}),
           },
         },
       }),
@@ -174,12 +244,17 @@ Keep it conversational. Don't sound like you're reading from a script.`,
         await supabaseClient
           .from('voice_agents')
           .insert({
+            // Many existing schemas still enforce tenant_id NOT NULL on voice_agents.
+            // Use workspace_id as tenant_id for backward compatibility (matches historical patterns in this repo).
+            tenant_id: workspace_id,
             workspace_id: workspace_id,
             provider: 'elevenlabs',
             agent_id: agentData.agent_id,
             name: agentName,
             use_case: use_case,
             config: {
+              agent_id: agentData.agent_id,
+              use_case: use_case,
               first_message: agentFirstMessage,
               system_prompt: agentPrompt,
               voice_id: agentVoiceId,

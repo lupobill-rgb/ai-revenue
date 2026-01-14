@@ -3,4 +3,4 @@
 -- ============================================================================
 -- Note: This migration skipped as 'profiles' table doesn't exist in current database
 -- If you need OAuth profile fixes, apply manually when table is present.
--- ============================================================================
+-- ============================================================================;

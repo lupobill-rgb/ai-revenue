@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS public.kernel_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT kernel_events_idempotency UNIQUE (tenant_id, idempotency_key)
 );
-
 -- Create kernel_decisions table
 CREATE TABLE IF NOT EXISTS public.kernel_decisions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -29,7 +28,6 @@ CREATE TABLE IF NOT EXISTS public.kernel_decisions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   executed_at TIMESTAMPTZ
 );
-
 -- Create kernel_actions table
 CREATE TABLE IF NOT EXISTS public.kernel_actions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -43,7 +41,6 @@ CREATE TABLE IF NOT EXISTS public.kernel_actions (
   error TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- Create indexes for performance (only if columns exist)
 DO $$
 BEGIN
@@ -69,12 +66,10 @@ BEGIN
     CREATE INDEX IF NOT EXISTS idx_kernel_actions_tenant_status ON public.kernel_actions(tenant_id, status);
   END IF;
 END $$;
-
 -- Enable RLS on all kernel tables
 ALTER TABLE public.kernel_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kernel_decisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kernel_actions ENABLE ROW LEVEL SECURITY;
-
 -- RLS policies for kernel_events (service role only for writes, tenant-scoped reads)
 CREATE POLICY "kernel_events_tenant_read" ON public.kernel_events
   FOR SELECT USING (
@@ -86,7 +81,6 @@ CREATE POLICY "kernel_events_tenant_read" ON public.kernel_events
       SELECT id FROM workspaces WHERE owner_id = auth.uid()
     )
   );
-
 -- RLS policies for kernel_decisions
 CREATE POLICY "kernel_decisions_tenant_read" ON public.kernel_decisions
   FOR SELECT USING (
@@ -98,7 +92,6 @@ CREATE POLICY "kernel_decisions_tenant_read" ON public.kernel_decisions
       SELECT id FROM workspaces WHERE owner_id = auth.uid()
     )
   );
-
 -- RLS policies for kernel_actions
 CREATE POLICY "kernel_actions_tenant_read" ON public.kernel_actions
   FOR SELECT USING (
@@ -110,23 +103,17 @@ CREATE POLICY "kernel_actions_tenant_read" ON public.kernel_actions
       SELECT id FROM workspaces WHERE owner_id = auth.uid()
     )
   );
-
 -- Service role insert policies (edge functions use service role)
 CREATE POLICY "kernel_events_service_insert" ON public.kernel_events
   FOR INSERT TO service_role WITH CHECK (true);
-
 CREATE POLICY "kernel_decisions_service_insert" ON public.kernel_decisions
   FOR INSERT TO service_role WITH CHECK (true);
-
 CREATE POLICY "kernel_actions_service_insert" ON public.kernel_actions
   FOR INSERT TO service_role WITH CHECK (true);
-
 -- Service role update policies
 CREATE POLICY "kernel_events_service_update" ON public.kernel_events
   FOR UPDATE TO service_role USING (true) WITH CHECK (true);
-
 CREATE POLICY "kernel_decisions_service_update" ON public.kernel_decisions
   FOR UPDATE TO service_role USING (true) WITH CHECK (true);
-
 CREATE POLICY "kernel_actions_service_update" ON public.kernel_actions
   FOR UPDATE TO service_role USING (true) WITH CHECK (true);

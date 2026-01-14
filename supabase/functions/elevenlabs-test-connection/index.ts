@@ -42,23 +42,23 @@ serve(async (req) => {
       );
     }
 
-    // Get tenant ID from request body or infer from user
+    // Get workspace_id (preferred) or legacy tenantId from request body
     const body = await req.json().catch(() => ({}));
+    const workspaceId = body.workspace_id || body.workspaceId;
     const tenantId = body.tenantId;
 
-    if (!tenantId) {
+    if (!workspaceId && !tenantId) {
       return new Response(
-        JSON.stringify({ success: false, error: "tenantId required" }),
+        JSON.stringify({ success: false, error: "workspace_id required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Fetch ElevenLabs API key from voice settings
-    const { data: voiceSettings, error: settingsError } = await supabase
-      .from("ai_settings_voice")
-      .select("elevenlabs_api_key")
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
+    const query = supabase.from("ai_settings_voice").select("elevenlabs_api_key");
+    const { data: voiceSettings, error: settingsError } = workspaceId
+      ? await query.eq("workspace_id", workspaceId).maybeSingle()
+      : await query.eq("tenant_id", tenantId).maybeSingle();
 
     if (settingsError) {
       console.error("Error fetching voice settings:", settingsError);

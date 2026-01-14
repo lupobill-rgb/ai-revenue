@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,10 +25,11 @@ serve(async (req) => {
       return unauthorizedResponse(corsHeaders, authError || "Not authenticated");
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
     }
+    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
 
     console.log("Campaign optimizer starting...");
 
@@ -184,20 +186,16 @@ Respond with this exact JSON array structure:
   }
 ]`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+    const aiResponse = await openaiChatCompletionsRaw(
+      {
+        model,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
+          { role: "user", content: userPrompt },
         ],
-      }),
-    });
+      },
+      OPENAI_API_KEY,
+    );
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();

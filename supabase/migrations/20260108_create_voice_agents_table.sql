@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS voice_agents (
   -- Ensure workspace isolation
   CONSTRAINT unique_agent_per_workspace UNIQUE(workspace_id, agent_id)
 );
-
 -- Create index for faster lookups
 DO $$ BEGIN
   IF EXISTS (
@@ -25,7 +24,6 @@ DO $$ BEGIN
     EXECUTE 'CREATE INDEX IF NOT EXISTS idx_voice_agents_workspace ON voice_agents(workspace_id)';
   END IF;
 END $$;
-
 DO $$ BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -34,7 +32,6 @@ DO $$ BEGIN
     EXECUTE 'CREATE INDEX IF NOT EXISTS idx_voice_agents_status ON voice_agents(status)';
   END IF;
 END $$;
-
 DO $$ BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -43,10 +40,8 @@ DO $$ BEGIN
     EXECUTE 'CREATE INDEX IF NOT EXISTS idx_voice_agents_use_case ON voice_agents(use_case)';
   END IF;
 END $$;
-
 -- Enable RLS
 ALTER TABLE voice_agents ENABLE ROW LEVEL SECURITY;
-
 -- RLS Policy: Users can only see agents in their workspace
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -64,7 +59,6 @@ DO $$ BEGIN
       );
   END IF;
 END $$;
-
 -- RLS Policy: Users can create agents in their workspace
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -82,7 +76,6 @@ DO $$ BEGIN
       );
   END IF;
 END $$;
-
 -- RLS Policy: Users can update agents in their workspace
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -100,7 +93,6 @@ DO $$ BEGIN
       );
   END IF;
 END $$;
-
 -- RLS Policy: Users can delete agents in their workspace
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -118,7 +110,6 @@ DO $$ BEGIN
       );
   END IF;
 END $$;
-
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_voice_agents_updated_at()
 RETURNS TRIGGER AS $$
@@ -127,7 +118,6 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 -- Trigger to auto-update updated_at
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -140,7 +130,6 @@ DO $$ BEGIN
       EXECUTE FUNCTION update_voice_agents_updated_at();
   END IF;
 END $$;
-
 -- Grant permissions
 GRANT SELECT, INSERT, UPDATE, DELETE ON voice_agents TO authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;

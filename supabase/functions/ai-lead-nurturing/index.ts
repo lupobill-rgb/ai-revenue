@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -49,10 +50,11 @@ serve(async (req) => {
       .order("created_at", { ascending: false })
       .limit(50);
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
     }
+    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
 
     if (action === "analyze") {
       // Analyze engagement signals
@@ -85,20 +87,16 @@ Provide a JSON response with:
 7. optimal_timing: best time/day to reach out
 8. talking_points: key points to address`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+      const response = await openaiChatCompletionsRaw(
+        {
+          model,
           messages: [
             { role: "system", content: "You are an expert sales intelligence analyst. Analyze lead engagement and provide actionable nurturing recommendations. Always respond with valid JSON." },
-            { role: "user", content: prompt }
+            { role: "user", content: prompt },
           ],
-        }),
-      });
+        },
+        OPENAI_API_KEY,
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -156,20 +154,16 @@ Generate a JSON array with 5 email steps. Each step should have:
 
 Make emails progressively more direct. First email = value-focused, last email = urgency/final reach.`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+      const response = await openaiChatCompletionsRaw(
+        {
+          model,
           messages: [
             { role: "system", content: "You are an expert email copywriter specializing in B2B nurturing sequences. Create compelling, personalized email sequences that drive engagement. Always respond with valid JSON array." },
-            { role: "user", content: prompt }
+            { role: "user", content: prompt },
           ],
-        }),
-      });
+        },
+        OPENAI_API_KEY,
+      );
 
       if (!response.ok) {
         throw new Error("AI sequence generation failed");

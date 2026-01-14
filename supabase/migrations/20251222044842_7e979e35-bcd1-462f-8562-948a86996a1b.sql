@@ -1,3 +1,3 @@
 -- Note: This migration skipped as required tables do not exist
 -- (campaign_channel_stats_daily, channel_spend_daily)
--- If you need these modifications, apply them manually when tables are present.
+-- If you need these modifications, apply them manually when tables are present.;

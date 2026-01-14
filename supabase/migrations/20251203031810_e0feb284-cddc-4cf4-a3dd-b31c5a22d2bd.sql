@@ -3,35 +3,27 @@
 -- Sequence enrollments
 ALTER TABLE public.sequence_enrollments 
 ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
-
 -- Deals
 ALTER TABLE public.deals 
 ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
-
 -- Tasks
 ALTER TABLE public.tasks 
 ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
-
 -- Email sequences
 ALTER TABLE public.email_sequences 
 ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
-
 -- Content templates
 ALTER TABLE public.content_templates 
 ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
-
 -- Lead activities
 ALTER TABLE public.lead_activities 
 ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
-
 -- Campaign metrics
 ALTER TABLE public.campaign_metrics 
 ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
-
 -- Segments
 ALTER TABLE public.segments 
 ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
-
 -- Create indexes for workspace_id on all tables for query performance
 CREATE INDEX IF NOT EXISTS idx_leads_workspace ON public.leads(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_campaigns_workspace ON public.campaigns(workspace_id);

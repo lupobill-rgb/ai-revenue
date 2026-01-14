@@ -56,7 +56,7 @@ if (!OPENAI_API_KEY) {
 
 **BEFORE:**
 ```typescript
-const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+const response = await fetch("<legacy-ai-gateway>/v1/chat/completions", {
   method: "POST",
   headers: {
     Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -265,7 +265,7 @@ model: "gpt-4o-mini",  // Change this value
 
 If issues occur, revert these 3 changes in `supabase/functions/ai-chat/index.ts`:
 1. Change `OPENAI_API_KEY` back to `LOVABLE_API_KEY` (line 33)
-2. Change endpoint back to `https://ai.gateway.lovable.dev/v1/chat/completions` (line 157)
+2. Change endpoint back to the legacy AI gateway endpoint (line 157)
 3. Change model back to `google/gemini-2.5-flash` (line 164)
 4. Change error messages back to reference Lovable (lines 182, 187)
 

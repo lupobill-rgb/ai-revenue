@@ -1,4 +1,3 @@
-
 -- Update the dispatch_outbound_cron function to use service role authentication
 CREATE OR REPLACE FUNCTION public.dispatch_outbound_cron()
  RETURNS void

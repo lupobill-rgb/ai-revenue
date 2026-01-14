@@ -58,7 +58,7 @@
 - Service role reserved for internal/cron only
 
 ## AI Gateway
-- Endpoint: `https://ai.gateway.lovable.dev/v1/chat/completions`
+- Endpoint: `https://api.openai.com/v1/chat/completions`
 - Model: `google/gemini-2.5-flash`
 - Auth: `Bearer ${LOVABLE_API_KEY}`
 - Streaming: enabled

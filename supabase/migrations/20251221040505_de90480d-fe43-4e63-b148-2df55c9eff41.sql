@@ -27,19 +27,15 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SET search_path = public;
-
 -- Create the trigger (drop if exists first)
 DROP TRIGGER IF EXISTS enforce_outbox_error_trigger ON public.channel_outbox;
-
 CREATE TRIGGER enforce_outbox_error_trigger
   BEFORE INSERT OR UPDATE ON public.channel_outbox
   FOR EACH ROW
   EXECUTE FUNCTION public.enforce_outbox_error_on_failure();
-
 -- Add helpful comment
 COMMENT ON TRIGGER enforce_outbox_error_trigger ON public.channel_outbox IS 
   'Prevents silent failures by requiring all failed outbox rows to have readable error messages (min 10 chars)';
-
 -- ============================================================
 -- Run-level invariant enforcement
 -- If a campaign_run has any failed outbox rows, its status cannot be 'completed'
@@ -80,14 +76,11 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SET search_path = public;
-
 -- Create the trigger (drop if exists first)
 DROP TRIGGER IF EXISTS enforce_run_status_trigger ON public.campaign_runs;
-
 CREATE TRIGGER enforce_run_status_trigger
   BEFORE INSERT OR UPDATE ON public.campaign_runs
   FOR EACH ROW
   EXECUTE FUNCTION public.enforce_run_status_consistency();
-
 COMMENT ON TRIGGER enforce_run_status_trigger ON public.campaign_runs IS 
   'Enforces run status consistency: completed runs cannot have failed outbox rows; failed/partial runs require error_message';

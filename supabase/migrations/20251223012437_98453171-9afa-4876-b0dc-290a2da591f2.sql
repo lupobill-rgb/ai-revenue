@@ -1,4 +1,3 @@
-
 -- =============================================================================
 -- CRM AS SOURCE OF TRUTH: Data Integrity Migration
 -- =============================================================================
@@ -10,14 +9,12 @@ ADD COLUMN IF NOT EXISTS revenue_verified BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN IF NOT EXISTS stripe_payment_id TEXT,
 ADD COLUMN IF NOT EXISTS closed_won_at TIMESTAMPTZ,
 ADD COLUMN IF NOT EXISTS tenant_id UUID;
-
 -- Backfill tenant_id from workspace
 UPDATE public.deals d
 SET tenant_id = w.tenant_id
 FROM public.workspaces w
 WHERE d.workspace_id = w.id
   AND d.tenant_id IS NULL;
-
 -- Add NOT NULL constraint after backfill (with default for new records)
 -- We'll use a trigger instead to avoid breaking existing inserts
 
@@ -57,13 +54,11 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trg_deal_set_tenant_mode ON public.deals;
 CREATE TRIGGER trg_deal_set_tenant_mode
   BEFORE INSERT OR UPDATE ON public.deals
   FOR EACH ROW
   EXECUTE FUNCTION public.set_deal_tenant_and_mode();
-
 -- 3. Create v_crm_pipeline_truth view - GATED pipeline metrics
 CREATE OR REPLACE VIEW public.v_crm_pipeline_truth AS
 WITH ws AS (
@@ -115,7 +110,6 @@ SELECT
 FROM ws
 LEFT JOIN deal_stats ds ON ds.workspace_id = ws.workspace_id
 GROUP BY ws.workspace_id, ws.tenant_id, ws.demo_mode, ws.stripe_connected;
-
 -- 4. Create v_crm_conversion_funnel view - Lead to Customer conversion rates
 CREATE OR REPLACE VIEW public.v_crm_conversion_funnel AS
 WITH ws AS (
@@ -189,12 +183,10 @@ SELECT
 FROM ws
 LEFT JOIN lead_counts lc ON lc.workspace_id = ws.workspace_id
 LEFT JOIN deal_counts dc ON dc.workspace_id = ws.workspace_id;
-
 -- 5. Add index for performance
 CREATE INDEX IF NOT EXISTS idx_deals_data_mode ON public.deals(data_mode);
 CREATE INDEX IF NOT EXISTS idx_deals_stage ON public.deals(stage);
 CREATE INDEX IF NOT EXISTS idx_deals_workspace_stage ON public.deals(workspace_id, stage);
-
 -- 6. Grant access to authenticated users (views inherit RLS from base tables)
 GRANT SELECT ON public.v_crm_pipeline_truth TO authenticated;
 GRANT SELECT ON public.v_crm_conversion_funnel TO authenticated;

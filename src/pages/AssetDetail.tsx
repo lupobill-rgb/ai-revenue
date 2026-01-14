@@ -517,19 +517,9 @@ const AssetDetail = () => {
   const handleEditExternalProject = () => {
     if (!externalProjectUrl) return;
 
-    // Extract project ID from URL (supports both lovableproject.com and lovable.app)
-    const match = externalProjectUrl.match(/https:\/\/([a-z0-9-]+)\.(lovableproject\.com|lovable\.app)/i);
-    if (!match) {
-      toast({
-        variant: "destructive",
-        title: "Invalid URL",
-        description: "Could not extract project ID from the URL",
-      });
-      return;
-    }
-
-    const projectId = match[1];
-    const editorUrl = `https://lovable.dev/projects/${projectId}`;
+    // Open the project's external editor/preview URL.
+    // (If the external provider uses a separate editor domain, set it there.)
+    const editorUrl = externalProjectUrl;
     
     // Open in new tab
     window.open(editorUrl, '_blank', 'noopener,noreferrer');
@@ -1234,7 +1224,7 @@ const AssetDetail = () => {
                                 id="external_project_url"
                                 value={externalProjectUrl}
                                 onChange={(e) => setExternalProjectUrl(e.target.value)}
-                                placeholder="https://your-project-id.lovableproject.com"
+                                  placeholder="https://your-project-id.example.com"
                                 className="bg-background border-input"
                               />
                               <p className="text-xs text-muted-foreground">
@@ -1279,7 +1269,7 @@ const AssetDetail = () => {
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="staging">Staging (lovableproject.com)</SelectItem>
+                                  <SelectItem value="staging">Staging (external)</SelectItem>
                                   <SelectItem value="ready">Ready to Deploy</SelectItem>
                                   <SelectItem value="active">Active (on custom domain)</SelectItem>
                                   <SelectItem value="failed">Deployment Failed</SelectItem>
@@ -1291,10 +1281,7 @@ const AssetDetail = () => {
                               <div className="rounded-lg border border-muted-foreground/20 bg-muted/30 p-3">
                                 <p className="text-xs text-muted-foreground">
                                   <strong>Next Steps:</strong> After approval, connect {customDomain} to your external project
-                                  in Project Settings → Domains. See <a href="https://docs.lovable.dev/features/custom-domain" 
-                                  target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                                  custom domain docs
-                                  </a> for instructions.
+                                  in Project Settings → Domains.
                                 </p>
                               </div>
                             )}

@@ -3,7 +3,6 @@ ALTER TABLE crm_contacts
 ADD COLUMN IF NOT EXISTS lifecycle_stage text 
 CHECK (lifecycle_stage IN ('subscriber', 'lead', 'mql', 'sql', 'opportunity', 'customer', 'evangelist'))
 DEFAULT 'lead';
-
 -- RPC for promoting contact to customer status (deal close / conversion)
 CREATE OR REPLACE FUNCTION crm_promote_to_customer(
   in_tenant_id uuid,
@@ -61,7 +60,6 @@ BEGIN
   );
 END;
 $$;
-
 -- Index for lifecycle_stage queries
 CREATE INDEX IF NOT EXISTS idx_crm_contacts_lifecycle 
 ON crm_contacts(tenant_id, lifecycle_stage);

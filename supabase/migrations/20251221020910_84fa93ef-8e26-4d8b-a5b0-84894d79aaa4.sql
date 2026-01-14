@@ -85,7 +85,6 @@ BEGIN
   );
 END;
 $$;
-
 -- Function to get load test metrics
 CREATE OR REPLACE FUNCTION public.get_load_test_metrics()
 RETURNS jsonb
@@ -165,7 +164,6 @@ BEGIN
   );
 END;
 $$;
-
 -- Function to clear test data
 CREATE OR REPLACE FUNCTION public.clear_load_test_data()
 RETURNS jsonb
@@ -198,7 +196,6 @@ BEGIN
   );
 END;
 $$;
-
 COMMENT ON FUNCTION public.seed_load_test_jobs IS 'Seeds test jobs for load testing. Default: 1000 jobs across 10 tenants.';
 COMMENT ON FUNCTION public.get_load_test_metrics IS 'Returns load test metrics including queue stats, duplicate count, and oldest job age.';
 COMMENT ON FUNCTION public.clear_load_test_data IS 'Cleans up test data after load testing.';

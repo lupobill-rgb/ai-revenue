@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdge } from '@/lib/edgeInvoke';
 import type {
   VoiceAssistant,
   VoicePhoneNumber,
@@ -15,43 +16,53 @@ import type {
 } from './types';
 
 // Assistant APIs
-export async function listAssistants(): Promise<VoiceAssistant[]> {
-  const { data, error } = await supabase.functions.invoke('vapi-list-assistants');
-  if (error) throw error;
-  return data?.assistants || [];
+export async function listAssistants(workspaceId: string): Promise<VoiceAssistant[]> {
+  const data = await invokeEdge<any>('elevenlabs-list-agents', { workspace_id: workspaceId });
+  const agents = data?.agents || [];
+  return agents.map((a: any) => ({
+    id: a.id || a.agent_id,
+    name: a.name || 'Unnamed Agent',
+    firstMessage: a.first_message || '',
+    model: 'elevenlabs',
+    voice: 'elevenlabs',
+    createdAt: a.created_at || new Date().toISOString(),
+  }));
 }
 
 export async function createAssistant(assistantData: Partial<VoiceAssistant>): Promise<VoiceAssistant> {
-  const { data, error } = await supabase.functions.invoke('vapi-manage-assistant', {
-    body: { action: 'create', assistantData },
+  // ElevenLabs agent creation is supported via edge function.
+  // Note: ElevenLabs uses different fields; we accept name and workspace_id only.
+  const data = await invokeEdge<any>('elevenlabs-create-agent', {
+    name: assistantData.name,
+    workspace_id: (assistantData as any).workspaceId,
+    use_case: (assistantData as any).use_case || 'sales_outreach',
   });
-  if (error) throw error;
-  return data?.assistant;
+  if (!data?.success) throw new Error(data?.error || 'Failed to create ElevenLabs agent');
+  return {
+    id: data.agent_id,
+    name: data.name || assistantData.name || 'AI Voice Agent',
+    model: 'elevenlabs',
+    voice: 'elevenlabs',
+  } as VoiceAssistant;
 }
 
 export async function updateAssistant(
   assistantId: string,
   assistantData: Partial<VoiceAssistant>
 ): Promise<VoiceAssistant> {
-  const { data, error } = await supabase.functions.invoke('vapi-manage-assistant', {
-    body: { action: 'update', assistantId, assistantData },
-  });
-  if (error) throw error;
-  return data?.assistant;
+  // Not implemented: no ElevenLabs update edge function currently.
+  throw new Error('Updating ElevenLabs agents is not supported in-app yet.');
 }
 
 export async function deleteAssistant(assistantId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke('vapi-manage-assistant', {
-    body: { action: 'delete', assistantId },
-  });
-  if (error) throw error;
+  // Not implemented: no ElevenLabs delete edge function currently.
+  throw new Error('Deleting ElevenLabs agents is not supported in-app yet.');
 }
 
 // Phone Number APIs
 export async function listPhoneNumbers(): Promise<VoicePhoneNumber[]> {
-  const { data, error } = await supabase.functions.invoke('vapi-list-phone-numbers');
-  if (error) throw error;
-  return data?.phoneNumbers || [];
+  // ElevenLabs phone calling does not require selecting a provider phone number here.
+  return [];
 }
 
 // Call APIs
@@ -59,11 +70,9 @@ export async function listCalls(options?: {
   limit?: number;
   assistantId?: string;
 }): Promise<VoiceCall[]> {
-  const { data, error } = await supabase.functions.invoke('vapi-list-calls', {
-    body: options || {},
-  });
-  if (error) throw error;
-  return data?.calls || [];
+  // TODO: Implement ElevenLabs call history via DB tables (channel_outbox / voice_call_records).
+  // For now, return empty list.
+  return [];
 }
 
 export async function initiateCall(params: {
@@ -72,19 +81,41 @@ export async function initiateCall(params: {
   customerNumber: string;
   customerName?: string;
   leadId?: string;
+  workspaceId: string;
 }): Promise<VoiceCall> {
-  const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {
-    body: params,
+  const data = await invokeEdge<any>('elevenlabs-make-call', {
+    agent_id: params.assistantId,
+    phone_number: params.customerNumber,
+    workspace_id: params.workspaceId,
+    lead_data: {
+      id: params.leadId,
+      name: params.customerName,
+    },
   });
-  if (error) throw error;
-  return data?.call;
+  if (!data?.success) throw new Error(data?.error || 'Failed to initiate call');
+  return {
+    id: data.conversation_id,
+    type: 'outboundPhoneCall',
+    status: data.status || 'queued',
+    assistantId: params.assistantId,
+    customer: { number: params.customerNumber, name: params.customerName },
+    createdAt: data.timestamp,
+  } as any;
 }
 
 // Analytics APIs
 export async function getAnalytics(): Promise<VoiceAnalytics> {
-  const { data, error } = await supabase.functions.invoke('vapi-analytics');
-  if (error) throw error;
-  return data;
+  // TODO: compute from persisted outbox/call records
+  return {
+    totalCalls: 0,
+    completedCalls: 0,
+    totalDurationMinutes: 0,
+    averageCallDuration: 0,
+    callsByType: {},
+    callsByStatus: {},
+    conversionRate: 0,
+    bookingRate: 0,
+  } as any;
 }
 
 // Campaign APIs
@@ -103,7 +134,7 @@ export async function listCampaigns(workspaceId: string): Promise<VoiceCampaign[
     name: asset.name,
     status: asset.status as VoiceCampaign['status'],
     goal: asset.goal,
-    assistantId: asset.vapi_id,
+    assistantId: null,
     config: (asset.content as any)?.config || {
       maxConcurrentCalls: 1,
       maxCallsPerDay: 100,
@@ -131,7 +162,7 @@ export async function createCampaign(
       type: 'voice' as const,
       status: 'draft' as const,
       goal: campaign.goal || null,
-      vapi_id: campaign.assistantId || null,
+      vapi_id: null,
       workspace_id: campaign.workspaceId,
       created_by: campaign.tenantId,
       content: JSON.parse(JSON.stringify({
@@ -149,7 +180,7 @@ export async function createCampaign(
     name: data.name,
     status: data.status as VoiceCampaign['status'],
     goal: data.goal,
-    assistantId: data.vapi_id,
+    assistantId: null,
     config: (data.content as any)?.config,
     stats: (data.content as any)?.stats,
     createdAt: data.created_at,
@@ -188,7 +219,7 @@ export async function updateCampaign(
     name: data.name,
     status: data.status as VoiceCampaign['status'],
     goal: data.goal,
-    assistantId: data.vapi_id,
+    assistantId: null,
     config: (data.content as any)?.config,
     stats: (data.content as any)?.stats,
     createdAt: data.created_at,

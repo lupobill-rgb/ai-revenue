@@ -20,8 +20,10 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
-        
-        if (!session) {
+        // Only redirect on explicit sign-out events.
+        // Supabase can emit events where `session` is temporarily null (e.g. during initialization),
+        // and redirecting in those cases causes "random logouts".
+        if (event === "SIGNED_OUT" || event === "USER_DELETED") {
           navigate("/login");
         }
       }

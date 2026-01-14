@@ -12,7 +12,6 @@ CREATE TABLE public.slo_metrics (
   window_end timestamp with time zone NOT NULL,
   details jsonb DEFAULT '{}'::jsonb
 );
-
 -- SLO Alerts table for alert history
 CREATE TABLE public.slo_alerts (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -30,7 +29,6 @@ CREATE TABLE public.slo_alerts (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   details jsonb DEFAULT '{}'::jsonb
 );
-
 -- SLO Configuration table
 CREATE TABLE public.slo_config (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -46,7 +44,6 @@ CREATE TABLE public.slo_config (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now()
 );
-
 -- Insert default SLO configurations
 INSERT INTO public.slo_config (metric_name, display_name, description, threshold, comparison, unit, alert_severity, is_hard_slo) VALUES
   ('scheduler_sla', 'Scheduler SLA', '99% of queued jobs start within 120 seconds', 99, 'gte', '%', 'critical', false),
@@ -57,43 +54,34 @@ INSERT INTO public.slo_config (metric_name, display_name, description, threshold
   ('email_error_rate', 'Email Provider Error Rate', 'Email provider error rate threshold', 5, 'lte', '%', 'warning', false),
   ('voice_error_rate', 'Voice Provider Error Rate', 'Voice provider error rate threshold', 5, 'lte', '%', 'warning', false),
   ('idempotent_replay_rate', 'Idempotent Replay Rate', 'Rate of skipped outbox items due to idempotent replay', 5, 'lte', '%', 'warning', false);
-
 -- Enable RLS
 ALTER TABLE public.slo_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.slo_alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.slo_config ENABLE ROW LEVEL SECURITY;
-
 -- RLS policies for slo_metrics (platform admins only)
 CREATE POLICY "Platform admins can view slo_metrics"
   ON public.slo_metrics FOR SELECT
   USING (is_platform_admin());
-
 CREATE POLICY "Service role can insert slo_metrics"
   ON public.slo_metrics FOR INSERT
   WITH CHECK (true);
-
 -- RLS policies for slo_alerts
 CREATE POLICY "Platform admins can view slo_alerts"
   ON public.slo_alerts FOR SELECT
   USING (is_platform_admin());
-
 CREATE POLICY "Platform admins can update slo_alerts"
   ON public.slo_alerts FOR UPDATE
   USING (is_platform_admin());
-
 CREATE POLICY "Service role can insert slo_alerts"
   ON public.slo_alerts FOR INSERT
   WITH CHECK (true);
-
 -- RLS policies for slo_config
 CREATE POLICY "Platform admins can view slo_config"
   ON public.slo_config FOR SELECT
   USING (is_platform_admin());
-
 CREATE POLICY "Platform admins can update slo_config"
   ON public.slo_config FOR UPDATE
   USING (is_platform_admin());
-
 -- Indexes for performance
 CREATE INDEX idx_slo_metrics_measured_at ON public.slo_metrics(measured_at DESC);
 CREATE INDEX idx_slo_metrics_metric_name ON public.slo_metrics(metric_name);

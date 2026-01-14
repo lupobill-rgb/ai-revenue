@@ -34,7 +34,6 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 -- Create trigger to auto-provision email settings when workspace is created
 DROP TRIGGER IF EXISTS create_email_settings_on_workspace ON workspaces;
 CREATE TRIGGER create_email_settings_on_workspace

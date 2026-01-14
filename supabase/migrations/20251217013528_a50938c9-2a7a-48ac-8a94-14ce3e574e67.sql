@@ -42,7 +42,6 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 -- Create trigger on business_profiles
 DROP TRIGGER IF EXISTS create_tenant_workspace_on_profile ON business_profiles;
 CREATE TRIGGER create_tenant_workspace_on_profile

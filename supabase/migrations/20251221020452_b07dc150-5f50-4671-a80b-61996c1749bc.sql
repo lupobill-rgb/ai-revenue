@@ -58,7 +58,6 @@ BEGIN
   RETURNING jq.*;
 END;
 $$;
-
 -- Add comment for documentation
 COMMENT ON FUNCTION public.claim_queued_jobs IS 
 'Atomically claims queued jobs for a worker using FOR UPDATE SKIP LOCKED.

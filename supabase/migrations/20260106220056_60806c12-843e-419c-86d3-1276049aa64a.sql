@@ -1,7 +1,5 @@
-
 -- Fix business_profiles UPDATE policy to include WITH CHECK
 DROP POLICY IF EXISTS "workspace_access_update" ON public.business_profiles;
-
 CREATE POLICY "workspace_access_update"
 ON public.business_profiles
 FOR UPDATE

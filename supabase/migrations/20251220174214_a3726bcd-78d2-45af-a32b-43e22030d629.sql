@@ -4,7 +4,6 @@
 
 -- 1) Drop existing function
 DROP FUNCTION IF EXISTS public.update_campaign_run_status(uuid, text, timestamp with time zone, timestamp with time zone, text, text, jsonb);
-
 -- 2) Create hardened function with strict guards
 CREATE OR REPLACE FUNCTION public.update_campaign_run_status(
   p_run_id uuid,
@@ -106,7 +105,6 @@ BEGIN
   );
 END;
 $function$;
-
 -- ============================================================
 -- 3) REVOKE/GRANT PERMISSIONS
 -- ============================================================
@@ -114,10 +112,8 @@ $function$;
 REVOKE ALL ON FUNCTION public.update_campaign_run_status(uuid, text, timestamp with time zone, timestamp with time zone, text, text, jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.update_campaign_run_status(uuid, text, timestamp with time zone, timestamp with time zone, text, text, jsonb) FROM authenticated;
 REVOKE ALL ON FUNCTION public.update_campaign_run_status(uuid, text, timestamp with time zone, timestamp with time zone, text, text, jsonb) FROM anon;
-
 -- Grant only to service_role (used by edge functions)
 GRANT EXECUTE ON FUNCTION public.update_campaign_run_status(uuid, text, timestamp with time zone, timestamp with time zone, text, text, jsonb) TO service_role;
-
 -- ============================================================
 -- 4) ADD COMMENT FOR DOCUMENTATION
 -- ============================================================

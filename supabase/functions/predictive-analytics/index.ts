@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,10 +31,11 @@ serve(async (req) => {
       }
     );
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
     }
+    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
 
     if (action === "score_lead" && leadId) {
       // Fetch lead with activities
@@ -82,20 +84,16 @@ Provide a JSON response with:
 8. recommended_actions: specific next steps to improve conversion
 9. ideal_customer_fit: percentage match to ideal customer profile`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+      const response = await openaiChatCompletionsRaw(
+        {
+          model,
           messages: [
             { role: "system", content: "You are an expert sales analytics AI. Analyze leads and provide accurate conversion predictions based on engagement patterns. Always respond with valid JSON." },
-            { role: "user", content: prompt }
+            { role: "user", content: prompt },
           ],
-        }),
-      });
+        },
+        OPENAI_API_KEY,
+      );
 
       if (!response.ok) throw new Error("AI analysis failed");
 
@@ -171,20 +169,16 @@ Provide a JSON response with:
 8. recommendations: actions to improve forecast
 9. trends: observed patterns and insights`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+      const response = await openaiChatCompletionsRaw(
+        {
+          model,
           messages: [
             { role: "system", content: "You are an expert sales forecasting AI. Analyze pipeline data and provide accurate conversion forecasts. Always respond with valid JSON." },
-            { role: "user", content: prompt }
+            { role: "user", content: prompt },
           ],
-        }),
-      });
+        },
+        OPENAI_API_KEY,
+      );
 
       if (!response.ok) throw new Error("AI forecasting failed");
 
@@ -237,20 +231,16 @@ Provide a JSON response with:
 9. predicted_issues: potential future problems
 10. action_plan: prioritized list of recommendations`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+      const response = await openaiChatCompletionsRaw(
+        {
+          model,
           messages: [
             { role: "system", content: "You are an expert sales operations analyst. Analyze pipeline health and provide actionable optimization recommendations. Always respond with valid JSON." },
-            { role: "user", content: prompt }
+            { role: "user", content: prompt },
           ],
-        }),
-      });
+        },
+        OPENAI_API_KEY,
+      );
 
       if (!response.ok) throw new Error("AI analysis failed");
 

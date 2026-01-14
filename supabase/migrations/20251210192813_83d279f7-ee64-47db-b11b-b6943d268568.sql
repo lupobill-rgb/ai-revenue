@@ -13,27 +13,21 @@ CREATE TABLE IF NOT EXISTS crm_contacts (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Enable RLS
 ALTER TABLE crm_contacts ENABLE ROW LEVEL SECURITY;
-
 -- RLS Policies for tenant isolation
 CREATE POLICY "tenant_read_contacts"
   ON crm_contacts FOR SELECT
   USING (tenant_id = auth.uid() OR tenant_id IN (SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid()));
-
 CREATE POLICY "tenant_insert_contacts"
   ON crm_contacts FOR INSERT
   WITH CHECK (tenant_id = auth.uid() OR tenant_id IN (SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid()));
-
 CREATE POLICY "tenant_update_contacts"
   ON crm_contacts FOR UPDATE
   USING (tenant_id = auth.uid() OR tenant_id IN (SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid()));
-
 CREATE POLICY "tenant_delete_contacts"
   ON crm_contacts FOR DELETE
   USING (tenant_id = auth.uid() OR tenant_id IN (SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid()));
-
 -- Updated_at trigger (reuse existing function or create if needed)
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS TRIGGER AS $$
@@ -42,12 +36,10 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER set_crm_contacts_updated_at
 BEFORE UPDATE ON crm_contacts
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
-
 -- Index for common lookups
 CREATE INDEX idx_crm_contacts_tenant ON crm_contacts(tenant_id);
 CREATE INDEX idx_crm_contacts_email ON crm_contacts(email);

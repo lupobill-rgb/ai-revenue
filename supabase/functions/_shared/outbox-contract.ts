@@ -21,7 +21,9 @@ export type OutboxStatus = typeof VALID_STATUSES[number];
 export type Channel = "email" | "voice" | "social";
 
 // Provider types
-export type Provider = "resend" | "gmail" | "smtp" | "vapi" | "elevenlabs" | "internal" | string;
+// NOTE: VAPI has been removed from the stack. Keep provider open-ended for forward compatibility,
+// but do not include "vapi" as a first-class provider.
+export type Provider = "resend" | "gmail" | "smtp" | "elevenlabs" | "internal" | string;
 
 /**
  * Parameters for beginning an outbox item

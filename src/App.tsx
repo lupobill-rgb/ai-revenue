@@ -12,7 +12,7 @@ import WelcomeModal from "./components/WelcomeModal";
 import SpotlightTour from "./components/SpotlightTour";
 import AIChatWidget from "./components/AIChatWidget";
 import ProtectedRoute from "./components/ProtectedRoute";
-import { supabase } from "./integrations/supabase/client";
+import { isSupabaseConfigured, supabaseEnvError, supabase } from "./integrations/supabase/client";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -61,16 +61,53 @@ import SLODashboard from "./pages/platform-admin/SLODashboard";
 import TenantRateLimits from "./pages/platform-admin/TenantRateLimits";
 import RolloutPlan from "./pages/platform-admin/RolloutPlan";
 import SystemBanner from "./components/SystemBanner";
+import AuthDiagnostics from "./pages/AuthDiagnostics";
 
 const queryClient = new QueryClient();
 
 // Routes where onboarding UI should not appear
 const AUTH_ROUTES = ["/login", "/signup", "/change-password", "/auth/callback", "/"];
 
+function popupsDisabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("noPopups") === "1") return true;
+    if (window.localStorage.getItem("disable_popups") === "1") return true;
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+const SupabaseConfigError = () => {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
+      <div className="max-w-xl w-full border border-border rounded-lg p-6 bg-card">
+        <h1 className="text-xl font-semibold mb-2">Supabase is not configured</h1>
+        <p className="text-sm text-muted-foreground mb-4">
+          The app can’t start because required environment variables are missing.
+        </p>
+        <div className="text-sm font-mono bg-muted/50 border border-border rounded p-3 mb-4">
+          {supabaseEnvError}
+        </div>
+        <p className="text-sm mb-2">Create/Update your <span className="font-mono">.env</span> with:</p>
+        <div className="text-sm font-mono bg-muted/50 border border-border rounded p-3 whitespace-pre-wrap">
+          {"VITE_SUPABASE_URL=https://ddwqkkiqgjptguzoeohr.supabase.co\nVITE_SUPABASE_ANON_KEY=<your Supabase anon public key>"}
+        </div>
+        <p className="text-sm text-muted-foreground mt-4">
+          Then <b>restart</b> <span className="font-mono">npm run dev</span> and reload the page.
+        </p>
+      </div>
+    </div>
+  );
+};
+
 const AppContent = () => {
   const [showTour, setShowTour] = useState(false);
   const [hasCheckedOnboarding, setHasCheckedOnboarding] = useState(false);
   const [shouldShowWelcome, setShouldShowWelcome] = useState(false);
+  const [disablePopups] = useState(() => popupsDisabled());
   const { user } = useAuth();
   const location = useLocation();
 
@@ -165,6 +202,7 @@ const AppContent = () => {
         <Route path="/outbound/linkedin-queue" element={<OutboundLinkedInQueue />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/integrations" element={<SettingsIntegrations />} />
+        <Route path="/debug/auth" element={<AuthDiagnostics />} />
         <Route path="/landing-pages" element={<LandingPages />} />
         <Route path="/cmo/leads" element={<LeadsPage />} />
 
@@ -224,16 +262,20 @@ const AppContent = () => {
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
-      <AIChatWidget />
-      {hasCheckedOnboarding && !isAuthRoute && shouldShowWelcome && (
+      {!disablePopups && <AIChatWidget />}
+      {!disablePopups && hasCheckedOnboarding && !isAuthRoute && shouldShowWelcome && (
         <WelcomeModal onStartTour={handleStartTour} />
       )}
-      <SpotlightTour isOpen={showTour} onComplete={handleTourComplete} />
+      {!disablePopups && <SpotlightTour isOpen={showTour} onComplete={handleTourComplete} />}
     </>
   );
 };
 
 const App = () => {
+  const [disablePopups] = useState(() => popupsDisabled());
+  if (!isSupabaseConfigured) {
+    return <SupabaseConfigError />;
+  }
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -241,8 +283,8 @@ const App = () => {
           <WorkspaceProvider>
             <CMOProvider>
               <TooltipProvider>
-                <Toaster />
-                <Sonner />
+                {!disablePopups && <Toaster />}
+                {!disablePopups && <Sonner />}
                 <BrowserRouter>
                   <AppContent />
                 </BrowserRouter>

@@ -18,7 +18,6 @@ WHERE w.owner_id IS NOT NULL
     SELECT 1 FROM public.workspace_members wm 
     WHERE wm.workspace_id = w.id AND wm.user_id = w.owner_id
   );
-
 -- Note: Additional RLS policy fixes and indexes skipped as many reference tables don't exist
 -- in current database (ai_settings_google, social_integrations, etc.)
--- Apply those manually when tables are present.
+-- Apply those manually when tables are present.;

@@ -113,24 +113,33 @@ export function useDataQualityStatus(workspaceId?: string | null): DataQualitySt
       }
       
       // Fetch voice connection status from ai_settings_voice
-      // ╔══════════════════════════════════════════════════════════════════════════╗
-      // ║ INVARIANT: ai_settings_voice.tenant_id stores workspace.id              ║
-      // ║ workspaces.tenant_id is NULL in production and must NOT be used.        ║
-      // ║ This matches how SettingsIntegrations.tsx saves the data.               ║
-      // ╚══════════════════════════════════════════════════════════════════════════╝
-      const { data: voiceSettingsArr } = await supabase
-        .from('ai_settings_voice')
-        .select('is_connected, vapi_private_key, elevenlabs_api_key')
-        .eq('tenant_id', workspaceId)
-        .limit(1);
+      // Prefer workspace_id; fall back to tenant_id for older/local schemas.
+      const selectCols = 'is_connected, elevenlabs_api_key';
+      let voiceSettingsArr: any[] | null = null;
+      {
+        const res = await supabase
+          .from('ai_settings_voice')
+          .select(selectCols)
+          .eq('workspace_id', workspaceId)
+          .limit(1);
+        voiceSettingsArr = res.data as any[] | null;
+
+        const msg = String((res.error as any)?.message || "");
+        if (res.error && msg.toLowerCase().includes("workspace_id")) {
+          const fallback = await supabase
+            .from('ai_settings_voice')
+            .select(selectCols)
+            .eq('tenant_id', workspaceId)
+            .limit(1);
+          voiceSettingsArr = fallback.data as any[] | null;
+        }
+      }
 
       const voiceSettings = voiceSettingsArr?.[0];
-      
       if (voiceSettings) {
         const isExplicitlyConnected = voiceSettings.is_connected === true;
-        const hasVapi = !!voiceSettings.vapi_private_key;
         const hasElevenLabs = !!voiceSettings.elevenlabs_api_key;
-        setVoiceConnected(isExplicitlyConnected || hasVapi || hasElevenLabs);
+        setVoiceConnected(isExplicitlyConnected || hasElevenLabs);
       }
     } catch (err) {
       console.error('[useDataQualityStatus] Error fetching view status:', err);

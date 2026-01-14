@@ -4,14 +4,12 @@ ADD COLUMN IF NOT EXISTS email_provider text DEFAULT 'resend' CHECK (email_provi
 ADD COLUMN IF NOT EXISTS is_connected boolean DEFAULT false,
 ADD COLUMN IF NOT EXISTS last_tested_at timestamptz,
 ADD COLUMN IF NOT EXISTS last_test_result jsonb DEFAULT '{}'::jsonb;
-
 ALTER TABLE public.ai_settings_voice 
 ADD COLUMN IF NOT EXISTS voice_provider text DEFAULT 'vapi' CHECK (voice_provider IN ('vapi')),
 ADD COLUMN IF NOT EXISTS default_phone_number_id uuid,
 ADD COLUMN IF NOT EXISTS is_connected boolean DEFAULT false,
 ADD COLUMN IF NOT EXISTS last_tested_at timestamptz,
 ADD COLUMN IF NOT EXISTS last_test_result jsonb DEFAULT '{}'::jsonb;
-
 -- Create social settings table if it doesn't exist
 CREATE TABLE IF NOT EXISTS public.ai_settings_social (
   tenant_id uuid PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -23,10 +21,8 @@ CREATE TABLE IF NOT EXISTS public.ai_settings_social (
   last_test_result jsonb DEFAULT '{}'::jsonb,
   updated_at timestamptz DEFAULT now()
 );
-
 -- Enable RLS on social settings
 ALTER TABLE public.ai_settings_social ENABLE ROW LEVEL SECURITY;
-
 CREATE POLICY "workspace_access_select" ON public.ai_settings_social FOR SELECT 
 USING (user_has_workspace_access(tenant_id));
 CREATE POLICY "workspace_access_insert" ON public.ai_settings_social FOR INSERT 
@@ -35,7 +31,6 @@ CREATE POLICY "workspace_access_update" ON public.ai_settings_social FOR UPDATE
 USING (user_has_workspace_access(tenant_id));
 CREATE POLICY "workspace_access_delete" ON public.ai_settings_social FOR DELETE 
 USING (user_has_workspace_access(tenant_id));
-
 -- Create launch prerequisites check function
 CREATE OR REPLACE FUNCTION public.check_campaign_launch_prerequisites(
   p_campaign_id uuid,
@@ -219,7 +214,6 @@ BEGIN
   );
 END;
 $$;
-
 -- Update deploy_campaign to check prerequisites first
 CREATE OR REPLACE FUNCTION public.deploy_campaign(p_campaign_id uuid)
 RETURNS jsonb

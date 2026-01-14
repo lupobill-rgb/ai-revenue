@@ -1,13 +1,15 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const INTERNAL_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET");
 const INTERNAL_SECRET_VAULT = Deno.env.get("INTERNAL_FUNCTION_SECRET_VAULT");
 const CRON_SECRET = "cron-dispatch-secret-2024"; // Fallback for pg_cron calls
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
+const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -475,22 +477,18 @@ Rules:
     },
   };
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+  const res = await openaiChatCompletionsRaw(
+    {
+      model: OPENAI_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: JSON.stringify(userInput) },
       ],
       temperature: 0.45,
       max_tokens: 700,
-    }),
-  });
+    },
+    OPENAI_API_KEY,
+  );
 
   if (!res.ok) {
     const errText = await res.text();

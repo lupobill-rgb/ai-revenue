@@ -1,6 +1,5 @@
 -- Fix v_cmo_metrics_by_workspace to include id and created_at columns
 DROP VIEW IF EXISTS public.v_cmo_metrics_by_workspace;
-
 CREATE OR REPLACE VIEW public.v_cmo_metrics_by_workspace AS
 WITH ws AS (
   SELECT 

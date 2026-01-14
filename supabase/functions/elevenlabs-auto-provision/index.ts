@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -10,12 +11,35 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Method not allowed' }),
+      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
 
   try {
-    const { workspace_id } = await req.json()
+    const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Missing or invalid Authorization header (sign in required)',
+        }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
+    }
+
+    const { workspace_id } = await req.json().catch(() => ({}))
 
     if (!workspace_id) {
-      throw new Error('workspace_id is required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'workspace_id is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Get Supabase client
@@ -24,7 +48,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
         global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
+          headers: { Authorization: authHeader },
         },
       }
     )
@@ -91,6 +115,10 @@ serve(async (req) => {
             workspace_id: workspace_id,
             use_case: agentConfig.use_case,
             name: agentConfig.name,
+          },
+          // Ensure nested invoke is authenticated as the user (prevents "invalid jwt" from null auth headers).
+          headers: {
+            Authorization: authHeader,
           },
         })
 

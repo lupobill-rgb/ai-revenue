@@ -6,7 +6,6 @@
 
 -- Disable triggers during import
 SET session_replication_role = replica;
-
 -- Import 6 sample leads
 INSERT INTO leads (
   id, workspace_id, tenant_id, first_name, last_name, email, phone, 
@@ -251,10 +250,8 @@ ON CONFLICT (id) DO UPDATE SET
   email = EXCLUDED.email,
   company = EXCLUDED.company,
   updated_at = EXCLUDED.updated_at;
-
 -- Re-enable triggers
 SET session_replication_role = DEFAULT;
-
 -- ============================================
 -- VERIFICATION
 -- ============================================
@@ -267,5 +264,4 @@ SET session_replication_role = DEFAULT;
 --   '5bda55fc-af7f-439e-9ba8-02b906a157f4',
 --   '11b9d662-aaab-4c1b-828c-2ba3b6829d0c',
 --   'c495afa3-eb01-4e7f-9719-7343e526a073'
--- );
-
+-- );;

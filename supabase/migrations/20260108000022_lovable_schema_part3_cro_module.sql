@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS public.cro_targets (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
-
 -- ============================================
 -- CRO FORECASTS
 -- ============================================
@@ -37,7 +36,6 @@ CREATE TABLE IF NOT EXISTS public.cro_forecasts (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
-
 -- ============================================
 -- CRO DEAL REVIEWS
 -- ============================================
@@ -56,7 +54,6 @@ CREATE TABLE IF NOT EXISTS public.cro_deal_reviews (
   reviewed_at timestamptz DEFAULT now(),
   created_at timestamptz DEFAULT now()
 );
-
 -- ============================================
 -- CRO RECOMMENDATIONS
 -- ============================================
@@ -75,7 +72,6 @@ CREATE TABLE IF NOT EXISTS public.cro_recommendations (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
-
 -- ============================================
 -- INDEXES (Conditional on column existence)
 -- ============================================
@@ -91,7 +87,6 @@ CREATE INDEX IF NOT EXISTS idx_cro_forecasts_workspace_id ON public.cro_forecast
 CREATE INDEX IF NOT EXISTS idx_cro_deal_reviews_workspace_id ON public.cro_deal_reviews(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_cro_deal_reviews_deal_id ON public.cro_deal_reviews(deal_id);
 CREATE INDEX IF NOT EXISTS idx_cro_recommendations_workspace_id ON public.cro_recommendations(workspace_id);
-
 -- ============================================
 -- ENABLE RLS
 -- ============================================
@@ -100,7 +95,6 @@ ALTER TABLE public.cro_targets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cro_forecasts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cro_deal_reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cro_recommendations ENABLE ROW LEVEL SECURITY;
-
 -- ============================================
 -- RLS POLICIES
 -- ============================================
@@ -122,7 +116,6 @@ DO $$ BEGIN
       USING (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- CRO Forecasts
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'cro_forecasts' AND policyname = 'workspace_access_select') THEN
@@ -135,7 +128,6 @@ DO $$ BEGIN
       WITH CHECK (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- CRO Deal Reviews
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'cro_deal_reviews' AND policyname = 'workspace_access_select') THEN
@@ -148,7 +140,6 @@ DO $$ BEGIN
       WITH CHECK (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- CRO Recommendations
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'cro_recommendations' AND policyname = 'workspace_access_select') THEN
@@ -161,9 +152,7 @@ DO $$ BEGIN
       WITH CHECK (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- ============================================
 -- MIGRATION COMPLETE: PART 3
 -- CRO module tables created
--- ============================================
-
+-- ============================================;

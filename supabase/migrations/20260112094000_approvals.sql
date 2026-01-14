@@ -13,9 +13,6 @@ CREATE TABLE IF NOT EXISTS public.approvals (
   approved_at timestamptz,
   approved_by uuid
 );
-
 CREATE INDEX IF NOT EXISTS idx_approvals_campaign_status
   ON public.approvals (campaign_id, status, created_at DESC);
-
 ALTER TABLE public.approvals ENABLE ROW LEVEL SECURITY;
-

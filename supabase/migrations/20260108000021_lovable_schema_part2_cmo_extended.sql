@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS public.cmo_plan_milestones (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- CMO FUNNEL STAGES
 -- ============================================
@@ -50,7 +49,6 @@ CREATE TABLE IF NOT EXISTS public.cmo_funnel_stages (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Helper function for funnel stages (skip if exists to avoid parameter name conflicts)
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'funnel_stage_workspace_access') THEN
@@ -68,7 +66,6 @@ DO $$ BEGIN
     $func$';
   END IF;
 END $$;
-
 -- ============================================
 -- CMO CAMPAIGN CHANNELS
 -- ============================================
@@ -96,7 +93,6 @@ CREATE TABLE IF NOT EXISTS public.cmo_campaign_channels (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Helper function for campaign channels (skip if exists)
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'campaign_channel_workspace_access') THEN
@@ -114,7 +110,6 @@ DO $$ BEGIN
     $func$';
   END IF;
 END $$;
-
 -- ============================================
 -- CMO CONTENT VARIANTS
 -- ============================================
@@ -135,7 +130,6 @@ CREATE TABLE IF NOT EXISTS public.cmo_content_variants (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Helper function for content variants (skip if exists)
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'content_variant_workspace_access') THEN
@@ -153,7 +147,6 @@ DO $$ BEGIN
     $func$';
   END IF;
 END $$;
-
 -- ============================================
 -- CMO CALENDAR EVENTS
 -- ============================================
@@ -174,7 +167,6 @@ CREATE TABLE IF NOT EXISTS public.cmo_calendar_events (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- CMO WEEKLY SUMMARIES
 -- ============================================
@@ -191,7 +183,6 @@ CREATE TABLE IF NOT EXISTS public.cmo_weekly_summaries (
   metrics_summary jsonb DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- CMO RECOMMENDATIONS
 -- ============================================
@@ -213,7 +204,6 @@ CREATE TABLE IF NOT EXISTS public.cmo_recommendations (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- INDEXES
 -- ============================================
@@ -231,7 +221,6 @@ DO $$ BEGIN
 END $$;
 CREATE INDEX IF NOT EXISTS idx_cmo_weekly_summaries_workspace_id ON public.cmo_weekly_summaries(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_cmo_recommendations_workspace_id ON public.cmo_recommendations(workspace_id);
-
 -- ============================================
 -- ENABLE RLS
 -- ============================================
@@ -243,7 +232,6 @@ ALTER TABLE public.cmo_content_variants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cmo_calendar_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cmo_weekly_summaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cmo_recommendations ENABLE ROW LEVEL SECURITY;
-
 -- ============================================
 -- RLS POLICIES (Workspace-based access)
 -- ============================================
@@ -255,7 +243,6 @@ DO $$ BEGIN
       USING (EXISTS (SELECT 1 FROM public.cmo_marketing_plans p WHERE p.id = plan_id AND user_has_workspace_access(p.workspace_id)));
   END IF;
 END $$;
-
 -- CMO Funnel Stages
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'cmo_funnel_stages' AND policyname = 'workspace_access_select') THEN
@@ -263,7 +250,6 @@ DO $$ BEGIN
       USING (funnel_stage_workspace_access(funnel_id));
   END IF;
 END $$;
-
 -- CMO Campaign Channels
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'cmo_campaign_channels' AND policyname = 'workspace_access_select') THEN
@@ -271,7 +257,6 @@ DO $$ BEGIN
       USING (campaign_channel_workspace_access(campaign_id));
   END IF;
 END $$;
-
 -- CMO Content Variants
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'cmo_content_variants' AND policyname = 'workspace_access_select') THEN
@@ -279,7 +264,6 @@ DO $$ BEGIN
       USING (content_variant_workspace_access(asset_id));
   END IF;
 END $$;
-
 -- CMO Calendar Events
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'cmo_calendar_events' AND policyname = 'workspace_access_select') THEN
@@ -287,7 +271,6 @@ DO $$ BEGIN
       USING (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- CMO Weekly Summaries
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'cmo_weekly_summaries' AND policyname = 'workspace_access_select') THEN
@@ -295,7 +278,6 @@ DO $$ BEGIN
       USING (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- CMO Recommendations
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'cmo_recommendations' AND policyname = 'workspace_access_select') THEN
@@ -303,9 +285,7 @@ DO $$ BEGIN
       USING (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- ============================================
 -- MIGRATION COMPLETE: PART 2
 -- CMO extended tables created
--- ============================================
-
+-- ============================================;

@@ -17,11 +17,11 @@ serve(async (req) => {
   }
 
   try {
-    const vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY');
-    if (!vapiPrivateKey) {
+    const elevenLabsApiKey = Deno.env.get("ELEVENLABS_API_KEY");
+    if (!elevenLabsApiKey) {
       return new Response(
-        JSON.stringify({ error: 'VAPI_PRIVATE_KEY not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: "ELEVENLABS_API_KEY not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -44,11 +44,13 @@ serve(async (req) => {
       return rateLimitResponse(rateLimitResult, corsHeaders);
     }
 
-    const { assetId, assistantId, phoneNumberId, tenantId } = await req.json();
+    // Keep assistantId for backward compatibility with the UI, but it is an ElevenLabs agent_id.
+    const { assetId, assistantId, agentId, tenantId } = await req.json();
+    const effectiveAgentId = agentId || assistantId;
 
-    if (!assetId || !assistantId) {
+    if (!assetId || !effectiveAgentId) {
       return new Response(
-        JSON.stringify({ error: 'assetId and assistantId are required' }),
+        JSON.stringify({ error: 'assetId and agentId are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -81,7 +83,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[execute-voice-campaign] Executing for ${targetLeads.length} leads, tenant: ${effectiveTenantId}`);
+    console.log(`[execute-voice-campaign] Executing for ${targetLeads.length} leads via ElevenLabs, tenant: ${effectiveTenantId}`);
 
     const results: { leadId: string; success: boolean; callId?: string; error?: string }[] = [];
     let successCount = 0;
@@ -111,115 +113,109 @@ serve(async (req) => {
 
       try {
         const callPayload: any = {
-          assistantId,
-          customer: {
-            number: lead.phone,
-            name: lead.name || undefined,
+          agent_id: effectiveAgentId,
+          to_phone_number: lead.phone,
+          metadata: {
+            lead_id: lead.id,
+            lead_name: lead.name,
+            asset_id: assetId,
+            campaign_name: asset.name,
           },
         };
 
-        if (phoneNumberId) {
-          callPayload.phoneNumberId = phoneNumberId;
-        }
-
-        const response = await fetch('https://api.vapi.ai/call/phone', {
-          method: 'POST',
+        const response = await fetch("https://api.elevenlabs.io/v1/convai/conversations/phone", {
+          method: "POST",
           headers: {
-            'Authorization': `Bearer ${vapiPrivateKey}`,
-            'Content-Type': 'application/json',
+            "xi-api-key": elevenLabsApiKey,
+            "Content-Type": "application/json",
           },
           body: JSON.stringify(callPayload),
         });
 
         const responseText = await response.text();
-        
+
         if (response.ok) {
           const callData = JSON.parse(responseText);
-          results.push({ leadId: lead.id, success: true, callId: callData.id });
+          const conversationId = callData.conversation_id || callData.id;
+
+          results.push({ leadId: lead.id, success: true, callId: conversationId });
           successCount++;
 
-          // Insert into channel_outbox with provider response
           const { error: outboxError } = await serviceClient
-            .from('channel_outbox')
+            .from("channel_outbox")
             .insert({
               tenant_id: effectiveTenantId,
               workspace_id: asset.workspace_id,
-              channel: 'voice',
-              provider: 'vapi',
+              channel: "voice",
+              provider: "elevenlabs",
               idempotency_key: idempotencyKey,
               recipient_id: lead.id,
               recipient_phone: lead.phone,
               payload: callPayload,
-              status: 'called',
-              provider_message_id: callData.id,
+              status: "called",
+              provider_message_id: conversationId,
               provider_response: callData,
             });
 
           if (outboxError) {
             console.error("[execute-voice-campaign] Failed to log to channel_outbox:", outboxError);
           } else {
-            console.log(`[execute-voice-campaign] Logged call to channel_outbox: ${callData.id}`);
+            console.log(`[execute-voice-campaign] Logged ElevenLabs call to channel_outbox: ${conversationId}`);
           }
 
-          // Log activity to crm_activities (unified CRM spine)
           const { error: activityError } = await serviceClient
-            .from('crm_activities')
+            .from("crm_activities")
             .insert({
               tenant_id: effectiveTenantId,
               contact_id: lead.contactId || null,
               lead_id: lead.crmLeadId || null,
-              activity_type: 'voice_call',
+              activity_type: "voice_call",
               meta: {
-                call_id: callData.id,
+                call_id: conversationId,
                 asset_id: assetId,
-                assistant_id: assistantId,
-                outcome: 'initiated',
+                agent_id: effectiveAgentId,
+                outcome: "initiated",
                 phone: lead.phone,
                 lead_name: lead.name,
                 campaign_name: asset.name,
+                provider: "elevenlabs",
               },
             });
 
           if (activityError) {
             console.error("[execute-voice-campaign] Failed to log CRM activity:", activityError);
-          } else {
-            console.log(`[execute-voice-campaign] Logged voice_call activity for lead: ${lead.id}`);
           }
 
-          // Trigger auto-scoring for engaged lead
           try {
-            await supabaseClient.functions.invoke('auto-score-lead', {
+            await supabaseClient.functions.invoke("auto-score-lead", {
               body: { leadId: lead.id },
             });
           } catch (scoreError) {
             console.error("[execute-voice-campaign] Error triggering auto-score:", scoreError);
           }
         } else {
-          let errorMessage = 'Call failed';
+          let errorMessage = "Call failed";
           try {
             const errorData = JSON.parse(responseText);
-            errorMessage = errorData.message || errorData.error || errorMessage;
+            errorMessage = errorData?.detail?.message || errorData.message || errorData.error || errorMessage;
           } catch {
             errorMessage = responseText || errorMessage;
           }
           results.push({ leadId: lead.id, success: false, error: errorMessage });
           failCount++;
 
-          // Log failed call to channel_outbox
-          await serviceClient
-            .from('channel_outbox')
-            .insert({
-              tenant_id: effectiveTenantId,
-              workspace_id: asset.workspace_id,
-              channel: 'voice',
-              provider: 'vapi',
-              idempotency_key: idempotencyKey,
-              recipient_id: lead.id,
-              recipient_phone: lead.phone,
-              payload: callPayload,
-              status: 'failed',
-              error: errorMessage,
-            });
+          await serviceClient.from("channel_outbox").insert({
+            tenant_id: effectiveTenantId,
+            workspace_id: asset.workspace_id,
+            channel: "voice",
+            provider: "elevenlabs",
+            idempotency_key: idempotencyKey,
+            recipient_id: lead.id,
+            recipient_phone: lead.phone,
+            payload: callPayload,
+            status: "failed",
+            error: errorMessage,
+          });
         }
 
         // Add delay between calls to avoid rate limiting
@@ -239,7 +235,7 @@ serve(async (req) => {
             tenant_id: effectiveTenantId,
             workspace_id: asset.workspace_id,
             channel: 'voice',
-            provider: 'vapi',
+            provider: 'elevenlabs',
             idempotency_key: idempotencyKey,
             recipient_id: lead.id,
             recipient_phone: lead.phone,

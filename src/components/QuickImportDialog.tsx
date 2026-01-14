@@ -24,8 +24,8 @@ export const QuickImportDialog = ({ open, onOpenChange }: QuickImportDialogProps
       return;
     }
 
-    const lovableUrlPattern = /^https:\/\/[a-z0-9-]+\.(lovableproject\.com|lovable\.app)(\/.*)?$/i;
-    if (!lovableUrlPattern.test(projectUrl.trim())) {
+    const externalUrlPattern = /^https:\/\/[a-z0-9-]+\.[a-z0-9.-]+(\/.*)?$/i;
+    if (!externalUrlPattern.test(projectUrl.trim())) {
       toast.error("Please enter a valid external project URL");
       return;
     }
@@ -33,7 +33,7 @@ export const QuickImportDialog = ({ open, onOpenChange }: QuickImportDialogProps
     setImporting(true);
 
     try {
-      const urlMatch = projectUrl.match(/https:\/\/([a-z0-9-]+)\.(lovableproject\.com|lovable\.app)/i);
+      const urlMatch = projectUrl.match(/https:\/\/([a-z0-9-]+)\.[a-z0-9.-]+/i);
       const projectId = urlMatch ? urlMatch[1] : "Imported Project";
 
       const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -97,7 +97,7 @@ export const QuickImportDialog = ({ open, onOpenChange }: QuickImportDialogProps
             <Label htmlFor="project-url">External Project URL</Label>
             <Input
               id="project-url"
-              placeholder="https://your-project.lovable.app"
+              placeholder="https://your-project.example.com"
               value={projectUrl}
               onChange={(e) => setProjectUrl(e.target.value)}
               onKeyDown={(e) => {

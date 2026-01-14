@@ -5,7 +5,6 @@ BEGIN
     EXECUTE 'ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS metrics_mode text NOT NULL DEFAULT ''real'' CHECK (metrics_mode IN (''real'', ''demo''))';
   END IF;
 END $$;
-
 -- Create deploy_campaign RPC function with SECURITY DEFINER
 CREATE OR REPLACE FUNCTION public.deploy_campaign(p_campaign_id uuid)
 RETURNS jsonb
@@ -137,7 +136,6 @@ BEGIN
   );
 END;
 $function$;
-
 -- Create function to get tenant metrics mode (return 'real' if tenants table doesn't exist)
 CREATE OR REPLACE FUNCTION public.get_tenant_metrics_mode(p_tenant_id uuid)
 RETURNS text

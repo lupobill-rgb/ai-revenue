@@ -1,4 +1,3 @@
-
 -- The deploy_campaign RPC needs to bypass RLS for its internal inserts
 -- Since it's SECURITY DEFINER and already validates access, we can trust it
 -- Add a policy that allows the function to insert by checking the function context

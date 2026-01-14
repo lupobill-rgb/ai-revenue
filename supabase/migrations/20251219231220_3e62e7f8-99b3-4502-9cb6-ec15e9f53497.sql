@@ -12,23 +12,17 @@ CREATE TABLE public.voice_phone_numbers (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- Enable RLS
 ALTER TABLE public.voice_phone_numbers ENABLE ROW LEVEL SECURITY;
-
 -- RLS policies for tenant isolation
 CREATE POLICY "tenant_isolation_select" ON public.voice_phone_numbers
   FOR SELECT USING (user_belongs_to_tenant(tenant_id));
-
 CREATE POLICY "tenant_isolation_insert" ON public.voice_phone_numbers
   FOR INSERT WITH CHECK (user_belongs_to_tenant(tenant_id));
-
 CREATE POLICY "tenant_isolation_update" ON public.voice_phone_numbers
   FOR UPDATE USING (user_belongs_to_tenant(tenant_id));
-
 CREATE POLICY "tenant_isolation_delete" ON public.voice_phone_numbers
   FOR DELETE USING (user_belongs_to_tenant(tenant_id));
-
 -- Create voice_call_records table for tenant-scoped call history
 CREATE TABLE public.voice_call_records (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -56,23 +50,17 @@ CREATE TABLE public.voice_call_records (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- Enable RLS
 ALTER TABLE public.voice_call_records ENABLE ROW LEVEL SECURITY;
-
 -- RLS policies for tenant isolation
 CREATE POLICY "tenant_isolation_select" ON public.voice_call_records
   FOR SELECT USING (user_belongs_to_tenant(tenant_id));
-
 CREATE POLICY "tenant_isolation_insert" ON public.voice_call_records
   FOR INSERT WITH CHECK (user_belongs_to_tenant(tenant_id));
-
 CREATE POLICY "tenant_isolation_update" ON public.voice_call_records
   FOR UPDATE USING (user_belongs_to_tenant(tenant_id));
-
 CREATE POLICY "tenant_isolation_delete" ON public.voice_call_records
   FOR DELETE USING (user_belongs_to_tenant(tenant_id));
-
 -- Add indexes for performance
 CREATE INDEX idx_voice_phone_numbers_tenant ON public.voice_phone_numbers(tenant_id);
 CREATE INDEX idx_voice_phone_numbers_workspace ON public.voice_phone_numbers(workspace_id);

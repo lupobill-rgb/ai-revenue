@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS public.accounts (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- CRM CONTACTS
 -- ============================================
@@ -43,7 +42,6 @@ CREATE TABLE IF NOT EXISTS public.crm_contacts (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- OPPORTUNITIES
 -- ============================================
@@ -68,7 +66,6 @@ CREATE TABLE IF NOT EXISTS public.opportunities (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- CRM ACTIVITIES (Extended)
 -- Note: Phase 3 already has lead_activities, this is for CRM contacts
@@ -84,7 +81,6 @@ CREATE TABLE IF NOT EXISTS public.crm_activities (
   data_mode data_mode NOT NULL DEFAULT 'live',
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- NOTIFICATIONS
 -- ============================================
@@ -101,7 +97,6 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   metadata jsonb DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- CHANNEL PREFERENCES
 -- ============================================
@@ -118,7 +113,6 @@ CREATE TABLE IF NOT EXISTS public.channel_preferences (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- AGENT RUNS (AI Agent Tracking)
 -- ============================================
@@ -137,7 +131,6 @@ CREATE TABLE IF NOT EXISTS public.agent_runs (
   completed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- RATE LIMIT COUNTERS
 -- ============================================
@@ -151,7 +144,6 @@ CREATE TABLE IF NOT EXISTS public.rate_limit_counters (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
-
 -- ============================================
 -- INDEXES
 -- ============================================
@@ -199,7 +191,6 @@ CREATE INDEX IF NOT EXISTS idx_channel_preferences_user_id ON public.channel_pre
 CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace_id ON public.agent_runs(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON public.agent_runs(status);
 CREATE INDEX IF NOT EXISTS idx_rate_limit_counters_key ON public.rate_limit_counters(key);
-
 -- ============================================
 -- ENABLE RLS
 -- ============================================
@@ -211,7 +202,6 @@ ALTER TABLE public.crm_activities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.channel_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.agent_runs ENABLE ROW LEVEL SECURITY;
-
 -- ============================================
 -- RLS POLICIES
 -- ============================================
@@ -238,7 +228,6 @@ DO $$ BEGIN
     END IF;
   END IF;
 END $$;
-
 -- CRM Contacts
 DO $$ BEGIN
   IF EXISTS (
@@ -256,7 +245,6 @@ DO $$ BEGIN
     END IF;
   END IF;
 END $$;
-
 -- Opportunities
 DO $$ BEGIN
   IF EXISTS (
@@ -274,7 +262,6 @@ DO $$ BEGIN
     END IF;
   END IF;
 END $$;
-
 -- CRM Activities
 DO $$ BEGIN
   IF EXISTS (
@@ -292,7 +279,6 @@ DO $$ BEGIN
     END IF;
   END IF;
 END $$;
-
 -- Notifications
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'notifications' AND policyname = 'workspace_access_select') THEN
@@ -300,7 +286,6 @@ DO $$ BEGIN
       USING (user_has_workspace_access(workspace_id) OR user_id = auth.uid());
   END IF;
 END $$;
-
 -- Channel Preferences
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'channel_preferences' AND policyname = 'user_access_select') THEN
@@ -313,7 +298,6 @@ DO $$ BEGIN
       WITH CHECK (user_id = auth.uid());
   END IF;
 END $$;
-
 -- Agent Runs
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'agent_runs' AND policyname = 'workspace_access_select') THEN
@@ -321,9 +305,7 @@ DO $$ BEGIN
       USING (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- ============================================
 -- MIGRATION COMPLETE: PART 6
 -- CRM extended tables created
--- ============================================
-
+-- ============================================;

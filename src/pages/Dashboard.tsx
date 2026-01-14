@@ -168,6 +168,11 @@ const Dashboard = () => {
 
       // Get workspace ID for view queries
       const workspaceId = dataIntegrity.workspaceId;
+      if (!workspaceId) {
+        // Avoid firing PostgREST queries with workspace_id=eq.null when no workspace is selected.
+        setLoading(false);
+        return;
+      }
       
       // DATA INTEGRITY: Fetch metrics from views only (no ad-hoc joins)
       let viewImpressions = 0;

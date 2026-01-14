@@ -60,16 +60,32 @@ export function useVoiceDataQualityStatus(workspaceId?: string | null): VoiceDat
       setIsDemoMode(workspaceRow?.demo_mode === true);
 
       // 2. Check voice provider connectivity from ai_settings_voice
-      // ╔══════════════════════════════════════════════════════════════════════════╗
-      // ║ INVARIANT: ai_settings_voice.tenant_id stores workspace.id              ║
-      // ║ workspaces.tenant_id is NULL in production and must NOT be used.        ║
-      // ║ This matches how SettingsIntegrations.tsx saves the data.               ║
-      // ╚══════════════════════════════════════════════════════════════════════════╝
-      const { data: voiceSettingsData, error: voiceError } = await supabase
-        .from("ai_settings_voice")
-        .select("is_connected, vapi_private_key, elevenlabs_api_key, voice_provider")
-        .eq("tenant_id", workspaceId)
-        .limit(1);
+      // IMPORTANT: ai_settings_voice was migrated from tenant_id → workspace_id.
+      // Prefer workspace_id; fall back to tenant_id for older/local schemas.
+      const selectCols = "is_connected, elevenlabs_api_key, voice_provider";
+      let voiceSettingsData: any[] | null = null;
+      let voiceError: any = null;
+      {
+        const res = await supabase
+          .from("ai_settings_voice")
+          .select(selectCols)
+          .eq("workspace_id", workspaceId)
+          .limit(1);
+        voiceSettingsData = res.data as any[] | null;
+        voiceError = res.error;
+
+        const msg = String((voiceError as any)?.message || "");
+        // Fallback: older schema uses tenant_id (some dev/staging snapshots).
+        if (voiceError && msg.toLowerCase().includes("workspace_id")) {
+          const fallback = await supabase
+            .from("ai_settings_voice")
+            .select(selectCols)
+            .eq("tenant_id", workspaceId)
+            .limit(1);
+          voiceSettingsData = fallback.data as any[] | null;
+          voiceError = fallback.error;
+        }
+      }
 
       const voiceSettings = voiceSettingsData?.[0];
 
@@ -82,11 +98,10 @@ export function useVoiceDataQualityStatus(workspaceId?: string | null): VoiceDat
       // - PRIMARY: is_connected === true (authoritative signal from SettingsIntegrations)
       // - FALLBACK: check for key presence (migration resilience for older rows)
       const isExplicitlyConnected = voiceSettings?.is_connected === true;
-      const hasVapi = !!voiceSettings?.vapi_private_key;
       const hasElevenLabs = !!voiceSettings?.elevenlabs_api_key;
       
       // Primary signal is is_connected; key-presence is fallback only
-      setVoiceConnected(isExplicitlyConnected || hasVapi || hasElevenLabs);
+      setVoiceConnected(isExplicitlyConnected || hasElevenLabs);
 
     } catch (err) {
       console.error("[useVoiceDataQualityStatus] Error:", err);

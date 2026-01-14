@@ -1,6 +1,5 @@
 -- Recreate v_revenue_by_workspace with proper CTE pattern and 3-way join
 DROP VIEW IF EXISTS public.v_revenue_by_workspace;
-
 CREATE OR REPLACE VIEW public.v_revenue_by_workspace AS
 WITH ws AS (
   SELECT

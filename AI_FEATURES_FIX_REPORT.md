@@ -211,7 +211,7 @@ serve(async (req) => {
 
 **BEFORE:**
 ```typescript
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("<legacy-ai-gateway>/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -248,7 +248,7 @@ serve(async (req) => {
 ```
 
 **Key Changes:**
-- ❌ Old: `https://ai.gateway.lovable.dev/v1/chat/completions`
+- ❌ Old: legacy AI gateway endpoint
 - ✅ New: `https://api.openai.com/v1/chat/completions`
 - ❌ Old model: `google/gemini-2.5-flash`
 - ✅ New model: `gpt-4o-mini`

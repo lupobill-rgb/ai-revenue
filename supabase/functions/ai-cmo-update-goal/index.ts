@@ -56,21 +56,11 @@ serve(async (req) => {
       );
     }
 
-    // Get tenant context
-    const { data: userTenant } = await supabase
-      .from("user_tenants")
-      .select("tenant_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const tenantId = userTenant?.tenant_id || user.id;
-
-    // Update campaign goal (RLS enforces tenant access)
+    // Update campaign goal (RLS enforces workspace access)
     const { data: campaign, error: updateError } = await supabase
       .from("cmo_campaigns")
       .update({ goal })
       .eq("id", campaignId)
-      .eq("tenant_id", tenantId)
       .select()
       .single();
 

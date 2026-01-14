@@ -10,6 +10,27 @@ const AuthCallback = () => {
   useEffect(() => {
     let mounted = true;
 
+    // PKCE flow: if we were redirected back with ?code=..., exchange it for a session.
+    // Without this, hosted OAuth can appear as "no session" and Edge Functions will fail with Invalid JWT.
+    const maybeExchangeCode = async () => {
+      try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+        if (!code) return;
+        setStatus("Finalizing secure sign-in...");
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) {
+          console.error("[AuthCallback] exchangeCodeForSession failed:", error);
+          if (mounted) {
+            setStatus("Sign-in failed, redirecting to login...");
+            navigate("/login", { replace: true });
+          }
+        }
+      } catch (e) {
+        console.error("[AuthCallback] Error exchanging code:", e);
+      }
+    };
+
     const handleAuthCallback = async (session: any) => {
       if (!session || !mounted) return;
 
@@ -121,6 +142,9 @@ const AuthCallback = () => {
         navigate("/login", { replace: true });
       }
     }, 3000); // Wait 3 seconds for auth state to settle
+
+    // Start PKCE exchange as soon as we mount (before timeout check).
+    maybeExchangeCode();
 
     return () => {
       mounted = false;

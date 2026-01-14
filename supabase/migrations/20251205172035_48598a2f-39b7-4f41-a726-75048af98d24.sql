@@ -12,28 +12,23 @@ CREATE TABLE public.channel_preferences (
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   UNIQUE(user_id)
 );
-
 -- Enable RLS
 ALTER TABLE public.channel_preferences ENABLE ROW LEVEL SECURITY;
-
 -- Users can view their own channel preferences
 CREATE POLICY "Users can view their own channel preferences"
 ON public.channel_preferences
 FOR SELECT
 USING (auth.uid() = user_id);
-
 -- Users can insert their own channel preferences
 CREATE POLICY "Users can insert their own channel preferences"
 ON public.channel_preferences
 FOR INSERT
 WITH CHECK (auth.uid() = user_id);
-
 -- Users can update their own channel preferences
 CREATE POLICY "Users can update their own channel preferences"
 ON public.channel_preferences
 FOR UPDATE
 USING (auth.uid() = user_id);
-
 -- Add updated_at trigger
 CREATE TRIGGER update_channel_preferences_updated_at
 BEFORE UPDATE ON public.channel_preferences

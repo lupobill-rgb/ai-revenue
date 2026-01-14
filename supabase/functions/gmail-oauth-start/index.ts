@@ -9,8 +9,6 @@ const corsHeaders = {
 // Allowed redirect domains for OAuth security
 const ALLOWED_REDIRECT_DOMAINS = [
   'ubigrowth.ai',
-  'preview--ubigrowth-ai.lovable.app',
-  'lovable.app',
   'localhost:5173',
   'localhost:3000',
 ];

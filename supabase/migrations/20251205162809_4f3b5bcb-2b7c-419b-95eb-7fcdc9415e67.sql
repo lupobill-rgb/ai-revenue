@@ -12,17 +12,14 @@ AS $$
     WHERE workspace_id = _workspace_id AND user_id = _user_id
   )
 $$;
-
 -- Drop existing policies on workspaces that might cause issues
 DROP POLICY IF EXISTS "Users see their workspaces" ON public.workspaces;
-
 -- Recreate the SELECT policy without subqueries that could cause recursion
 CREATE POLICY "Users see their workspaces" ON public.workspaces
 FOR SELECT USING (
   owner_id = auth.uid() 
   OR public.is_workspace_owner_or_member(id, auth.uid())
 );
-
 -- Update user_has_workspace_access to not query workspaces table directly
 CREATE OR REPLACE FUNCTION public.user_has_workspace_access(_workspace_id uuid)
 RETURNS boolean

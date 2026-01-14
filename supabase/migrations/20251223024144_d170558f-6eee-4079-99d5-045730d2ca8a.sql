@@ -26,6 +26,5 @@ BEGIN
   GROUP BY del.workspace_id;
 END;
 $function$;
-
 -- Grant execute to authenticated users (RLS in function handles auth)
 GRANT EXECUTE ON FUNCTION public.admin_cleanup_nonuser_deals(uuid) TO authenticated;

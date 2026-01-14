@@ -67,7 +67,6 @@ BEGIN
   RETURN activity_id;
 END;
 $$;
-
 -- Helper function for lead status updates with outcome mapping
 CREATE OR REPLACE FUNCTION crm_map_outcome_to_status(
   in_outcome text
