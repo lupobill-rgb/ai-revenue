@@ -94,12 +94,21 @@ export default function Guardrails() {
   async function setKillSwitch(workspaceId: string, adAccount: AdsAccount, next: boolean) {
     setSavingExecutionEnabled(true);
     try {
-      const { error } = await supabaseOperator
-        .from("ad_accounts")
-        .update({ execution_enabled: next })
-        .eq("id", adAccount.id)
-        .eq("workspace_id", workspaceId);
-      if (error) throw error;
+      const { data: sessionData } = await supabaseOperator.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) throw new Error("Not authenticated");
+
+      const resp = await fetch(`/api/ads/${encodeURIComponent(adAccount.id)}/execution-enabled`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json?.error || "Failed to update execution setting");
+
       setExecutionEnabled(next);
       toast({ title: "Saved", description: `AI execution ${next ? "enabled" : "disabled"}.` });
     } catch (e: any) {
