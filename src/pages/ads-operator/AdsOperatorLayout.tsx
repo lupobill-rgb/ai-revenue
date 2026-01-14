@@ -16,6 +16,7 @@ export type AdsAccount = {
   currency_code?: string | null;
   time_zone?: string | null;
   is_active?: boolean | null;
+  execution_enabled?: boolean | null;
 };
 
 export function useAdsAccounts(workspaceId: string | null) {
@@ -36,7 +37,7 @@ export function useAdsAccounts(workspaceId: string | null) {
       try {
         const { data, error } = await supabaseOperator
           .from("ad_accounts")
-          .select("id, customer_id, login_customer_id, name, currency_code, time_zone, is_active")
+          .select("id, customer_id, login_customer_id, name, currency_code, time_zone, is_active, execution_enabled")
           .eq("workspace_id", workspaceId)
           .eq("provider", "google_ads")
           .eq("is_active", true)

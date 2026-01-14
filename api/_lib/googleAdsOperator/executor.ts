@@ -60,18 +60,24 @@ async function claimForExecution(proposalId: string): Promise<{ status: string; 
   return { status, executed_at };
 }
 
-async function getAdAccountCustomer(args: { adAccountId: string }): Promise<{ customerId: string; loginCustomerId?: string }> {
+async function getAdAccountCustomer(args: {
+  adAccountId: string;
+}): Promise<{ customerId: string; loginCustomerId?: string; executionEnabled: boolean }> {
   const supabase = supabaseAdmin();
   const { data, error } = await supabase
     .from("ad_accounts")
-    .select("customer_id, login_customer_id, provider, is_active")
+    .select("customer_id, login_customer_id, provider, is_active, execution_enabled")
     .eq("id", args.adAccountId)
     .maybeSingle();
   if (error) throw new Error(`Failed to load ad_account: ${error.message}`);
   if (!data) throw new Error(`ad_account not found: ${args.adAccountId}`);
   if (data.provider !== "google_ads") throw new Error(`Unsupported ads provider: ${data.provider}`);
   if (data.is_active === false) throw new Error("ad_account is inactive");
-  return { customerId: data.customer_id, loginCustomerId: data.login_customer_id ?? undefined };
+  return {
+    customerId: data.customer_id,
+    loginCustomerId: data.login_customer_id ?? undefined,
+    executionEnabled: data.execution_enabled !== false,
+  };
 }
 
 function assertOnlyApprovedPayloadUsed(payload: ProposalPayload) {
@@ -83,6 +89,24 @@ function assertOnlyApprovedPayloadUsed(payload: ProposalPayload) {
 export async function executeApprovedProposal(raw: ExecuteInput, auth?: GoogleAdsAuth) {
   const input = ExecuteInputSchema.parse(raw);
   assertOnlyApprovedPayloadUsed(input.approvedPayload);
+
+  // Kill switch: hard stop execution per ad account.
+  // IMPORTANT: Do this before claiming the proposal to avoid flipping status to "executing".
+  const adAccount = await getAdAccountCustomer({ adAccountId: input.adAccountId });
+  if (!adAccount.executionEnabled) {
+    await insertEvent({
+      workspace_id: input.workspaceId,
+      ad_account_id: input.adAccountId,
+      proposal_id: input.proposalId,
+      event_type: "note",
+      actor_type: input.actorType,
+      actor_id: input.actorId ?? null,
+      run_id: input.runId ?? null,
+      message: "AI execution disabled by user.",
+      details: { execution_enabled: false },
+    });
+    return { outcome: "success" as ExecutionOutcome, skipped: true, reason: "execution_disabled" as const };
+  }
 
   // Idempotent claim: only transitions APPROVED -> EXECUTING.
   const claim = await claimForExecution(input.proposalId);
@@ -117,7 +141,7 @@ export async function executeApprovedProposal(raw: ExecuteInput, auth?: GoogleAd
     return { outcome: "failure" as ExecutionOutcome, skipped: true };
   }
 
-  const { customerId, loginCustomerId } = await getAdAccountCustomer({ adAccountId: input.adAccountId });
+  const { customerId, loginCustomerId } = adAccount;
   const googleAuth = auth ?? googleAdsAuthFromEnv();
   const client = new GoogleAdsClientWrapper({
     auth: googleAuth,

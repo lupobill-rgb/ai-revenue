@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { supabaseOperator } from "@/integrations/supabase/operatorClient";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, Save } from "lucide-react";
@@ -38,6 +39,8 @@ export default function Guardrails() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [executionEnabled, setExecutionEnabled] = useState<boolean>(true);
+  const [savingExecutionEnabled, setSavingExecutionEnabled] = useState(false);
 
   // Form state (currency units for micros fields; percentages as percent)
   const [cpaTarget, setCpaTarget] = useState<string>("");
@@ -69,6 +72,7 @@ export default function Guardrails() {
     setLoading(true);
     setError(null);
     try {
+      setExecutionEnabled(adAccount.execution_enabled !== false);
       const { data, error } = await supabaseOperator
         .from("guardrails")
         .select(
@@ -84,6 +88,26 @@ export default function Guardrails() {
       populateFromRow(null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function setKillSwitch(workspaceId: string, adAccount: AdsAccount, next: boolean) {
+    setSavingExecutionEnabled(true);
+    try {
+      const { error } = await supabaseOperator
+        .from("ad_accounts")
+        .update({ execution_enabled: next })
+        .eq("id", adAccount.id)
+        .eq("workspace_id", workspaceId);
+      if (error) throw error;
+      setExecutionEnabled(next);
+      toast({ title: "Saved", description: `AI execution ${next ? "enabled" : "disabled"}.` });
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.message || "Failed to update execution setting", variant: "destructive" });
+      // revert UI toggle
+      setExecutionEnabled(adAccount.execution_enabled !== false);
+    } finally {
+      setSavingExecutionEnabled(false);
     }
   }
 
@@ -181,6 +205,31 @@ export default function Guardrails() {
           </div>
 
           {error && <div className="text-sm text-destructive mb-4">{error}</div>}
+
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-base">Execution</CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-start justify-between gap-6">
+              <div className="space-y-1">
+                <div className="font-medium">Allow AI execution</div>
+                <div className="text-sm text-muted-foreground whitespace-pre-line">
+                  When enabled, AI-approved changes will execute inside your guardrails.
+                  {"\n"}When disabled, the AI will continue to analyze and propose actions, but nothing will execute.
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={executionEnabled}
+                  onCheckedChange={(v) => setKillSwitch(workspaceId, adAccount, v)}
+                  disabled={savingExecutionEnabled || loading}
+                />
+                <div className="text-sm text-muted-foreground w-10 text-right">
+                  {executionEnabled ? "On" : "Off"}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
