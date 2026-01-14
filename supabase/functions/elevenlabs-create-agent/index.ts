@@ -12,60 +12,180 @@ serve(async (req) => {
   }
 
   try {
-    const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY')
-    
-    if (!ELEVENLABS_API_KEY) {
-      throw new Error('ElevenLabs API key not configured')
+    const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Missing Supabase configuration' }),
+        { status: 500, headers: jsonHeaders }
+      )
     }
 
+    // Auth: read header case-insensitively + require Bearer
+    const authHeader = req.headers.get('authorization') ?? req.headers.get('Authorization')
+    if (!authHeader?.toLowerCase().startsWith('bearer ')) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Missing or invalid Authorization header' }),
+        { status: 401, headers: jsonHeaders }
+      )
+    }
+
+    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    })
+
+    const { data: { user }, error: userError } = await supabaseUser.auth.getUser()
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: userError?.message || 'Unauthorized' }),
+        { status: 401, headers: jsonHeaders }
+      )
+    }
+
+    // Service role client: read secrets + write DB records
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey)
+
     // Get request body
-    const { 
-      name, 
-      first_message, 
+    const body = await req.json().catch(() => null)
+    if (!body) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid JSON body' }),
+        { status: 400, headers: jsonHeaders }
+      )
+    }
+
+    const {
+      name,
+      agent_name,
+      first_message,
       system_prompt,
       voice_id,
       language = 'en',
       workspace_id,
       industry,
-      use_case = 'sales_outreach'
-    } = await req.json()
+      use_case = 'sales_outreach',
+      from_phone_number,
+    } = body
 
-    // Get Supabase client for workspace data
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
+    if (!workspace_id) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'MISSING WORKSPACE_ID' }),
+        { status: 400, headers: jsonHeaders }
+      )
+    }
+
+    const resolvedAgentName = name || agent_name
+    if (!resolvedAgentName) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'MISSING AGENT_NAME' }),
+        { status: 400, headers: jsonHeaders }
+      )
+    }
+
+    // Fetch ElevenLabs API key from ai_settings_voice (workspace-scoped)
+    let voiceSettings: { elevenlabs_api_key?: string | null; default_elevenlabs_voice_id?: string | null } | null = null
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('ai_settings_voice')
+        .select('elevenlabs_api_key, default_elevenlabs_voice_id')
+        .eq('workspace_id', workspace_id)
+        .maybeSingle()
+
+      if (error) throw error
+      voiceSettings = data
+    } catch (e) {
+      // Back-compat if tenant_id still exists (older schema)
+      const { data } = await supabaseAdmin
+        .from('ai_settings_voice')
+        .select('elevenlabs_api_key, default_elevenlabs_voice_id')
+        .eq('tenant_id', workspace_id)
+        .maybeSingle()
+      voiceSettings = data
+    }
+
+    const ELEVENLABS_API_KEY =
+      voiceSettings?.elevenlabs_api_key ||
+      Deno.env.get('ELEVENLABS_API_KEY') ||
+      null
+
+    if (!ELEVENLABS_API_KEY) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'MISSING ELEVENLABS_API_KEY' }),
+        { status: 400, headers: jsonHeaders }
+      )
+    }
+
+    // Resolve from_phone_number (required). If not provided, derive from settings if possible.
+    let resolvedFromPhoneNumber: string | null = from_phone_number || null
+    if (!resolvedFromPhoneNumber) {
+      let defaultPhoneNumberId: string | null = null
+
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('ai_settings_voice')
+          .select('default_phone_number_id')
+          .eq('workspace_id', workspace_id)
+          .maybeSingle()
+        if (error) throw error
+        defaultPhoneNumberId = (data as { default_phone_number_id?: string | null } | null)?.default_phone_number_id ?? null
+      } catch {
+        const { data } = await supabaseAdmin
+          .from('ai_settings_voice')
+          .select('default_phone_number_id')
+          .eq('tenant_id', workspace_id)
+          .maybeSingle()
+        defaultPhoneNumberId = (data as { default_phone_number_id?: string | null } | null)?.default_phone_number_id ?? null
       }
-    )
+
+      if (defaultPhoneNumberId) {
+        const { data: phoneRow, error: phoneError } = await supabaseAdmin
+          .from('voice_phone_numbers')
+          .select('phone_number')
+          .eq('id', defaultPhoneNumberId)
+          .eq('workspace_id', workspace_id)
+          .maybeSingle()
+        if (phoneError) {
+          console.error('Failed to derive from_phone_number:', phoneError)
+        } else {
+          resolvedFromPhoneNumber = (phoneRow as { phone_number?: string | null } | null)?.phone_number ?? null
+        }
+      }
+    }
+
+    if (!resolvedFromPhoneNumber) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'MISSING FROM_PHONE_NUMBER' }),
+        { status: 400, headers: jsonHeaders }
+      )
+    }
 
     // Get workspace/brand info if workspace_id provided
     let brandName = 'Your Company'
     let brandVoice = 'professional and friendly'
     
-    if (workspace_id) {
-      const { data: workspace } = await supabaseClient
-        .from('workspaces')
-        .select('name')
-        .eq('id', workspace_id)
-        .single()
-      
-      if (workspace) {
-        brandName = workspace.name || brandName
-      }
+    const { data: workspace } = await supabaseUser
+      .from('workspaces')
+      .select('name')
+      .eq('id', workspace_id)
+      .single()
+    
+    if (workspace) {
+      brandName = workspace.name || brandName
+    }
 
-      // Try to get brand settings
-      const { data: brandSettings } = await supabaseClient
-        .from('ai_settings_brand')
-        .select('brand_voice, brand_values')
-        .eq('workspace_id', workspace_id)
-        .single()
-      
-      if (brandSettings?.brand_voice) {
-        brandVoice = brandSettings.brand_voice
-      }
+    // Try to get brand settings (user-scoped/RLS enforced)
+    const { data: brandSettings } = await supabaseUser
+      .from('ai_settings_brand')
+      .select('brand_voice, brand_values')
+      .eq('workspace_id', workspace_id)
+      .single()
+    
+    if (brandSettings?.brand_voice) {
+      brandVoice = brandSettings.brand_voice
     }
 
     // Smart defaults based on use case
@@ -127,12 +247,15 @@ Keep it conversational. Don't sound like you're reading from a script.`,
     const template = USE_CASE_TEMPLATES[use_case as keyof typeof USE_CASE_TEMPLATES] || USE_CASE_TEMPLATES.sales_outreach
 
     // Use provided values or smart defaults
-    const agentName = name || template.default_name
+    const agentName = resolvedAgentName || template.default_name
     const agentFirstMessage = first_message || template.default_first_message
     const agentPrompt = system_prompt || template.default_prompt
 
     // Default voice (use ElevenLabs' default voice if none specified)
-    const agentVoiceId = voice_id || 'EXAVITQu4vr4xnSDxMaL' // Sarah - professional female voice
+    const agentVoiceId =
+      voice_id ||
+      voiceSettings?.default_elevenlabs_voice_id ||
+      'EXAVITQu4vr4xnSDxMaL' // Sarah - professional female voice
 
     // Create agent via ElevenLabs API
     const createResponse = await fetch('https://api.elevenlabs.io/v1/convai/agents/create', {
@@ -160,36 +283,74 @@ Keep it conversational. Don't sound like you're reading from a script.`,
 
     if (!createResponse.ok) {
       const errorText = await createResponse.text()
-      console.error('ElevenLabs agent creation failed:', errorText)
-      throw new Error(`Failed to create agent: ${errorText}`)
+      const truncated = errorText.length > 2000 ? `${errorText.slice(0, 2000)}…` : errorText
+      const requestId =
+        createResponse.headers.get('x-request-id') ||
+        createResponse.headers.get('request-id') ||
+        createResponse.headers.get('cf-ray') ||
+        null
+
+      console.error('ElevenLabs agent creation failed:', createResponse.status, truncated)
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'ELEVENLABS_CREATE_FAILED',
+          status: createResponse.status,
+          requestId,
+          details: truncated,
+        }),
+        { status: createResponse.status, headers: jsonHeaders }
+      )
     }
 
     const agentData = await createResponse.json()
 
     console.log('✅ Agent created successfully:', agentData.agent_id)
 
-    // Store agent reference in database if workspace_id provided
-    if (workspace_id && agentData.agent_id) {
-      try {
-        await supabaseClient
-          .from('voice_agents')
-          .insert({
-            workspace_id: workspace_id,
-            provider: 'elevenlabs',
+    // Store agent reference in database (service role client to avoid RLS issues)
+    if (agentData.agent_id) {
+      const { error: insertError } = await supabaseAdmin
+        .from('voice_agents')
+        .insert({
+          workspace_id: workspace_id,
+          provider: 'elevenlabs',
+          agent_id: agentData.agent_id,
+          name: agentName,
+          use_case: use_case,
+          config: {
+            first_message: agentFirstMessage,
+            system_prompt: agentPrompt,
+            voice_id: agentVoiceId,
+            language: language,
+            industry: industry,
+            from_phone_number: resolvedFromPhoneNumber,
+          },
+          status: 'active',
+          created_by: user.id,
+        })
+
+      if (insertError) {
+        console.error('Failed to store agent in database:', insertError)
+        const dbErr = insertError as unknown as {
+          message: string
+          code?: string | null
+          details?: string | null
+          hint?: string | null
+        }
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Agent created on ElevenLabs but failed to store in database',
             agent_id: agentData.agent_id,
-            name: agentName,
-            use_case: use_case,
-            config: {
-              first_message: agentFirstMessage,
-              system_prompt: agentPrompt,
-              voice_id: agentVoiceId,
-              language: language,
+            db_error: {
+              message: dbErr.message,
+              code: dbErr.code ?? null,
+              details: dbErr.details ?? null,
+              hint: dbErr.hint ?? null,
             },
-            status: 'active',
-          })
-      } catch (dbError) {
-        console.error('Failed to store agent in database:', dbError)
-        // Don't fail the request - agent was created successfully
+          }),
+          { status: 500, headers: jsonHeaders }
+        )
       }
     }
 
@@ -202,7 +363,7 @@ Keep it conversational. Don't sound like you're reading from a script.`,
         agent: agentData,
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: jsonHeaders,
       }
     )
 
@@ -211,7 +372,7 @@ Keep it conversational. Don't sound like you're reading from a script.`,
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       }),
       {
         status: 500,

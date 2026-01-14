@@ -30,6 +30,14 @@ import { getVoiceBannerType, shouldDisableVoiceActions, type VoiceBannerInput } 
 
 // VAPI removed - using ElevenLabs directly
 const VAPI_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY || "";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+
+type EdgeInvokeError = {
+  message?: string;
+  context?: {
+    body?: unknown;
+  };
+};
 
 interface ElevenLabsAgent {
   agent_id: string;
@@ -439,6 +447,7 @@ const VoiceAgents = () => {
     systemPrompt: "You are a helpful assistant.",
     model: "gpt-4o",
     voice: "alloy",
+    fromPhoneNumber: "",
   });
   const [isCreating, setIsCreating] = useState(false);
 
@@ -824,28 +833,62 @@ const VoiceAgents = () => {
       return;
     }
 
+    if (!workspaceId) {
+      toast.error("No workspace selected");
+      return;
+    }
+
+    if (!newAssistant.fromPhoneNumber) {
+      toast.error("Please enter a from phone number");
+      return;
+    }
+
     setIsCreating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('vapi-manage-assistant', {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("NO SESSION");
+
+      if (!SUPABASE_ANON_KEY) {
+        throw new Error("Missing Supabase anon key (VITE_SUPABASE_PUBLISHABLE_KEY)");
+      }
+
+      const { data, error } = await supabase.functions.invoke('elevenlabs-create-agent', {
         body: {
-          action: 'create',
-          assistantData: {
-            name: newAssistant.name,
-            firstMessage: newAssistant.firstMessage,
-            model: {
-              model: newAssistant.model,
-              messages: [{ role: "system", content: newAssistant.systemPrompt }],
-            },
-            voice: { voiceId: newAssistant.voice },
-          },
+          workspace_id: workspaceId,
+          agent_name: newAssistant.name,
+          first_message: newAssistant.firstMessage,
+          system_prompt: newAssistant.systemPrompt,
+          from_phone_number: newAssistant.fromPhoneNumber,
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: SUPABASE_ANON_KEY,
         },
       });
 
-      if (error || data?.error) {
-        throw new Error(data?.error || error?.message);
+      if (error) {
+        const ctx = (error as EdgeInvokeError)?.context;
+        const rawBody = ctx?.body;
+        let message = error.message || "Failed to create agent";
+        try {
+          const parsed = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+          if (parsed?.error) message = parsed.error;
+          if (parsed?.details) message = `${message}: ${parsed.details}`;
+          if (parsed?.requestId) message = `${message} (requestId: ${parsed.requestId})`;
+        } catch {
+          // ignore JSON parse failures; fall back to error.message
+        }
+        throw new Error(message);
       }
 
-      toast.success("Assistant created successfully");
+      if (data?.success === false) {
+        const message = data?.error || "Failed to create agent";
+        throw new Error(message);
+      }
+
+      toast.success("Voice agent created successfully");
       setShowCreateDialog(false);
       setNewAssistant({
         name: "",
@@ -853,6 +896,7 @@ const VoiceAgents = () => {
         systemPrompt: "You are a helpful assistant.",
         model: "gpt-4o",
         voice: "alloy",
+        fromPhoneNumber: "",
       });
       fetchAllData();
     } catch (error) {
@@ -1491,6 +1535,14 @@ const VoiceAgents = () => {
                           <div className="space-y-2">
                             <Label>Name *</Label>
                             <Input value={newAssistant.name} onChange={(e) => setNewAssistant({...newAssistant, name: e.target.value})} placeholder="Sales Agent" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>From Phone Number *</Label>
+                            <Input
+                              value={newAssistant.fromPhoneNumber}
+                              onChange={(e) => setNewAssistant({ ...newAssistant, fromPhoneNumber: e.target.value })}
+                              placeholder="+15551234567"
+                            />
                           </div>
                           <div className="space-y-2">
                             <Label>First Message</Label>
