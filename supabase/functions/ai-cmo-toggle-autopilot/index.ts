@@ -51,7 +51,7 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const campaignId = (body as any)?.campaignId;
+    const campaignId = (body as any)?.campaignId ?? (body as any)?.campaign_id;
 
     if (!campaignId) {
       return new Response(
@@ -101,6 +101,7 @@ serve(async (req) => {
         ok: true,
         success: true, 
         campaignId,
+        campaign_id: campaignId,
         autopilotEnabled: enabled 
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

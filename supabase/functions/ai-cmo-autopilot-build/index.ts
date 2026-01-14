@@ -331,6 +331,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         campaignId: campaign.id,
+        campaign_id: campaign.id,
         status: "created",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
