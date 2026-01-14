@@ -1,0 +1,132 @@
+name: Observation Window Lock
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  observation-window-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine changed files
+        id: changed
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+
+          git fetch --no-tags --prune --depth=1 origin "${BASE_SHA}" "${HEAD_SHA}" || true
+          git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" > .changed_files_all.txt || true
+
+      - name: Check observation window status (prod)
+        id: obs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "Observation lock skipped: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not configured."
+            echo "is_active=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python3 - <<'PY'
+          import json, os, sys, urllib.request
+          url = os.environ["SUPABASE_URL"].rstrip("/") + "/rest/v1/v_observation_window_status?select=is_active,days_remaining,started_at,ends_at"
+          key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+          req = urllib.request.Request(url, headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+          })
+          try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+              body = resp.read().decode("utf-8")
+          except Exception as e:
+            print(f"Failed to query observation window status: {e}", file=sys.stderr)
+            # Fail closed: treat as active so deployments are blocked if we can't verify.
+            print("is_active=true")
+            print("days_remaining=14")
+            sys.exit(0)
+          data = json.loads(body) if body else []
+          row = (data[0] if isinstance(data, list) and data else None) or {}
+          is_active = bool(row.get("is_active", False))
+          days_remaining = int(row.get("days_remaining") or 0)
+          print(f"is_active={'true' if is_active else 'false'}")
+          print(f"days_remaining={days_remaining}")
+          PY | tee /tmp/obs.txt
+
+          # Export to GITHUB_OUTPUT
+          while IFS= read -r line; do
+            echo "$line" >> "$GITHUB_OUTPUT"
+          done < /tmp/obs.txt
+
+      - name: Enforce scope freeze during observation window
+        if: ${{ steps.obs.outputs.is_active == 'true' }}
+        run: |
+          set -euo pipefail
+
+          echo "Observation window is ACTIVE (${{
+            steps.obs.outputs.days_remaining
+          }} day(s) remaining). Enforcing deployment lock."
+
+          # Allowed changes:
+          # - docs/**
+          # - supabase/functions/slo-monitor/**
+          # - supabase/migrations/** limited to monitoring/alerting/observation (filename keyword)
+          #
+          # Blocked:
+          # - src/** (UI)
+          # - supabase/functions/** (proposal/execution logic), except slo-monitor
+          # - supabase/functions/_shared/**
+          # - supabase/migrations that are not clearly monitoring/alerting/observation related
+
+          bad=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+
+            # Allow docs
+            if [[ "$f" == docs/* ]]; then
+              continue
+            fi
+
+            # Allow slo-monitor (alerts/logging)
+            if [[ "$f" == supabase/functions/slo-monitor/* ]]; then
+              continue
+            fi
+
+            # Allow monitoring/alerting/observation migrations only
+            if [[ "$f" == supabase/migrations/* ]]; then
+              bn="$(basename "$f")"
+              if echo "$bn" | rg -qi "drift|alert|slo|observation|monitor"; then
+                continue
+              fi
+              echo "❌ Blocked migration during observation window: $f"
+              bad=1
+              continue
+            fi
+
+            # Everything else is blocked
+            echo "❌ Blocked change during observation window: $f"
+            bad=1
+          done < .changed_files_all.txt
+
+          if [ "$bad" -ne 0 ]; then
+            echo ""
+            echo "Deployment lock is active during the 14-day observation window."
+            echo "Allowed: documentation + monitoring/alerting/logging only."
+            exit 1
+          fi
+
