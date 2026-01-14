@@ -1,9 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveTenantContext } from "../_shared/tenant-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-workspace-id",
 };
 
 const VALID_CHANNELS = ["email", "sms", "linkedin", "voice", "landing_page"];
@@ -40,7 +41,8 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { icp, offer, channels, desiredResult, target_tags, target_segments } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { icp, offer, channels, desiredResult, target_tags, target_segments } = body as any;
     
     // Validate inputs
     if (!icp || typeof icp !== "string") {
@@ -79,35 +81,23 @@ serve(async (req) => {
       );
     }
 
-    // Get tenant context via workspace membership
-    const { data: membershipData } = await supabase
-      .from("workspace_members")
-      .select("workspaces!inner(tenant_id)")
-      .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle();
-
-    const tenantId = (membershipData as any)?.workspaces?.tenant_id || user.id;
-
-    // Get workspace
-    const { data: workspace } = await supabase
-      .from("workspaces")
-      .select("id")
-      .eq("owner_id", user.id)
-      .maybeSingle();
-
-    const workspaceId = workspace?.id;
-    if (!workspaceId) {
-      return new Response(
-        JSON.stringify({ error: "No workspace found" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Resolve tenant context (workspace -> tenant, no JWT tenant claim assumptions).
+    let ctx: { tenantId: string; workspaceId: string; userId: string };
+    try {
+      ctx = await resolveTenantContext(req, supabase, { body, userId: user.id });
+      if (!ctx.tenantId) throw new Error("Missing tenant_id");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unable to resolve tenant context";
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Step 1: Create campaign row first (status draft, autopilot_enabled = true, goal set)
     const campaignData: Record<string, unknown> = {
-      tenant_id: tenantId,
-      workspace_id: workspaceId,
+      tenant_id: ctx.tenantId,
+      workspace_id: ctx.workspaceId,
       campaign_name: `Autopilot Campaign - ${desiredResult}`,
       campaign_type: "autopilot",
       description: `AI-generated campaign targeting ${desiredResult}`,
@@ -144,12 +134,12 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Created draft campaign ${campaign.id} for tenant ${tenantId}`);
+    console.log(`Created draft campaign ${campaign.id} for tenant ${ctx.tenantId}`);
 
     // Step 2: Call kernel with campaign_id and payload
     const kernelPayload = {
       mode: "campaign-builder",
-      tenant_id: tenantId,
+      tenant_id: ctx.tenantId,
       payload: {
         campaign_id: campaign.id,
         icp,
@@ -224,8 +214,8 @@ serve(async (req) => {
     if (assets.emails) {
       for (const email of assets.emails) {
         assetInserts.push({
-          tenant_id: tenantId,
-          workspace_id: workspaceId,
+          tenant_id: ctx.tenantId,
+          workspace_id: ctx.workspaceId,
           campaign_id: campaign.id,
           title: email.subject,
           content_type: "email",
@@ -240,8 +230,8 @@ serve(async (req) => {
     if (assets.sms) {
       for (const sms of assets.sms) {
         assetInserts.push({
-          tenant_id: tenantId,
-          workspace_id: workspaceId,
+          tenant_id: ctx.tenantId,
+          workspace_id: ctx.workspaceId,
           campaign_id: campaign.id,
           title: `SMS Step ${sms.step}`,
           content_type: "sms",
@@ -256,8 +246,8 @@ serve(async (req) => {
     if (assets.voice_scripts) {
       for (const script of assets.voice_scripts) {
         assetInserts.push({
-          tenant_id: tenantId,
-          workspace_id: workspaceId,
+          tenant_id: ctx.tenantId,
+          workspace_id: ctx.workspaceId,
           campaign_id: campaign.id,
           title: `Voice Script - ${script.scenario}`,
           content_type: "voice_script",
@@ -273,8 +263,8 @@ serve(async (req) => {
     if (assets.posts) {
       for (const post of assets.posts) {
         assetInserts.push({
-          tenant_id: tenantId,
-          workspace_id: workspaceId,
+          tenant_id: ctx.tenantId,
+          workspace_id: ctx.workspaceId,
           campaign_id: campaign.id,
           title: post.hook || `${post.channel} Post`,
           content_type: "social_post",
@@ -290,8 +280,8 @@ serve(async (req) => {
     if (assets.landing_pages) {
       for (const page of assets.landing_pages) {
         assetInserts.push({
-          tenant_id: tenantId,
-          workspace_id: workspaceId,
+          tenant_id: ctx.tenantId,
+          workspace_id: ctx.workspaceId,
           campaign_id: campaign.id,
           title: page.title || page.headline,
           content_type: "landing_page",
@@ -313,8 +303,8 @@ serve(async (req) => {
     
     if (automationSteps.length > 0) {
       const stepInserts = automationSteps.map((step: any, index: number) => ({
-        tenant_id: tenantId,
-        workspace_id: workspaceId,
+        tenant_id: ctx.tenantId,
+        workspace_id: ctx.workspaceId,
         automation_id: campaign.id, // Link to campaign as automation container
         step_order: step.step || index + 1,
         step_type: step.type, // email, sms, wait, voice, condition

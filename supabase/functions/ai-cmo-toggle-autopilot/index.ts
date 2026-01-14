@@ -1,9 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveTenantContext } from "../_shared/tenant-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-workspace-id",
 };
 
 serve(async (req) => {
@@ -18,7 +19,7 @@ serve(async (req) => {
     if (!campaignId) {
       return new Response(
         JSON.stringify({ ok: false, error: "Missing campaignId" }),
-        { status: 400, headers: { "content-type": "application/json" } },
+        { status: 400, headers: { ...corsHeaders, "content-type": "application/json" } },
       );
     }
 
@@ -56,21 +57,25 @@ serve(async (req) => {
       );
     }
 
-    // Get tenant context
-    const { data: userTenant } = await supabase
-      .from("user_tenants")
-      .select("tenant_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const tenantId = userTenant?.tenant_id || user.id;
+    // Get tenant context (workspace -> tenant, no JWT tenant claim assumptions).
+    let ctx: { tenantId: string; workspaceId: string; userId: string };
+    try {
+      ctx = await resolveTenantContext(req, supabase, { body, userId: user.id });
+      if (!ctx.tenantId) throw new Error("Missing tenant_id");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unable to resolve tenant context";
+      return new Response(JSON.stringify({ ok: false, error: msg, campaignId }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Update campaign autopilot status (RLS enforces tenant access)
     const { data: campaign, error: updateError } = await supabase
       .from("cmo_campaigns")
       .update({ autopilot_enabled: enabled })
       .eq("id", campaignId)
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", ctx.tenantId)
       .select()
       .single();
 
