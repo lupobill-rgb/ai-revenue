@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,7 +29,8 @@ serve(async (req) => {
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
     
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } }
@@ -105,7 +107,7 @@ serve(async (req) => {
     let aiSummary = null;
 
     // Generate AI summary if API key available
-    if (LOVABLE_API_KEY) {
+    if (OPENAI_API_KEY) {
       try {
         const prompt = `Analyze this week's marketing performance and provide a concise executive summary:
 
@@ -128,20 +130,16 @@ Provide:
 
 Return as JSON with keys: executive_summary, key_wins, challenges, recommendations`;
 
-        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
+        const aiResponse = await openaiChatCompletionsRaw(
+          {
+            model,
             messages: [
-              { role: 'system', content: 'You are a marketing analytics expert. Provide actionable insights.' },
-              { role: 'user', content: prompt }
+              { role: "system", content: "You are a marketing analytics expert. Provide actionable insights." },
+              { role: "user", content: prompt },
             ],
-          }),
-        });
+          },
+          OPENAI_API_KEY,
+        );
 
         if (aiResponse.ok) {
           const aiData = await aiResponse.json();

@@ -42,10 +42,8 @@ CREATE TABLE public.cmo_marketing_plans (
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   created_by UUID
 );
-
 -- Enable RLS
 ALTER TABLE public.cmo_marketing_plans ENABLE ROW LEVEL SECURITY;
-
 -- RLS Policies
 CREATE POLICY "Users can view workspace marketing plans" ON public.cmo_marketing_plans
   FOR SELECT USING (user_has_workspace_access(workspace_id));
@@ -55,7 +53,6 @@ CREATE POLICY "Users can update workspace marketing plans" ON public.cmo_marketi
   FOR UPDATE USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can delete workspace marketing plans" ON public.cmo_marketing_plans
   FOR DELETE USING (user_has_workspace_access(workspace_id));
-
 -- Trigger for updated_at
 CREATE TRIGGER update_cmo_marketing_plans_updated_at
   BEFORE UPDATE ON public.cmo_marketing_plans

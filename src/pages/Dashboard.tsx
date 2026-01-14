@@ -95,6 +95,13 @@ const Dashboard = () => {
   ];
 
   const handleAIAction = (prompt: string) => {
+    // DIAGNOSTIC LOGGING
+    console.log('[Dashboard] === AI QUICK ACTION TRIGGERED ===', {
+      timestamp: new Date().toISOString(),
+      promptPreview: prompt.substring(0, 50) + '...',
+      workspaceId: (window as any).__workspaceContext?.workspaceId || 'NOT SET',
+    });
+    
     // Open the AI chat widget
     const event = new CustomEvent('open-ai-chat', { detail: { prompt } });
     window.dispatchEvent(event);
@@ -161,6 +168,11 @@ const Dashboard = () => {
 
       // Get workspace ID for view queries
       const workspaceId = dataIntegrity.workspaceId;
+      if (!workspaceId) {
+        // Avoid firing PostgREST queries with workspace_id=eq.null when no workspace is selected.
+        setLoading(false);
+        return;
+      }
       
       // DATA INTEGRITY: Fetch metrics from views only (no ad-hoc joins)
       let viewImpressions = 0;
@@ -173,11 +185,20 @@ const Dashboard = () => {
       if (workspaceId) {
         // Query the v_impressions_clicks_by_workspace view
         // Using type assertion since views aren't in generated types
-        const { data: impressionsDataArr } = await supabase
+        const { data: impressionsDataArr, error: impressionsError } = await supabase
           .from('v_impressions_clicks_by_workspace' as any)
           .select('*')
           .eq('workspace_id', workspaceId)
           .limit(1) as { data: any[] };
+
+        // Local/staging may not have KPI views installed yet; treat 404 as "no metrics available"
+        if (impressionsError) {
+          const status = (impressionsError as any).status;
+          const msg = String((impressionsError as any).message || "");
+          if (!(status === 404 || msg.includes("Could not find the table"))) {
+            throw impressionsError;
+          }
+        }
 
         const impressionsData = impressionsDataArr?.[0];
         
@@ -193,11 +214,19 @@ const Dashboard = () => {
         }
         
         // Query the v_revenue_by_workspace view
-        const { data: revenueDataArr } = await supabase
+        const { data: revenueDataArr, error: revenueError } = await supabase
           .from('v_revenue_by_workspace' as any)
           .select('*')
           .eq('workspace_id', workspaceId)
           .limit(1) as { data: any[] };
+
+        if (revenueError) {
+          const status = (revenueError as any).status;
+          const msg = String((revenueError as any).message || "");
+          if (!(status === 404 || msg.includes("Could not find the table"))) {
+            throw revenueError;
+          }
+        }
 
         const revenueData = revenueDataArr?.[0];
         

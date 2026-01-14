@@ -50,7 +50,6 @@ BEGIN
   RAISE LOG 'run_job_queue_cron completed with internal secret auth';
 END;
 $function$;
-
 -- Add comment for documentation
 COMMENT ON FUNCTION public.run_job_queue_cron IS 
 'Cron-invoked function that calls run-job-queue edge function.

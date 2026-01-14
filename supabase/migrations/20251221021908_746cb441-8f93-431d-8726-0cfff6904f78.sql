@@ -70,6 +70,5 @@ BEGIN
   );
 END;
 $$;
-
 -- Add index for performance on job_queue queries
 CREATE INDEX IF NOT EXISTS idx_job_queue_status_created_at ON job_queue(status, created_at);

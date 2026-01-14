@@ -79,6 +79,5 @@ BEGIN
   );
 END;
 $$;
-
 -- Ensure authenticated users (used by platform-admin sessions) can execute it.
 GRANT EXECUTE ON FUNCTION public.get_horizontal_scaling_metrics(integer) TO authenticated;

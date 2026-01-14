@@ -12,9 +12,7 @@ BEGIN
     CHECK (skipped = false OR status = 'skipped');
   END IF;
 END $$;
-
 -- Index for efficient run detail queries
 CREATE INDEX IF NOT EXISTS idx_channel_outbox_run_id ON channel_outbox(run_id);
-
 -- Index for job-level queries
 CREATE INDEX IF NOT EXISTS idx_channel_outbox_job_id ON channel_outbox(job_id);

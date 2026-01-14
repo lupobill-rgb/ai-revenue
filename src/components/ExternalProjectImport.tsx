@@ -30,13 +30,13 @@ export const ExternalProjectImport = ({ onProjectDataExtracted }: ExternalProjec
       return;
     }
 
-    // Validate URL format (supports lovableproject.com and lovable.app, with or without path)
-    const lovableUrlPattern = /^https:\/\/[a-z0-9-]+\.(lovableproject\.com|lovable\.app)(\/.*)?$/i;
-    if (!lovableUrlPattern.test(projectUrl.trim())) {
+    // Validate URL format (HTTPS URL with a hostname)
+    const externalUrlPattern = /^https:\/\/[a-z0-9-]+\.[a-z0-9.-]+(\/.*)?$/i;
+    if (!externalUrlPattern.test(projectUrl.trim())) {
       toast({
         variant: "destructive",
         title: "Invalid URL",
-        description: "Please enter a valid external project URL (e.g., https://project-id.lovable.app)",
+        description: "Please enter a valid external project URL (e.g., https://project-id.example.com)",
       });
       return;
     }
@@ -44,7 +44,7 @@ export const ExternalProjectImport = ({ onProjectDataExtracted }: ExternalProjec
     setExtracting(true);
 
     try {
-      const urlMatch = projectUrl.match(/https:\/\/([a-z0-9-]+)\.(lovableproject\.com|lovable\.app)/i);
+      const urlMatch = projectUrl.match(/https:\/\/([a-z0-9-]+)\.[a-z0-9.-]+/i);
       const projectId = urlMatch ? urlMatch[1] : "External Project";
       
       // Fetch the page to extract title
@@ -104,11 +104,11 @@ export const ExternalProjectImport = ({ onProjectDataExtracted }: ExternalProjec
             id="projectUrl"
             value={projectUrl}
             onChange={(e) => setProjectUrl(e.target.value)}
-            placeholder="https://your-project-id.lovableproject.com"
+            placeholder="https://your-project-id.example.com"
             className="bg-background border-input"
           />
           <p className="text-xs text-muted-foreground">
-            Enter the full URL of your external project (e.g., https://abc123-xyz.lovableproject.com)
+            Enter the full URL of your external project (e.g., https://abc123-xyz.example.com)
           </p>
         </div>
 

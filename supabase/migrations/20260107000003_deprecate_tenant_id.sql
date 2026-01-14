@@ -30,7 +30,6 @@ BEGIN
   
   RAISE NOTICE 'Pre-flight check passed: workspace_id = tenant_id for all rows';
 END $$;
-
 -- ============================================================================
 -- 1. CMO MODULE TABLES
 -- ============================================================================
@@ -38,31 +37,24 @@ END $$;
 -- Drop tenant_id from cmo_brand_profiles
 ALTER TABLE public.cmo_brand_profiles 
   DROP COLUMN IF EXISTS tenant_id CASCADE;
-
 -- Drop tenant_id from cmo_icp_segments
 ALTER TABLE public.cmo_icp_segments 
   DROP COLUMN IF EXISTS tenant_id CASCADE;
-
 -- Drop tenant_id from cmo_offers
 ALTER TABLE public.cmo_offers 
   DROP COLUMN IF EXISTS tenant_id CASCADE;
-
 -- Drop tenant_id from cmo_marketing_plans
 ALTER TABLE public.cmo_marketing_plans 
   DROP COLUMN IF EXISTS tenant_id CASCADE;
-
 -- Drop tenant_id from cmo_funnels
 ALTER TABLE public.cmo_funnels 
   DROP COLUMN IF EXISTS tenant_id CASCADE;
-
 -- Drop tenant_id from cmo_campaigns
 ALTER TABLE public.cmo_campaigns 
   DROP COLUMN IF EXISTS tenant_id CASCADE;
-
 -- Drop tenant_id from cmo_content_assets
 ALTER TABLE public.cmo_content_assets 
   DROP COLUMN IF EXISTS tenant_id CASCADE;
-
 -- Drop tenant_id from cmo_campaign_runs (if exists)
 DO $$
 BEGIN
@@ -70,7 +62,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- ============================================================================
 -- 2. CRO MODULE TABLES
 -- ============================================================================
@@ -82,7 +73,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- Drop tenant_id from cro_forecasts
 DO $$
 BEGIN
@@ -90,7 +80,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- Drop tenant_id from cro_deal_reviews
 DO $$
 BEGIN
@@ -98,7 +87,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- Drop tenant_id from cro_recommendations
 DO $$
 BEGIN
@@ -106,7 +94,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- ============================================================================
 -- 3. INTEGRATION SETTINGS TABLES
 -- ============================================================================
@@ -150,7 +137,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- ai_settings_twilio
 DO $$
 BEGIN
@@ -182,7 +168,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- ai_settings_voice
 DO $$
 BEGIN
@@ -214,7 +199,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- ai_settings_social
 DO $$
 BEGIN
@@ -246,7 +230,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- ============================================================================
 -- 4. VOICE MODULE TABLES
 -- ============================================================================
@@ -282,7 +265,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- voice_phone_numbers
 DO $$
 BEGIN
@@ -314,7 +296,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- voice_call_records
 DO $$
 BEGIN
@@ -346,7 +327,6 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- ============================================================================
 -- 5. CRM MODULE TABLES
 -- ============================================================================
@@ -404,14 +384,12 @@ BEGIN
 EXCEPTION
   WHEN undefined_table THEN NULL;
 END $$;
-
 -- ============================================================================
 -- 6. CHANNEL_OUTBOX (uses both, keep workspace_id)
 -- ============================================================================
 
 ALTER TABLE public.channel_outbox 
   DROP COLUMN IF EXISTS tenant_id CASCADE;
-
 -- ============================================================================
 -- 7. USER_TENANTS TABLE
 -- ============================================================================
@@ -433,7 +411,6 @@ EXCEPTION
   WHEN undefined_table THEN 
     RAISE NOTICE 'user_tenants table does not exist, skipping';
 END $$;
-
 -- ============================================================================
 -- 8. UPDATE HELPER FUNCTION (if it references tenant_id)
 -- ============================================================================
@@ -462,7 +439,6 @@ BEGIN
   RAISE NOTICE 'Note: Some tables (tenants, tenant_rate_limits) keep tenant_id by design';
   RAISE NOTICE '==================================================';
 END $$;
-
 -- ============================================================================
 -- COMPLETE
 -- ============================================================================
@@ -470,5 +446,4 @@ END $$;
 -- Integration settings tables migrated to workspace_id
 -- All RLS policies updated to use workspace_id
 -- Next: Test thoroughly, then update application code to remove tenant_id references
--- ============================================================================
-
+-- ============================================================================;

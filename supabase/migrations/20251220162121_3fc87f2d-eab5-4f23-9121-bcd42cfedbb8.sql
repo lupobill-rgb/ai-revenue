@@ -5,12 +5,10 @@ ADD COLUMN IF NOT EXISTS scheduled_for timestamptz,
 ADD COLUMN IF NOT EXISTS error_code text,
 ADD COLUMN IF NOT EXISTS attempts integer DEFAULT 0,
 ADD COLUMN IF NOT EXISTS created_by uuid;
-
 -- Drop old constraint and add new one with all statuses
 ALTER TABLE public.campaign_runs DROP CONSTRAINT IF EXISTS campaign_runs_status_check;
 ALTER TABLE public.campaign_runs ADD CONSTRAINT campaign_runs_status_check 
   CHECK (status IN ('queued', 'pending', 'running', 'completed', 'failed', 'partial', 'paused'));
-
 -- Create job_queue table
 CREATE TABLE IF NOT EXISTS public.job_queue (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -29,7 +27,6 @@ CREATE TABLE IF NOT EXISTS public.job_queue (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT job_queue_status_check CHECK (status IN ('queued', 'locked', 'running', 'completed', 'failed', 'dead'))
 );
-
 -- Create channel_outbox table
 CREATE TABLE IF NOT EXISTS public.channel_outbox (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -50,7 +47,6 @@ CREATE TABLE IF NOT EXISTS public.channel_outbox (
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT channel_outbox_status_check CHECK (status IN ('queued', 'sent', 'posted', 'called', 'failed'))
 );
-
 -- Create audit_log table for campaign execution events
 CREATE TABLE IF NOT EXISTS public.campaign_audit_log (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -65,7 +61,6 @@ CREATE TABLE IF NOT EXISTS public.campaign_audit_log (
   details jsonb DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_job_queue_status_scheduled ON public.job_queue(status, scheduled_for) WHERE status = 'queued';
 CREATE INDEX IF NOT EXISTS idx_job_queue_run_id ON public.job_queue(run_id);
@@ -73,28 +68,23 @@ CREATE INDEX IF NOT EXISTS idx_channel_outbox_run_id ON public.channel_outbox(ru
 CREATE INDEX IF NOT EXISTS idx_channel_outbox_job_id ON public.channel_outbox(job_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_audit_log_campaign ON public.campaign_audit_log(campaign_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_campaign_audit_log_run ON public.campaign_audit_log(run_id);
-
 -- Enable RLS on all tables
 ALTER TABLE public.job_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.channel_outbox ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.campaign_audit_log ENABLE ROW LEVEL SECURITY;
-
 -- RLS Policies for job_queue
 CREATE POLICY "workspace_access_select" ON public.job_queue FOR SELECT USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "workspace_access_insert" ON public.job_queue FOR INSERT WITH CHECK (user_has_workspace_access(workspace_id));
 CREATE POLICY "workspace_access_update" ON public.job_queue FOR UPDATE USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "workspace_access_delete" ON public.job_queue FOR DELETE USING (user_has_workspace_access(workspace_id));
-
 -- RLS Policies for channel_outbox
 CREATE POLICY "workspace_access_select" ON public.channel_outbox FOR SELECT USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "workspace_access_insert" ON public.channel_outbox FOR INSERT WITH CHECK (user_has_workspace_access(workspace_id));
 CREATE POLICY "workspace_access_update" ON public.channel_outbox FOR UPDATE USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "workspace_access_delete" ON public.channel_outbox FOR DELETE USING (user_has_workspace_access(workspace_id));
-
 -- RLS Policies for campaign_audit_log
 CREATE POLICY "workspace_access_select" ON public.campaign_audit_log FOR SELECT USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "workspace_access_insert" ON public.campaign_audit_log FOR INSERT WITH CHECK (user_has_workspace_access(workspace_id));
-
 -- Update deploy_campaign function to use new pipeline
 CREATE OR REPLACE FUNCTION public.deploy_campaign(p_campaign_id uuid)
 RETURNS jsonb
@@ -213,7 +203,6 @@ BEGIN
   );
 END;
 $$;
-
 -- Function to lock and fetch jobs for processing
 CREATE OR REPLACE FUNCTION public.claim_queued_jobs(p_worker_id text, p_limit integer DEFAULT 10)
 RETURNS SETOF job_queue
@@ -235,7 +224,6 @@ BEGIN
   RETURNING *;
 END;
 $$;
-
 -- Function to complete a job
 CREATE OR REPLACE FUNCTION public.complete_job(p_job_id uuid, p_success boolean, p_error text DEFAULT NULL)
 RETURNS void
@@ -275,7 +263,6 @@ BEGIN
   END IF;
 END;
 $$;
-
 -- Function to retry a failed job
 CREATE OR REPLACE FUNCTION public.retry_job(p_job_id uuid)
 RETURNS boolean

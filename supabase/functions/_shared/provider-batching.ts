@@ -483,13 +483,12 @@ export interface VoiceBatchItem {
 }
 
 /**
- * VAPI doesn't support true batching, so we use concurrent calls
- * with proper rate limiting
+ * ElevenLabs doesn't support true batching, so we use concurrent calls
+ * with proper rate limiting.
  */
 export async function sendVoiceBatchConcurrent(
-  vapiPrivateKey: string,
-  assistantId: string,
-  phoneNumberId: string,
+  elevenLabsApiKey: string,
+  agentId: string,
   items: VoiceBatchItem[],
   concurrency: number = 5
 ): Promise<BulkProviderResponse> {
@@ -503,18 +502,19 @@ export async function sendVoiceBatchConcurrent(
     
     const promises = chunk.map(async (item) => {
       try {
-        const res = await fetch("https://api.vapi.ai/call", {
+        const res = await fetch("https://api.elevenlabs.io/v1/convai/conversations/phone", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${vapiPrivateKey}`,
+            "xi-api-key": elevenLabsApiKey,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            assistantId,
-            phoneNumberId,
-            customer: { 
-              number: item.phoneNumber, 
-              name: item.customerName 
+            agent_id: agentId,
+            to_phone_number: item.phoneNumber,
+            metadata: {
+              customer_name: item.customerName,
+              recipient_id: item.recipientId,
+              outbox_id: item.outboxId,
             },
           }),
         });
@@ -524,13 +524,13 @@ export async function sendVoiceBatchConcurrent(
         if (!res.ok) {
           results.set(item.phoneNumber, {
             success: false,
-            error: data.message || `VAPI error: ${res.status}`,
+            error: data?.detail?.message || data?.message || `ElevenLabs error: ${res.status}`,
           });
           totalFailed++;
         } else {
           results.set(item.phoneNumber, {
             success: true,
-            messageId: data.id,
+            messageId: data.conversation_id || data.id,
             providerResponse: data,
           });
           totalCalled++;

@@ -8,7 +8,6 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useVapiConversation } from "@/hooks/useVapiConversation";
 import { useVoiceDataQualityStatus } from "@/hooks/useVoiceDataQualityStatus";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { DataQualityBanner } from "@/components/DataQualityBadge";
@@ -27,9 +26,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from "recharts";
 import { normalizeError } from "@/lib/normalizeError";
 import { getVoiceBannerType, shouldDisableVoiceActions, type VoiceBannerInput } from "@/lib/voiceBannerLogic";
+import { invokeEdge } from "@/lib/edgeInvoke";
 
 // VAPI removed - using ElevenLabs directly
-const VAPI_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY || "";
 
 interface ElevenLabsAgent {
   agent_id: string;
@@ -524,17 +523,58 @@ const VoiceAgents = () => {
   };
 
   // VAPI conversation hook disabled - using ElevenLabs direct API calls
-  // Keep these as stubs for backward compatibility
+  // Implemented via ElevenLabs phone call API
   const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState<any>("");
   const error = null;
+  const [liveCallPhoneNumber, setLiveCallPhoneNumber] = useState<string>("");
+  const [liveCallContactName, setLiveCallContactName] = useState<string>("");
+
   const startCall = async (assistantId?: string) => {
-    console.log('VAPI startCall disabled - use ElevenLabs direct integration');
-    toast.info('Voice calling via ElevenLabs - use campaign execution instead');
+    if (!assistantId) {
+      toast.error("Please select an agent first");
+      return;
+    }
+    if (!liveCallPhoneNumber.trim()) {
+      toast.error("Please enter a phone number to call");
+      return;
+    }
+
+    setStatus('connecting');
+    try {
+      const { data, error } = await supabase.functions.invoke('elevenlabs-make-call', {
+        body: {
+          agent_id: assistantId,
+          phone_number: liveCallPhoneNumber.trim(),
+          workspace_id: workspaceId,
+          lead_data: {
+            name: liveCallContactName.trim() || undefined,
+          },
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Failed to initiate call");
+
+      setStatus('connected');
+      toast.success(`Call initiated (conversation: ${data.conversation_id})`);
+
+      // This is a provider-initiated phone call; we don't have a live transcript stream here.
+      setTranscript([]);
+      setIsSpeaking(false);
+
+      // Return to idle state after kickoff
+      setTimeout(() => setStatus('disconnected'), 1500);
+    } catch (e: any) {
+      setStatus('disconnected');
+      toast.error(e?.message || "Failed to initiate call");
+    }
   };
   const endCall = () => {
-    console.log('VAPI endCall disabled');
+    // ElevenLabs phone calls cannot be force-terminated from this UI yet.
+    setStatus('disconnected');
+    toast.info("Call control is not supported yet (provider-side call).");
   };
   const setVolume = (vol: number) => {
     console.log('VAPI setVolume disabled');
@@ -581,13 +621,9 @@ const VoiceAgents = () => {
         leadsQuery = leadsQuery.eq('workspace_id', workspaceId);
       }
       
-      const [assistantsRes, phoneNumbersRes, callsRes, analyticsRes, leadsRes, campaignsRes] = await Promise.all([
+      const [assistantsRes, leadsRes, campaignsRes] = await Promise.all([
         // Using ElevenLabs directly instead of VAPI
-        supabase.functions.invoke('elevenlabs-list-agents'),
-        // Keeping phone numbers and calls for now (can be removed later)
-        supabase.functions.invoke('vapi-list-phone-numbers'),
-        supabase.functions.invoke('vapi-list-calls', { body: { limit: 50 } }),
-        supabase.functions.invoke('vapi-analytics'),
+        invokeEdge<any>('elevenlabs-list-agents', { workspace_id: workspaceId }),
         leadsQuery,
         supabase.from('assets').select('id, name, status, goal, content, created_at').eq('type', 'voice').in('status', ['approved', 'review']).order('created_at', { ascending: false }),
       ]);
@@ -602,13 +638,13 @@ const VoiceAgents = () => {
         return code;
       };
 
-      // Check all responses for paywall
-      [assistantsRes, phoneNumbersRes, callsRes, analyticsRes].forEach(checkPaywall);
+      // Check responses for paywall
+      [assistantsRes].forEach(checkPaywall);
 
       // Handle ElevenLabs agents response
-      if (assistantsRes.data?.agents) {
+      if (assistantsRes?.agents) {
         // Convert ElevenLabs agents to assistant format
-        const elevenLabsAgents = assistantsRes.data.agents.map((agent: any) => ({
+        const elevenLabsAgents = assistantsRes.agents.map((agent: any) => ({
           id: agent.id || agent.agent_id, // Support both 'id' and 'agent_id' fields
           name: agent.name || 'Unnamed Agent',
           firstMessage: agent.first_message || '',
@@ -637,26 +673,18 @@ const VoiceAgents = () => {
           // No assistants available, clear selection
           setSelectedAssistantId("");
         }
-      } else if (assistantsRes.data?.assistants) {
+      } else if (assistantsRes?.assistants) {
         // Fallback: Handle old VAPI format if still present
-        setAssistants(assistantsRes.data.assistants);
+        setAssistants(assistantsRes.assistants);
         
-        if (assistantsRes.data.assistants.length > 0 && !selectedAssistantId) {
-          setSelectedAssistantId(assistantsRes.data.assistants[0].id);
+        if (assistantsRes.assistants.length > 0 && !selectedAssistantId) {
+          setSelectedAssistantId(assistantsRes.assistants[0].id);
         }
       }
-      if (phoneNumbersRes.data?.phoneNumbers) {
-        setPhoneNumbers(phoneNumbersRes.data.phoneNumbers);
-        if (phoneNumbersRes.data.phoneNumbers.length > 0 && !bulkPhoneNumberId) {
-          setBulkPhoneNumberId(phoneNumbersRes.data.phoneNumbers[0].id);
-        }
-      }
-      if (callsRes.data?.calls) {
-        setCalls(Array.isArray(callsRes.data.calls) ? callsRes.data.calls : []);
-      }
-      if (analyticsRes.data?.analytics) {
-        setAnalytics(analyticsRes.data.analytics);
-      }
+      // VAPI-specific phone numbers/calls/analytics removed
+      setPhoneNumbers([]);
+      setCalls([]);
+      setAnalytics(null);
       if (leadsRes.data) {
         setLeads(leadsRes.data);
       }
@@ -707,6 +735,14 @@ const VoiceAgents = () => {
     console.log('🚀 Starting auto-provision check for workspace:', workspaceId);
 
     try {
+      // Ensure we have a fresh session before any RLS-protected queries / Edge calls.
+      await supabase.auth.refreshSession();
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session?.access_token) {
+        toast.error("You're not signed in. Please sign in again to create voice agents.");
+        return;
+      }
+
       // Check if workspace has any agents
       const { data: existingAgents, error: checkError } = await supabase
         .from('voice_agents')
@@ -743,20 +779,11 @@ const VoiceAgents = () => {
       
       toast.loading('Creating voice agents...', { id: 'auto-provision' });
 
-      const { data: provisionData, error: provisionError } = await supabase.functions.invoke(
-        'elevenlabs-auto-provision',
-        {
-          body: { workspace_id: workspaceId },
-        }
-      );
+      const provisionData = await invokeEdge<any>('elevenlabs-auto-provision', {
+        workspace_id: workspaceId,
+      });
 
-      console.log('📦 Provision response:', { provisionData, provisionError });
-
-      if (provisionError) {
-        console.error('❌ Auto-provision error:', provisionError);
-        toast.error('Failed to create voice agents. Please try again.', { id: 'auto-provision' });
-        return;
-      }
+      console.log('📦 Provision response:', provisionData);
 
       if (provisionData?.success) {
         const agentCount = provisionData.agents?.length || 0;
@@ -776,7 +803,15 @@ const VoiceAgents = () => {
       }
     } catch (error) {
       console.error('💥 Exception during auto-provision:', error);
-      toast.error(`Setup error: ${error instanceof Error ? error.message : 'Unknown error'}`, { id: 'auto-provision' });
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const lower = msg.toLowerCase();
+      if (lower.includes("auth session invalid") || lower.includes("invalid jwt") || lower.includes("jwt expired")) {
+        // invokeEdge may sign the user out on invalid JWT; keep messaging consistent.
+        toast.error("Session expired or mismatched project. Please sign in again, then retry.", { id: 'auto-provision' });
+        setHasCheckedProvisioning(true); // prevent loop on a bad session
+      } else {
+        toast.error(`Setup error: ${msg}`, { id: 'auto-provision' });
+      }
     } finally {
       setIsAutoProvisioning(false);
       console.log('✓ Auto-provision check complete');
@@ -804,13 +839,7 @@ const VoiceAgents = () => {
   const handleEndCall = () => {
     endCall();
     toast.info("Call ended");
-    // Refresh calls after ending
-    setTimeout(() => {
-      supabase.functions.invoke('vapi-list-calls', { body: { limit: 50 } })
-        .then(res => {
-          if (res.data?.calls) setCalls(res.data.calls);
-        });
-    }, 2000);
+    // No-op: call history is sourced from DB, not provider API
   };
 
   const toggleMute = () => {
@@ -826,24 +855,12 @@ const VoiceAgents = () => {
 
     setIsCreating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('vapi-manage-assistant', {
-        body: {
-          action: 'create',
-          assistantData: {
-            name: newAssistant.name,
-            firstMessage: newAssistant.firstMessage,
-            model: {
-              model: newAssistant.model,
-              messages: [{ role: "system", content: newAssistant.systemPrompt }],
-            },
-            voice: { voiceId: newAssistant.voice },
-          },
-        },
+      const data = await invokeEdge<any>('elevenlabs-create-agent', {
+        name: newAssistant.name,
+        workspace_id: workspaceId,
+        use_case: "sales_outreach",
       });
-
-      if (error || data?.error) {
-        throw new Error(data?.error || error?.message);
-      }
+      if (data?.error) throw new Error(data.error);
 
       toast.success("Assistant created successfully");
       setShowCreateDialog(false);
@@ -864,96 +881,16 @@ const VoiceAgents = () => {
   };
 
   const handleDeleteAssistant = async (assistantId: string) => {
-    if (!confirm("Are you sure you want to delete this assistant?")) return;
-
-    try {
-      const { data, error } = await supabase.functions.invoke('vapi-manage-assistant', {
-        body: { action: 'delete', assistantId },
-      });
-
-      if (error || data?.error) {
-        throw new Error(data?.error || error?.message);
-      }
-
-      toast.success("Assistant deleted");
-      fetchAllData();
-    } catch (error) {
-      console.error('Error deleting assistant:', error);
-      toast.error('Failed to delete assistant');
-    }
+    toast.error("Deleting ElevenLabs agents in-app is not supported yet.");
   };
 
   const handleEditAssistant = async (assistant: VapiAssistant) => {
-    try {
-      // Fetch full assistant details including system prompt
-      const { data, error } = await supabase.functions.invoke('vapi-manage-assistant', {
-        body: { action: 'get', assistantId: assistant.id },
-      });
-
-      if (error || data?.error) {
-        throw new Error(data?.error || error?.message);
-      }
-
-      const fullAssistant = data.data;
-      setEditingAssistant({
-        id: assistant.id,
-        name: fullAssistant.name || assistant.name,
-        firstMessage: fullAssistant.firstMessage || '',
-        systemPrompt: fullAssistant.model?.messages?.[0]?.content || '',
-        model: fullAssistant.model?.model || 'gpt-4o',
-        voice: fullAssistant.voice?.voiceId || fullAssistant.voice?.voice || 'alloy',
-      });
-      setShowEditDialog(true);
-    } catch (error) {
-      console.error('Error fetching assistant details:', error);
-      // Fallback to basic info if fetch fails
-      setEditingAssistant({
-        id: assistant.id,
-        name: assistant.name,
-        firstMessage: assistant.firstMessage || '',
-        systemPrompt: '',
-        model: assistant.model || 'gpt-4o',
-        voice: assistant.voice || 'alloy',
-      });
-      setShowEditDialog(true);
-    }
+    toast.error("Editing ElevenLabs agents in-app is not supported yet.");
   };
 
   const handleUpdateAssistant = async () => {
     if (!editingAssistant) return;
-
-    setIsUpdating(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('vapi-manage-assistant', {
-        body: {
-          action: 'update',
-          assistantId: editingAssistant.id,
-          assistantData: {
-            name: editingAssistant.name,
-            firstMessage: editingAssistant.firstMessage,
-            model: {
-              model: editingAssistant.model,
-              messages: [{ role: "system", content: editingAssistant.systemPrompt }],
-            },
-            voice: { voiceId: editingAssistant.voice },
-          },
-        },
-      });
-
-      if (error || data?.error) {
-        throw new Error(data?.error || error?.message);
-      }
-
-      toast.success("Assistant updated successfully");
-      setShowEditDialog(false);
-      setEditingAssistant(null);
-      fetchAllData();
-    } catch (error) {
-      console.error('Error updating assistant:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to update assistant');
-    } finally {
-      setIsUpdating(false);
-    }
+    toast.error("Updating ElevenLabs agents in-app is not supported yet.");
   };
 
   const getStatusColor = () => {
@@ -1030,12 +967,16 @@ const VoiceAgents = () => {
       });
 
       try {
-        const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {
+        const { data, error } = await supabase.functions.invoke('elevenlabs-make-call', {
           body: {
-            assistantId: bulkAssistantId,
-            phoneNumberId: bulkPhoneNumberId,
-            customerNumber: lead.phone,
-            customerName: `${lead.first_name} ${lead.last_name}`,
+            agent_id: bulkAssistantId,
+            phone_number: lead.phone,
+            workspace_id: workspaceId,
+            lead_data: {
+              id: lead.id,
+              name: `${lead.first_name} ${lead.last_name}`,
+              company: lead.company,
+            },
           },
         });
 
@@ -1068,12 +1009,7 @@ const VoiceAgents = () => {
     toast.success(`Bulk calling completed. ${selectedLeads.length} calls initiated.`);
     
     // Refresh call history
-    setTimeout(() => {
-      supabase.functions.invoke('vapi-list-calls', { body: { limit: 50 } })
-        .then(res => {
-          if (res.data?.calls) setCalls(res.data.calls);
-        });
-    }, 3000);
+    // No-op: call history is sourced from DB, not provider API
   };
 
   const handleExecuteCampaign = async (campaign: VoiceCampaign) => {
@@ -1405,6 +1341,28 @@ const VoiceAgents = () => {
                       )}
                     </div>
 
+                    <div className="space-y-3">
+                      <Label>Phone number to call</Label>
+                      <Input
+                        value={liveCallPhoneNumber}
+                        onChange={(e) => setLiveCallPhoneNumber(e.target.value)}
+                        placeholder="+1 555 123 4567"
+                        disabled={status === 'connecting'}
+                      />
+                      <div className="space-y-2">
+                        <Label>Contact name (optional)</Label>
+                        <Input
+                          value={liveCallContactName}
+                          onChange={(e) => setLiveCallContactName(e.target.value)}
+                          placeholder="Jane Doe"
+                          disabled={status === 'connecting'}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        This starts an outbound phone call via ElevenLabs using the selected agent.
+                      </p>
+                    </div>
+
                     <div className="flex justify-center">
                       <div className={`relative w-32 h-32 rounded-full flex items-center justify-center transition-all ${
                         status === 'connected' ? isSpeaking ? 'bg-primary/20 animate-pulse' : 'bg-primary/10' : 'bg-muted'
@@ -1425,7 +1383,7 @@ const VoiceAgents = () => {
 
                     <div className="flex justify-center gap-3">
                       {status !== 'connected' ? (
-                        <Button size="lg" onClick={handleStartCall} disabled={status === 'connecting' || !selectedAssistantId}>
+                        <Button size="lg" onClick={handleStartCall} disabled={status === 'connecting' || !selectedAssistantId || !liveCallPhoneNumber.trim()}>
                           {status === 'connecting' ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Phone className="h-5 w-5 mr-2" />}
                           Start Call
                         </Button>

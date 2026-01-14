@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS public.industry_verticals (
   aliases text[] DEFAULT '{}'::text[],
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Populate with standard verticals
 INSERT INTO public.industry_verticals (name, aliases) VALUES
   ('Accounting & Finance', ARRAY['accounting', 'finance', 'financial']),
@@ -42,15 +41,12 @@ INSERT INTO public.industry_verticals (name, aliases) VALUES
   ('Travel & Leisure', ARRAY['travel', 'leisure', 'vacation']),
   ('Other', ARRAY[]::text[])
 ON CONFLICT (name) DO NOTHING;
-
 -- RLS for industry_verticals (public read)
 ALTER TABLE public.industry_verticals ENABLE ROW LEVEL SECURITY;
-
 CREATE POLICY "Anyone can read verticals"
   ON public.industry_verticals
   FOR SELECT
   USING (true);
-
 -- Update create_default_tenant_and_workspace to add admin role and default segments
 CREATE OR REPLACE FUNCTION public.create_default_tenant_and_workspace()
 RETURNS TRIGGER

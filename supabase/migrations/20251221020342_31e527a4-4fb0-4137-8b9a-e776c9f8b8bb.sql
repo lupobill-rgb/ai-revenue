@@ -55,15 +55,12 @@ BEGIN
   RETURNING jq.*;
 END;
 $$;
-
 -- Grant execute to service role
 GRANT EXECUTE ON FUNCTION public.claim_queued_jobs(text, integer) TO service_role;
-
 -- Add index for efficient job claiming
 CREATE INDEX IF NOT EXISTS idx_job_queue_claim 
 ON job_queue (status, scheduled_for, tenant_id) 
 WHERE status = 'queued';
-
 -- Add comment for documentation
 COMMENT ON FUNCTION public.claim_queued_jobs IS 
 'Atomically claims queued jobs for a worker using FOR UPDATE SKIP LOCKED. 

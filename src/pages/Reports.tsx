@@ -147,19 +147,41 @@ const Reports = () => {
         return;
       }
 
-      const { data: impressionsDataArr } = await supabase
+      // Using any because views aren't in generated types (and we want access to both data + error)
+      const impressionsRes: any = await supabase
         .from('v_impressions_clicks_by_workspace' as any)
         .select('*')
         .eq('workspace_id', workspaceId)
-        .limit(1) as { data: any[] };
+        .limit(1);
+      const impressionsDataArr: any[] | null = impressionsRes.data ?? null;
+      const impressionsError: any = impressionsRes.error ?? null;
+
+      // Local/staging may not have KPI views installed yet; treat 404 as "no metrics available"
+      if (impressionsError) {
+        const status = (impressionsError as any).status;
+        const msg = String((impressionsError as any).message || "");
+        if (!(status === 404 || msg.includes("Could not find the table"))) {
+          throw impressionsError;
+        }
+      }
 
       const impressionsData = impressionsDataArr?.[0];
 
-      const { data: revenueDataArr } = await supabase
+      const revenueRes: any = await supabase
         .from('v_revenue_by_workspace' as any)
         .select('*')
         .eq('workspace_id', workspaceId)
-        .limit(1) as { data: any[] };
+        .limit(1);
+      const revenueDataArr: any[] | null = revenueRes.data ?? null;
+      const revenueError: any = revenueRes.error ?? null;
+
+      if (revenueError) {
+        const status = (revenueError as any).status;
+        const msg = String((revenueError as any).message || "");
+        if (!(status === 404 || msg.includes("Could not find the table"))) {
+          throw revenueError;
+        }
+      }
 
       const revenueData = revenueDataArr?.[0];
 

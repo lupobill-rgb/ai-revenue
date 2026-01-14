@@ -190,7 +190,9 @@ export function AutopilotCampaignWizard({ onComplete }: AutopilotCampaignWizardP
         workspaceId,
       });
 
-      const data = await buildAutopilotCampaign({
+      const timeoutMs = 120_000;
+      const data = await Promise.race([
+        buildAutopilotCampaign({
         icp,
         offer,
         channels: selectedChannels,
@@ -198,7 +200,11 @@ export function AutopilotCampaignWizard({ onComplete }: AutopilotCampaignWizardP
         workspaceId,
         targetTags: enableTagTargeting && selectedTags.length > 0 ? selectedTags : undefined,
         targetSegments: enableSegmentTargeting && selectedSegments.length > 0 ? selectedSegments : undefined,
-      });
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Autopilot build timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs)
+        ),
+      ]) as any;
       setResult(data);
       
       // Invalidate campaigns query for automatic refresh
@@ -300,14 +306,13 @@ export function AutopilotCampaignWizard({ onComplete }: AutopilotCampaignWizardP
             <Label>Which channels can we use?</Label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {CHANNEL_OPTIONS.map((channel) => (
-                <div
+                <label
                   key={channel.id}
                   className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                     selectedChannels.includes(channel.id)
                       ? 'border-primary bg-primary/10'
                       : 'border-border hover:border-primary/50'
                   }`}
-                  onClick={() => handleChannelToggle(channel.id)}
                 >
                   <Checkbox
                     checked={selectedChannels.includes(channel.id)}
@@ -315,7 +320,7 @@ export function AutopilotCampaignWizard({ onComplete }: AutopilotCampaignWizardP
                   />
                   <channel.icon className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm">{channel.label}</span>
-                </div>
+                </label>
               ))}
             </div>
           </fieldset>

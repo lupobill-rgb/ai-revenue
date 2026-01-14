@@ -3,7 +3,6 @@ DROP POLICY IF EXISTS "Sales can create activities" ON public.lead_activities;
 DROP POLICY IF EXISTS "Sales can delete activities" ON public.lead_activities;
 DROP POLICY IF EXISTS "Sales can update activities" ON public.lead_activities;
 DROP POLICY IF EXISTS "Sales team can view activities" ON public.lead_activities;
-
 -- Create new policies combining workspace access AND role checks
 CREATE POLICY "Sales team can view workspace activities"
 ON public.lead_activities
@@ -15,7 +14,6 @@ USING (
     has_role(auth.uid(), 'sales')
   )
 );
-
 CREATE POLICY "Sales team can create workspace activities"
 ON public.lead_activities
 FOR INSERT
@@ -26,7 +24,6 @@ WITH CHECK (
     has_role(auth.uid(), 'sales')
   )
 );
-
 CREATE POLICY "Sales team can update workspace activities"
 ON public.lead_activities
 FOR UPDATE
@@ -37,7 +34,6 @@ USING (
     has_role(auth.uid(), 'sales')
   )
 );
-
 CREATE POLICY "Sales team can delete workspace activities"
 ON public.lead_activities
 FOR DELETE

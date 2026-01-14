@@ -145,7 +145,8 @@ export function useCRMSourceOfTruth(): CRMSourceOfTruth {
 
   useEffect(() => {
     fetchCRMTruth();
-  }, [fetchCRMTruth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]); // Only re-fetch when workspaceId changes
 
   return { ...state, refresh: fetchCRMTruth };
 }

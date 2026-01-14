@@ -29,13 +29,13 @@ export const BulkImportDialog = ({ open, onOpenChange, onComplete }: BulkImportD
 
   const validateUrl = (url: string): boolean => {
     const trimmed = url.trim().replace(/\/+$/, ''); // Remove trailing slashes
-    const lovableUrlPattern = /^https?:\/\/[a-z0-9-]+\.(lovableproject\.com|lovable\.app)(\/.*)?$/i;
-    return lovableUrlPattern.test(trimmed);
+    const externalUrlPattern = /^https?:\/\/[a-z0-9-]+\.[a-z0-9.-]+(\/.*)?$/i;
+    return externalUrlPattern.test(trimmed);
   };
 
   const importSingleUrl = async (url: string): Promise<ImportResult> => {
     try {
-      const urlMatch = url.match(/https:\/\/([a-z0-9-]+)\.(lovableproject\.com|lovable\.app)/i);
+      const urlMatch = url.match(/https:\/\/([a-z0-9-]+)\.[a-z0-9.-]+/i);
       const projectId = urlMatch ? urlMatch[1] : "Imported Project";
 
       const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -157,7 +157,7 @@ export const BulkImportDialog = ({ open, onOpenChange, onComplete }: BulkImportD
             <Label htmlFor="urls">External Project URLs</Label>
             <Textarea
               id="urls"
-              placeholder="https://project-1.lovable.app&#10;https://project-2.lovable.app&#10;https://project-3.lovable.app"
+              placeholder="https://project-1.example.com&#10;https://project-2.example.com&#10;https://project-3.example.com"
               value={urlText}
               onChange={(e) => setUrlText(e.target.value)}
               rows={8}

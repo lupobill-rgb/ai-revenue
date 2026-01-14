@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdge } from "@/lib/edgeInvoke";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -290,32 +291,19 @@ const CRM = () => {
 
   // No longer needed - filtering is server-side
 
-  const fetchVapiData = async () => {
+  const fetchVoiceAgentData = async () => {
     setIsLoadingVapi(true);
     try {
-      // Fetch assistants and phone numbers in parallel
-      const [assistantsRes, phoneNumbersRes] = await Promise.all([
-        supabase.functions.invoke('vapi-list-assistants'),
-        supabase.functions.invoke('vapi-list-phone-numbers'),
-      ]);
+      // Fetch ElevenLabs agents
+      const agentsRes = await invokeEdge<any>('elevenlabs-list-agents', { workspace_id: workspaceId });
+      const agents = agentsRes?.agents || [];
+      setVapiAssistants(agents.map((a: any) => ({ id: a.id || a.agent_id, name: a.name || 'Unnamed Agent' })));
 
-      if (assistantsRes.data?.assistants) {
-        setVapiAssistants(assistantsRes.data.assistants);
-        // Auto-select first assistant if available
-        if (assistantsRes.data.assistants.length > 0 && !selectedAssistantId) {
-          setSelectedAssistantId(assistantsRes.data.assistants[0].id);
-        }
-      }
-
-      if (phoneNumbersRes.data?.phoneNumbers) {
-        setVapiPhoneNumbers(phoneNumbersRes.data.phoneNumbers);
-        // Auto-select first phone number if available
-        if (phoneNumbersRes.data.phoneNumbers.length > 0 && !selectedPhoneNumberId) {
-          setSelectedPhoneNumberId(phoneNumbersRes.data.phoneNumbers[0].id);
-        }
+      if (agents.length > 0 && !selectedAssistantId) {
+        setSelectedAssistantId(agents[0].id || agents[0].agent_id);
       }
     } catch (error) {
-      console.error('Error fetching Vapi data:', error);
+      console.error('Error fetching voice agent data:', error);
       sonnerToast.error('Failed to load voice agents');
     } finally {
       setIsLoadingVapi(false);
@@ -329,7 +317,7 @@ const CRM = () => {
     }
     setSelectedLead(lead);
     setShowCallDialog(true);
-    fetchVapiData();
+    fetchVoiceAgentData();
   };
 
   const initiateOutboundCall = async () => {
@@ -345,13 +333,16 @@ const CRM = () => {
 
     setIsCalling(true);
     try {
-      const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {
+      const { data, error } = await supabase.functions.invoke('elevenlabs-make-call', {
         body: {
-          assistantId: selectedAssistantId,
-          phoneNumberId: selectedPhoneNumberId || undefined,
-          customerNumber: selectedLead.phone,
-          customerName: `${selectedLead.first_name} ${selectedLead.last_name}`,
-          leadId: selectedLead.id,
+          agent_id: selectedAssistantId,
+          phone_number: selectedLead.phone,
+          workspace_id: workspaceId,
+          lead_data: {
+            id: selectedLead.id,
+            name: `${selectedLead.first_name} ${selectedLead.last_name}`,
+            company: selectedLead.company,
+          },
         },
       });
 

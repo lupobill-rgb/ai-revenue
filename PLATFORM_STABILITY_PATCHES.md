@@ -282,7 +282,7 @@ if (!OPENAI_API_KEY) {
 **BEFORE:**
 ```typescript
 // Call Lovable AI
-const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+const aiResponse = await fetch('<legacy-ai-gateway>/v1/chat/completions', {
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${LOVABLE_API_KEY}`,
@@ -322,7 +322,7 @@ const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
 **Key Changes:**
 - ❌ Removed: `LOVABLE_API_KEY` env var
 - ✅ Added: `OPENAI_API_KEY` with validation
-- ❌ Changed: `https://ai.gateway.lovable.dev` → `https://api.openai.com`
+- ❌ Changed: legacy AI gateway → `https://api.openai.com`
 - ❌ Changed: `google/gemini-2.5-flash` → `gpt-4o-mini`
 - ✅ Kept: Same prompt structure, temperature, response parsing
 

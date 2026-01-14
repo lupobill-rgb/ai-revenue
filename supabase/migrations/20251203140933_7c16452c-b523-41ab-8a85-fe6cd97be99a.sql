@@ -1,11 +1,9 @@
 -- Add window_type column if not exists
 ALTER TABLE public.rate_limit_counters 
 ADD COLUMN IF NOT EXISTS window_type text;
-
 -- Create index for GC performance
 CREATE INDEX IF NOT EXISTS idx_rate_limit_window_type_start
   ON public.rate_limit_counters (window_type, window_start);
-
 -- Rate limit GC function
 CREATE OR REPLACE FUNCTION public.gc_rate_limit_counters()
 RETURNS void

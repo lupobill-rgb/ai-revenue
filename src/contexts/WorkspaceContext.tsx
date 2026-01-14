@@ -55,12 +55,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // Fetch integration status from gated view
   const fetchIntegrationStatus = useCallback(async (wsId: string) => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("v_impressions_clicks_by_workspace")
         .select("demo_mode, stripe_connected, analytics_connected, data_quality_status")
         .eq("workspace_id", wsId)
-        .single();
+        .maybeSingle();
       
+      // maybeSingle() returns null without throwing 406 when no row yet.
+      if (error) {
+        console.error("Failed to fetch integration status:", error);
+        return;
+      }
+
       if (data) {
         setDemoMode(data.demo_mode ?? false);
         setStripeConnected(data.stripe_connected ?? false);

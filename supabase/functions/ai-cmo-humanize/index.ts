@@ -4,6 +4,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,14 +34,15 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      console.error('LOVABLE_API_KEY not configured');
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      console.error("OPENAI_API_KEY not configured");
       return new Response(
         JSON.stringify({ text }), // Return original on config error
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
 
     const toneInstructions = {
       conversational: 'Use a natural, conversational tone like you are talking to a friend.',
@@ -70,22 +72,18 @@ Rules:
 - Do not add new facts or claims
 - Output ONLY the rewritten text, nothing else`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+    const response = await openaiChatCompletionsRaw(
+      {
+        model,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: text }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: text },
         ],
         temperature: 0.7,
         max_tokens: Math.max(500, text.length * 2),
-      }),
-    });
+      },
+      OPENAI_API_KEY,
+    );
 
     if (!response.ok) {
       const errorText = await response.text();

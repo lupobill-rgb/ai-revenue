@@ -2,16 +2,109 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
+export const SUPABASE_ANON_KEY =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "") as string;
+
+function base64UrlDecode(input: string) {
+  const pad = "=".repeat((4 - (input.length % 4)) % 4);
+  const b64 = (input + pad).replace(/-/g, "+").replace(/_/g, "/");
+  return atob(b64);
+}
+
+function decodeJwtPayload(jwt: string): any | null {
+  try {
+    const part = jwt.split(".")[1];
+    if (!part) return null;
+    const json = base64UrlDecode(part);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function inferProjectRefFromUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    // https://<ref>.supabase.co
+    const host = u.hostname || "";
+    const ref = host.split(".")[0];
+    return ref || null;
+  } catch {
+    return null;
+  }
+}
+
+const inferredRef = SUPABASE_URL ? inferProjectRefFromUrl(SUPABASE_URL) : null;
+const anonPayload = SUPABASE_ANON_KEY ? decodeJwtPayload(SUPABASE_ANON_KEY) : null;
+const anonRef = typeof anonPayload?.ref === "string" ? anonPayload.ref : null;
+
+export const supabaseEnvError: string | null =
+  !SUPABASE_URL
+    ? "Missing VITE_SUPABASE_URL"
+    : !SUPABASE_ANON_KEY
+      ? "Missing VITE_SUPABASE_ANON_KEY"
+      : !inferredRef
+        ? "Invalid VITE_SUPABASE_URL (could not infer project ref)"
+        : !anonRef
+          ? "Invalid VITE_SUPABASE_ANON_KEY (could not decode ref)"
+          : anonRef !== inferredRef
+            ? `Supabase project mismatch: URL ref=${inferredRef} but ANON_KEY ref=${anonRef}`
+            : null;
+
+export const isSupabaseConfigured = !supabaseEnvError;
+
+// Some environments block Web Storage. Fall back to in-memory storage so auth can still hold a session.
+const memoryStorage = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => (key in store ? store[key] : null),
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+  };
+})();
+
+function canUseLocalStorage(): boolean {
+  try {
+    const k = "__sb_ls_test__";
+    window.localStorage.setItem(k, "1");
+    window.localStorage.removeItem(k);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    storage: localStorage,
-    persistSession: true,
-    autoRefreshToken: true,
-  }
-});
+function createSupabaseStub(): any {
+  const err = new Error(
+    `[supabase] Not configured. ${supabaseEnvError}. ` +
+      `Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env (Vite requires restart after changes).`
+  );
+  return new Proxy(
+    {},
+    {
+      get() {
+        throw err;
+      },
+    }
+  );
+}
+
+export const supabase = isSupabaseConfigured
+  ? createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        storage: localStorage,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: "pkce",
+      },
+    })
+  : (createSupabaseStub() as any);

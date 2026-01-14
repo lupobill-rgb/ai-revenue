@@ -11,10 +11,8 @@ CREATE TABLE public.voice_agents (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Enable RLS
 ALTER TABLE public.voice_agents ENABLE ROW LEVEL SECURITY;
-
 -- Tenant isolation policy (matches existing pattern)
 CREATE POLICY "tenant_isolation" ON public.voice_agents
   FOR ALL
@@ -22,7 +20,6 @@ CREATE POLICY "tenant_isolation" ON public.voice_agents
     (tenant_id = auth.uid()) OR 
     (tenant_id IN (SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid()))
   );
-
 -- Add updated_at trigger
 CREATE TRIGGER update_voice_agents_updated_at
   BEFORE UPDATE ON public.voice_agents

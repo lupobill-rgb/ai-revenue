@@ -52,7 +52,6 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 -- Add is_default column to workspaces if not exists
 DO $$
 BEGIN
@@ -65,7 +64,6 @@ BEGIN
     ALTER TABLE public.workspaces ADD COLUMN is_default boolean DEFAULT false;
   END IF;
 END $$;
-
 -- Add last_used_workspace_id to user profile tracking (using existing user_tenants table)
 DO $$
 BEGIN
@@ -78,7 +76,6 @@ BEGIN
     ALTER TABLE public.user_tenants ADD COLUMN last_used_workspace_id uuid REFERENCES workspaces(id);
   END IF;
 END $$;
-
 -- Create function to get user's default or last used workspace
 CREATE OR REPLACE FUNCTION public.get_user_workspace(p_user_id uuid)
 RETURNS TABLE(workspace_id uuid, workspace_name text, is_owner boolean)
@@ -118,7 +115,6 @@ BEGIN
   LIMIT 1;
 END;
 $$;
-
 -- Create function to update last used workspace
 CREATE OR REPLACE FUNCTION public.set_last_used_workspace(p_user_id uuid, p_workspace_id uuid)
 RETURNS void
@@ -132,7 +128,6 @@ BEGIN
   WHERE user_id = p_user_id;
 END;
 $$;
-
 -- Backfill: Add missing workspace_members entries for workspace owners
 INSERT INTO workspace_members (workspace_id, user_id, role)
 SELECT w.id, w.owner_id, 'owner'

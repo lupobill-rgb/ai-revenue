@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getOpenAIChatCompletion } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,7 +22,7 @@ serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get('Authorization');
+    const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
         status: 401,
@@ -29,28 +30,31 @@ serve(async (req) => {
       });
     }
 
+    // Normalize "Bearer <jwt>" to "<jwt>" for auth verification, then re-add Bearer when passing through.
+    const jwt = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7) : authHeader;
+
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     
-    if (!GEMINI_API_KEY) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY is not configured' }), {
+    if (!OPENAI_API_KEY) {
+      return new Response(JSON.stringify({ error: 'OPENAI_API_KEY is not configured' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
     
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } }
+      global: { headers: { Authorization: `Bearer ${jwt}` } }
     });
 
     // Service role client for creating automation triggers
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      return new Response(JSON.stringify({ error: userError?.message || 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -236,33 +240,22 @@ Generate the following assets in JSON format:
 
 Only include asset types for the channels specified, EXCEPT landing_pages which must ALWAYS be included. Make content compelling and conversion-focused.`;
 
-    // Call Gemini
-    console.log('[campaign-builder] Calling Gemini API');
-    
-    const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }
+    // Call OpenAI (Gemini was returning 404s in this environment)
+    console.log('[campaign-builder] Calling OpenAI API');
+
+    const aiResponse = await getOpenAIChatCompletion(
+      {
+        model: "gpt-4o-mini",
+        temperature: 0.7,
+        max_tokens: 4096,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
         ],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 4096,
-        }
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('AI API error:', errorText);
-      throw new Error(`AI generation failed: ${aiResponse.status}`);
-    }
-
-    const aiData = await aiResponse.json();
-    const generatedContent = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
+      },
+      OPENAI_API_KEY,
+    );
+    const generatedContent = aiResponse.choices?.[0]?.message?.content;
 
     if (!generatedContent) {
       throw new Error('No content generated from AI');
@@ -280,8 +273,8 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
       throw new Error('Failed to parse generated campaign content');
     }
 
-    // Create the campaign in the database
-    const { data: campaign, error: campaignError } = await supabase
+    // Create the campaign in the database (service role to bypass RLS)
+    const { data: campaign, error: campaignError } = await supabaseAdmin
       .from('cmo_campaigns')
       .insert({
         tenant_id,
@@ -299,7 +292,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
 
     if (campaignError) {
       console.error('Failed to create campaign:', campaignError);
-      throw new Error('Failed to create campaign record');
+      throw new Error(`Failed to create campaign record: ${campaignError.message}`);
     }
 
     // Store content assets
@@ -309,7 +302,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Store posts
     if (assets.posts?.length) {
       for (const post of assets.posts) {
-        const { data: asset } = await supabase
+        const { data: asset } = await supabaseAdmin
           .from('cmo_content_assets')
           .insert({
             tenant_id,
@@ -331,7 +324,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Store emails
     if (assets.emails?.length) {
       for (const email of assets.emails) {
-        const { data: asset } = await supabase
+        const { data: asset } = await supabaseAdmin
           .from('cmo_content_assets')
           .insert({
             tenant_id,
@@ -352,7 +345,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Store voice scripts
     if (assets.voice_scripts?.length) {
       for (const script of assets.voice_scripts) {
-        const { data: asset } = await supabase
+        const { data: asset } = await supabaseAdmin
           .from('cmo_content_assets')
           .insert({
             tenant_id,
@@ -374,7 +367,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Store SMS messages
     if (assets.sms?.length) {
       for (const sms of assets.sms) {
-        const { data: asset } = await supabase
+        const { data: asset } = await supabaseAdmin
           .from('cmo_content_assets')
           .insert({
             tenant_id,
@@ -400,7 +393,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
         const publishedUrl = `https://pages.ubigrowth.ai/${tenant_id.slice(0, 8)}/${urlSlug}`;
         
         // Store full landing page structure in cmo_content_assets
-        const { data: asset } = await supabase
+        const { data: asset } = await supabaseAdmin
           .from('cmo_content_assets')
           .insert({
             tenant_id,
@@ -419,7 +412,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
 
         if (asset) {
           // Store full landing page data in variant for richer structure
-          const { data: variant } = await supabase
+          const { data: variant } = await supabaseAdmin
             .from('cmo_content_variants')
             .insert({
               asset_id: asset.id,
@@ -457,7 +450,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
             .single();
 
           // Create automation trigger for form submission
-          await supabase
+          await supabaseAdmin
             .from('automation_steps')
             .insert({
               tenant_id,
@@ -488,7 +481,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Store automation flow steps
     if (assets.automation_steps?.length) {
       for (const step of assets.automation_steps) {
-        await supabase
+        await supabaseAdmin
           .from('automation_steps')
           .insert({
             tenant_id,
@@ -505,7 +498,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     }
 
     // Log agent run
-    await supabase
+    await supabaseAdmin
       .from('agent_runs')
       .insert({
         tenant_id,

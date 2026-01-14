@@ -19,27 +19,20 @@ CREATE TABLE IF NOT EXISTS public.worker_tick_metrics (
   error_message text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Index for querying recent metrics
 CREATE INDEX IF NOT EXISTS idx_worker_tick_metrics_created 
 ON worker_tick_metrics(created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_worker_tick_metrics_worker
 ON worker_tick_metrics(worker_id, created_at DESC);
-
 -- Enable RLS (platform admins only)
 ALTER TABLE public.worker_tick_metrics ENABLE ROW LEVEL SECURITY;
-
 CREATE POLICY "platform_admins_only_select" ON public.worker_tick_metrics
 FOR SELECT USING (is_platform_admin());
-
 CREATE POLICY "platform_admins_only_insert" ON public.worker_tick_metrics
 FOR INSERT WITH CHECK (is_platform_admin());
-
 -- Allow service role full access for edge functions
 CREATE POLICY "service_role_all" ON public.worker_tick_metrics
 FOR ALL USING (auth.role() = 'service_role');
-
 -- Enhanced claim_queued_jobs with per-tenant fairness
 -- Returns jobs distributed across tenants for fairness
 CREATE OR REPLACE FUNCTION public.claim_queued_jobs(
@@ -107,7 +100,6 @@ EXCEPTION
     RAISE;
 END;
 $$;
-
 -- Function to record worker tick metrics
 CREATE OR REPLACE FUNCTION public.record_worker_tick(
   p_worker_id text,
@@ -167,7 +159,6 @@ BEGIN
   RETURN v_tick_id;
 END;
 $$;
-
 -- View for worker health summary (last 5 minutes)
 CREATE OR REPLACE VIEW public.worker_health_summary AS
 SELECT 
@@ -186,7 +177,6 @@ SELECT
 FROM worker_tick_metrics
 WHERE created_at > now() - interval '5 minutes'
 GROUP BY worker_id;
-
 -- Grant execute permissions
 GRANT EXECUTE ON FUNCTION public.claim_queued_jobs(text, integer) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.record_worker_tick(text, timestamptz, integer, integer, integer, integer, integer, integer, jsonb, integer, text) TO service_role;

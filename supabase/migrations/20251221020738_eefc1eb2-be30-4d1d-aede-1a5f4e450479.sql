@@ -52,7 +52,6 @@ BEGIN
   RAISE LOG 'run_job_queue_parallel: spawned 4 workers';
 END;
 $$;
-
 COMMENT ON FUNCTION public.run_job_queue_parallel IS 
 'Spawns 4 parallel job queue workers for horizontal scaling.
 HS1: Throughput ~3-4x vs 1 worker (4 concurrent workers)

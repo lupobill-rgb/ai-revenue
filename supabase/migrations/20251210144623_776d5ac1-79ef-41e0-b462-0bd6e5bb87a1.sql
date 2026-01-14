@@ -1,7 +1,6 @@
 -- Add tenant_id column to team_invitations
 ALTER TABLE public.team_invitations 
 ADD COLUMN IF NOT EXISTS tenant_id UUID;
-
 -- Create function to process invitation acceptance
 CREATE OR REPLACE FUNCTION public.accept_team_invitation(_user_id UUID, _email TEXT)
 RETURNS JSONB
@@ -49,16 +48,13 @@ BEGIN
   );
 END;
 $$;
-
 -- Grant execute permission
 GRANT EXECUTE ON FUNCTION public.accept_team_invitation(UUID, TEXT) TO authenticated;
-
 -- Update RLS policy for team_invitations to allow tenant-based access
 DROP POLICY IF EXISTS "Users can view their tenant invitations" ON public.team_invitations;
 DROP POLICY IF EXISTS "Users can create tenant invitations" ON public.team_invitations;
 DROP POLICY IF EXISTS "Users can update tenant invitations" ON public.team_invitations;
 DROP POLICY IF EXISTS "Users can delete tenant invitations" ON public.team_invitations;
-
 CREATE POLICY "Users can view their tenant invitations" 
 ON public.team_invitations 
 FOR SELECT 
@@ -67,12 +63,10 @@ USING (
   OR tenant_id = auth.uid()
   OR tenant_id IN (SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid())
 );
-
 CREATE POLICY "Users can create tenant invitations" 
 ON public.team_invitations 
 FOR INSERT 
 WITH CHECK (invited_by = auth.uid());
-
 CREATE POLICY "Users can update tenant invitations" 
 ON public.team_invitations 
 FOR UPDATE 
@@ -81,7 +75,6 @@ USING (
   OR tenant_id = auth.uid()
   OR tenant_id IN (SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid())
 );
-
 CREATE POLICY "Users can delete tenant invitations" 
 ON public.team_invitations 
 FOR DELETE 

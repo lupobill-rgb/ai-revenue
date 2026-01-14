@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -60,7 +61,8 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
 
     // Use service role for cron calls, user auth for direct calls
     const supabase = isInternalCall 
@@ -94,6 +96,10 @@ serve(async (req) => {
     const workspaceId = workspace_id || tenant_id;
 
     console.log(`Optimizer: Analyzing campaign ${campaign_id} for tenant ${tenant_id}`);
+
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
+    }
 
     // Fetch campaign details
     const { data: campaign, error: campaignError } = await supabase
@@ -193,21 +199,17 @@ Generate optimization recommendations in this JSON format:
 Recommend 2-5 specific changes based on the metrics. Focus on the weakest performing areas.`;
 
     // Call Lovable AI
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+    const aiResponse = await openaiChatCompletionsRaw(
+      {
+        model,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
         ],
         temperature: 0.5,
-      }),
-    });
+      },
+      OPENAI_API_KEY,
+    );
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();

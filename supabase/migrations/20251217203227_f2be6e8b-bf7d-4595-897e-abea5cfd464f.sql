@@ -8,19 +8,14 @@ CREATE TABLE public.ai_settings_stripe (
   account_name text DEFAULT '',
   updated_at timestamp with time zone DEFAULT now()
 );
-
 -- Enable RLS
 ALTER TABLE public.ai_settings_stripe ENABLE ROW LEVEL SECURITY;
-
 -- Create workspace-scoped RLS policies
 CREATE POLICY "workspace_access_select" ON public.ai_settings_stripe
 FOR SELECT USING (user_has_workspace_access(tenant_id));
-
 CREATE POLICY "workspace_access_insert" ON public.ai_settings_stripe
 FOR INSERT WITH CHECK (user_has_workspace_access(tenant_id));
-
 CREATE POLICY "workspace_access_update" ON public.ai_settings_stripe
 FOR UPDATE USING (user_has_workspace_access(tenant_id));
-
 CREATE POLICY "workspace_access_delete" ON public.ai_settings_stripe
 FOR DELETE USING (user_has_workspace_access(tenant_id));

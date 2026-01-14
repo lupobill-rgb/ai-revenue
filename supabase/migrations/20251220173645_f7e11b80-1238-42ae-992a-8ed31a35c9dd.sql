@@ -45,17 +45,14 @@ BEGIN
   RETURNING j.*;
 END;
 $function$;
-
 -- Add index for efficient job claiming queries
 CREATE INDEX IF NOT EXISTS idx_job_queue_claim_lookup 
 ON job_queue (status, scheduled_for, locked_at) 
 WHERE status = 'queued' AND locked_at IS NULL;
-
 -- Add index for stale lock recovery
 CREATE INDEX IF NOT EXISTS idx_job_queue_stale_locks
 ON job_queue (status, locked_at)
 WHERE status = 'locked';
-
 -- Function to recover a single stale job (for manual intervention)
 CREATE OR REPLACE FUNCTION public.recover_stale_jobs(p_timeout_minutes integer DEFAULT 5)
 RETURNS integer

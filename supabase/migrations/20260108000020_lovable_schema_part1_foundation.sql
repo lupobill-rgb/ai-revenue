@@ -14,28 +14,24 @@ DO $$ BEGIN
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
-
 -- Asset status enum (if not exists)
 DO $$ BEGIN
   CREATE TYPE asset_status AS ENUM ('draft', 'review', 'approved', 'live');
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
-
 -- Asset type enum (if not exists) 
 DO $$ BEGIN
   CREATE TYPE asset_type AS ENUM ('video', 'email', 'voice', 'landing_page', 'website');
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
-
 -- Data mode enum (if not exists)
 DO $$ BEGIN
   CREATE TYPE data_mode AS ENUM ('live', 'demo');
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
-
 -- ============================================
 -- SECTION 2: TENANTS TABLE (Core Multi-Tenancy)
 -- Note: Phase 3 uses workspaces as primary, but Lovable needs tenants
@@ -57,7 +53,6 @@ CREATE TABLE IF NOT EXISTS public.tenants (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Add tenant_id to workspaces if it doesn't exist
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -69,7 +64,6 @@ DO $$ BEGIN
     ALTER TABLE public.workspaces ADD COLUMN tenant_id uuid REFERENCES public.tenants(id) ON DELETE CASCADE;
   END IF;
 END $$;
-
 -- ============================================
 -- SECTION 3: USER-TENANT RELATIONSHIP
 -- ============================================
@@ -82,7 +76,6 @@ CREATE TABLE IF NOT EXISTS public.user_tenants (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(user_id, tenant_id)
 );
-
 -- ============================================
 -- SECTION 4: USER ROLES
 -- ============================================
@@ -94,7 +87,6 @@ CREATE TABLE IF NOT EXISTS public.user_roles (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(user_id, role)
 );
-
 -- ============================================
 -- SECTION 5: PLATFORM ADMINS
 -- ============================================
@@ -104,7 +96,6 @@ CREATE TABLE IF NOT EXISTS public.platform_admins (
   user_id uuid NOT NULL UNIQUE,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- SECTION 6: HELPER FUNCTIONS FOR RLS
 -- Note: These functions already exist in Phase 3, skipping to avoid breaking existing policies
@@ -120,7 +111,6 @@ CREATE TABLE IF NOT EXISTS public.platform_admins (
 CREATE INDEX IF NOT EXISTS idx_user_tenants_user_id ON public.user_tenants(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_tenants_tenant_id ON public.user_tenants(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tenants_slug ON public.tenants(slug);
-
 -- ============================================
 -- SECTION 8: ENABLE RLS ON NEW TABLES
 -- ============================================
@@ -129,7 +119,6 @@ ALTER TABLE public.tenants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_tenants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_admins ENABLE ROW LEVEL SECURITY;
-
 -- ============================================
 -- SECTION 9: BASIC RLS POLICIES
 -- ============================================
@@ -141,7 +130,6 @@ DO $$ BEGIN
       USING (id = auth.uid() OR id IN (SELECT tenant_id FROM public.user_tenants WHERE user_id = auth.uid()));
   END IF;
 END $$;
-
 -- User tenants policies  
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_tenants' AND policyname = 'Users can view own tenant memberships') THEN
@@ -164,7 +152,6 @@ DO $$ BEGIN
       USING (user_id = auth.uid() OR is_platform_admin());
   END IF;
 END $$;
-
 -- User roles policies
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_roles' AND policyname = 'Users can view their own roles') THEN
@@ -177,9 +164,7 @@ DO $$ BEGIN
       USING (has_role(auth.uid(), 'admin'));
   END IF;
 END $$;
-
 -- ============================================
 -- MIGRATION COMPLETE: PART 1
 -- Foundation tables and functions created
--- ============================================
-
+-- ============================================;

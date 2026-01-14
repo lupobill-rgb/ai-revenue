@@ -34,10 +34,8 @@ CREATE TABLE public.customer_integrations (
   
   UNIQUE(workspace_id)
 );
-
 -- Enable RLS
 ALTER TABLE public.customer_integrations ENABLE ROW LEVEL SECURITY;
-
 -- RLS policy for tenant isolation
 CREATE POLICY "tenant_isolation" ON public.customer_integrations
   FOR ALL
@@ -45,7 +43,6 @@ CREATE POLICY "tenant_isolation" ON public.customer_integrations
     tenant_id = auth.uid() OR 
     tenant_id IN (SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid())
   );
-
 -- Create updated_at trigger
 CREATE TRIGGER update_customer_integrations_updated_at
   BEFORE UPDATE ON public.customer_integrations

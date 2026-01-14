@@ -1,11 +1,9 @@
 -- Add data_mode column to campaign_metrics
 ALTER TABLE public.campaign_metrics 
 ADD COLUMN IF NOT EXISTS data_mode public.data_mode NOT NULL DEFAULT 'live'::public.data_mode;
-
 -- Create index for efficient filtering
 CREATE INDEX IF NOT EXISTS idx_campaign_metrics_data_mode 
 ON public.campaign_metrics(workspace_id, data_mode);
-
 -- Create a view that gates campaign_metrics by workspace demo_mode
 CREATE OR REPLACE VIEW public.v_campaign_metrics_gated AS
 SELECT 

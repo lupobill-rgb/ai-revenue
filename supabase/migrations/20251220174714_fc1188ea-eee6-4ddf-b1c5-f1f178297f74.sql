@@ -8,34 +8,27 @@ REVOKE ALL ON FUNCTION public.claim_queued_jobs(text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.claim_queued_jobs(text, integer) FROM authenticated;
 REVOKE ALL ON FUNCTION public.claim_queued_jobs(text, integer) FROM anon;
 GRANT EXECUTE ON FUNCTION public.claim_queued_jobs(text, integer) TO service_role;
-
 COMMENT ON FUNCTION public.claim_queued_jobs(text, integer) IS 
 'SECURITY: Only callable by service_role (run-job-queue edge function).
 Atomically claims queued jobs for processing by a worker.';
-
 -- 2) complete_job(uuid, boolean, text) - marks job as completed/failed
 REVOKE ALL ON FUNCTION public.complete_job(uuid, boolean, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.complete_job(uuid, boolean, text) FROM authenticated;
 REVOKE ALL ON FUNCTION public.complete_job(uuid, boolean, text) FROM anon;
 GRANT EXECUTE ON FUNCTION public.complete_job(uuid, boolean, text) TO service_role;
-
 COMMENT ON FUNCTION public.complete_job(uuid, boolean, text) IS 
 'SECURITY: Only callable by service_role (run-job-queue edge function).
 Marks a job as completed or failed with optional error message.';
-
 -- 3) recover_stale_jobs(integer) - recovers stuck jobs
 REVOKE ALL ON FUNCTION public.recover_stale_jobs(integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.recover_stale_jobs(integer) FROM authenticated;
 REVOKE ALL ON FUNCTION public.recover_stale_jobs(integer) FROM anon;
 GRANT EXECUTE ON FUNCTION public.recover_stale_jobs(integer) TO service_role;
-
 COMMENT ON FUNCTION public.recover_stale_jobs(integer) IS 
 'SECURITY: Only callable by service_role (run-job-queue edge function or cron).
 Resets jobs that have been locked too long back to queued status.';
-
 -- 4) retry_job(uuid) - retries failed jobs with internal role check
 DROP FUNCTION IF EXISTS public.retry_job(uuid);
-
 CREATE OR REPLACE FUNCTION public.retry_job(p_job_id uuid)
 RETURNS boolean
 LANGUAGE plpgsql
@@ -75,17 +68,14 @@ BEGIN
   RETURN TRUE;
 END;
 $function$;
-
 -- Keep retry_job accessible to authenticated (for platform admins via internal check)
 GRANT EXECUTE ON FUNCTION public.retry_job(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.retry_job(uuid) TO service_role;
 REVOKE ALL ON FUNCTION public.retry_job(uuid) FROM anon;
-
 COMMENT ON FUNCTION public.retry_job(uuid) IS 
 'SECURITY: Callable by service_role or platform_admin only.
 Regular authenticated users get access denied exception.
 Used to retry failed/dead jobs with exponential backoff.';
-
 -- 5) deploy_campaign - intentionally callable by authenticated users
 -- Has proper auth.uid() check and workspace access validation
 COMMENT ON FUNCTION public.deploy_campaign(uuid) IS 

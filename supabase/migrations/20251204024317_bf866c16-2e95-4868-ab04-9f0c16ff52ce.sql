@@ -12,7 +12,6 @@ CREATE TABLE public.agent_runs (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   completed_at TIMESTAMP WITH TIME ZONE
 );
-
 -- CMO Campaigns table
 CREATE TABLE public.cmo_campaigns (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -37,7 +36,6 @@ CREATE TABLE public.cmo_campaigns (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- CMO Campaign Channels table
 CREATE TABLE public.cmo_campaign_channels (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -53,7 +51,6 @@ CREATE TABLE public.cmo_campaign_channels (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- CMO Content Assets table
 CREATE TABLE public.cmo_content_assets (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -77,7 +74,6 @@ CREATE TABLE public.cmo_content_assets (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- CMO Content Variants table
 CREATE TABLE public.cmo_content_variants (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -95,7 +91,6 @@ CREATE TABLE public.cmo_content_variants (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- CMO Calendar Events table
 CREATE TABLE public.cmo_calendar_events (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -112,7 +107,6 @@ CREATE TABLE public.cmo_calendar_events (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- CMO Metrics Snapshots table
 CREATE TABLE public.cmo_metrics_snapshots (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -132,7 +126,6 @@ CREATE TABLE public.cmo_metrics_snapshots (
   custom_metrics JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- CMO Weekly Summaries table
 CREATE TABLE public.cmo_weekly_summaries (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -149,7 +142,6 @@ CREATE TABLE public.cmo_weekly_summaries (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- CMO Recommendations table
 CREATE TABLE public.cmo_recommendations (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -168,7 +160,6 @@ CREATE TABLE public.cmo_recommendations (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- Enable RLS on all new tables
 ALTER TABLE public.agent_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cmo_campaigns ENABLE ROW LEVEL SECURITY;
@@ -179,17 +170,14 @@ ALTER TABLE public.cmo_calendar_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cmo_metrics_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cmo_weekly_summaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cmo_recommendations ENABLE ROW LEVEL SECURITY;
-
 -- RLS Policies for agent_runs
 CREATE POLICY "Users can view workspace agent runs" ON public.agent_runs FOR SELECT USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can create workspace agent runs" ON public.agent_runs FOR INSERT WITH CHECK (user_has_workspace_access(workspace_id));
-
 -- RLS Policies for cmo_campaigns
 CREATE POLICY "Users can view workspace campaigns" ON public.cmo_campaigns FOR SELECT USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can create workspace campaigns" ON public.cmo_campaigns FOR INSERT WITH CHECK (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can update workspace campaigns" ON public.cmo_campaigns FOR UPDATE USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can delete workspace campaigns" ON public.cmo_campaigns FOR DELETE USING (user_has_workspace_access(workspace_id));
-
 -- Helper function for campaign channel access
 CREATE OR REPLACE FUNCTION public.campaign_channel_workspace_access(channel_campaign_id uuid)
 RETURNS boolean
@@ -203,19 +191,16 @@ AS $$
       AND user_has_workspace_access(c.workspace_id)
   )
 $$;
-
 -- RLS Policies for cmo_campaign_channels
 CREATE POLICY "Users can view workspace campaign channels" ON public.cmo_campaign_channels FOR SELECT USING (campaign_channel_workspace_access(campaign_id));
 CREATE POLICY "Users can create workspace campaign channels" ON public.cmo_campaign_channels FOR INSERT WITH CHECK (campaign_channel_workspace_access(campaign_id));
 CREATE POLICY "Users can update workspace campaign channels" ON public.cmo_campaign_channels FOR UPDATE USING (campaign_channel_workspace_access(campaign_id));
 CREATE POLICY "Users can delete workspace campaign channels" ON public.cmo_campaign_channels FOR DELETE USING (campaign_channel_workspace_access(campaign_id));
-
 -- RLS Policies for cmo_content_assets
 CREATE POLICY "Users can view workspace content assets" ON public.cmo_content_assets FOR SELECT USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can create workspace content assets" ON public.cmo_content_assets FOR INSERT WITH CHECK (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can update workspace content assets" ON public.cmo_content_assets FOR UPDATE USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can delete workspace content assets" ON public.cmo_content_assets FOR DELETE USING (user_has_workspace_access(workspace_id));
-
 -- Helper function for content variant access
 CREATE OR REPLACE FUNCTION public.content_variant_workspace_access(variant_asset_id uuid)
 RETURNS boolean
@@ -229,34 +214,28 @@ AS $$
       AND user_has_workspace_access(a.workspace_id)
   )
 $$;
-
 -- RLS Policies for cmo_content_variants
 CREATE POLICY "Users can view workspace content variants" ON public.cmo_content_variants FOR SELECT USING (content_variant_workspace_access(asset_id));
 CREATE POLICY "Users can create workspace content variants" ON public.cmo_content_variants FOR INSERT WITH CHECK (content_variant_workspace_access(asset_id));
 CREATE POLICY "Users can update workspace content variants" ON public.cmo_content_variants FOR UPDATE USING (content_variant_workspace_access(asset_id));
 CREATE POLICY "Users can delete workspace content variants" ON public.cmo_content_variants FOR DELETE USING (content_variant_workspace_access(asset_id));
-
 -- RLS Policies for cmo_calendar_events
 CREATE POLICY "Users can view workspace calendar events" ON public.cmo_calendar_events FOR SELECT USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can create workspace calendar events" ON public.cmo_calendar_events FOR INSERT WITH CHECK (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can update workspace calendar events" ON public.cmo_calendar_events FOR UPDATE USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can delete workspace calendar events" ON public.cmo_calendar_events FOR DELETE USING (user_has_workspace_access(workspace_id));
-
 -- RLS Policies for cmo_metrics_snapshots
 CREATE POLICY "Users can view workspace metrics snapshots" ON public.cmo_metrics_snapshots FOR SELECT USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can create workspace metrics snapshots" ON public.cmo_metrics_snapshots FOR INSERT WITH CHECK (user_has_workspace_access(workspace_id));
-
 -- RLS Policies for cmo_weekly_summaries
 CREATE POLICY "Users can view workspace weekly summaries" ON public.cmo_weekly_summaries FOR SELECT USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can create workspace weekly summaries" ON public.cmo_weekly_summaries FOR INSERT WITH CHECK (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can update workspace weekly summaries" ON public.cmo_weekly_summaries FOR UPDATE USING (user_has_workspace_access(workspace_id));
-
 -- RLS Policies for cmo_recommendations
 CREATE POLICY "Users can view workspace recommendations" ON public.cmo_recommendations FOR SELECT USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can create workspace recommendations" ON public.cmo_recommendations FOR INSERT WITH CHECK (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can update workspace recommendations" ON public.cmo_recommendations FOR UPDATE USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can delete workspace recommendations" ON public.cmo_recommendations FOR DELETE USING (user_has_workspace_access(workspace_id));
-
 -- Add updated_at triggers
 CREATE TRIGGER update_cmo_campaigns_updated_at BEFORE UPDATE ON public.cmo_campaigns FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_cmo_campaign_channels_updated_at BEFORE UPDATE ON public.cmo_campaign_channels FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
@@ -265,7 +244,6 @@ CREATE TRIGGER update_cmo_content_variants_updated_at BEFORE UPDATE ON public.cm
 CREATE TRIGGER update_cmo_calendar_events_updated_at BEFORE UPDATE ON public.cmo_calendar_events FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_cmo_weekly_summaries_updated_at BEFORE UPDATE ON public.cmo_weekly_summaries FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_cmo_recommendations_updated_at BEFORE UPDATE ON public.cmo_recommendations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
 -- Add indexes for performance
 CREATE INDEX idx_agent_runs_workspace ON public.agent_runs(workspace_id);
 CREATE INDEX idx_agent_runs_agent ON public.agent_runs(agent);

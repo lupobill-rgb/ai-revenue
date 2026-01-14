@@ -69,10 +69,8 @@ BEGIN
   );
 END;
 $$;
-
 -- Lock search_path via ALTER FUNCTION
 ALTER FUNCTION public.get_horizontal_scaling_metrics(int) SET search_path = public;
-
 -- Ensure permissions are correct
 REVOKE EXECUTE ON FUNCTION public.get_horizontal_scaling_metrics(int) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.get_horizontal_scaling_metrics(int) FROM anon;

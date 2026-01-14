@@ -1,15 +1,12 @@
 -- Add reply_count column to campaign_metrics
 ALTER TABLE public.campaign_metrics
 ADD COLUMN IF NOT EXISTS reply_count INTEGER DEFAULT 0;
-
 -- Add index for efficient reply analytics queries
 CREATE INDEX IF NOT EXISTS idx_campaign_metrics_reply_count 
 ON public.campaign_metrics(campaign_id, reply_count);
-
 -- Add index on cmo_metrics_snapshots for reply queries
 CREATE INDEX IF NOT EXISTS idx_cmo_metrics_snapshots_campaign_date 
 ON public.cmo_metrics_snapshots(campaign_id, snapshot_date DESC);
-
 -- Create helper function to increment reply count atomically
 CREATE OR REPLACE FUNCTION public.increment_campaign_reply_count(p_campaign_id UUID, p_workspace_id UUID)
 RETURNS void
@@ -26,7 +23,6 @@ BEGIN
     updated_at = now();
 END;
 $$;
-
 -- Create helper function to record reply in metrics snapshot
 CREATE OR REPLACE FUNCTION public.record_reply_metric_snapshot(
   p_workspace_id UUID,
@@ -67,7 +63,6 @@ BEGIN
     );
 END;
 $$;
-
 -- Add unique constraint for snapshot upserts if not exists
 DO $$
 BEGIN

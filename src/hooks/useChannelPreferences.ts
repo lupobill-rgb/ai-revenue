@@ -51,7 +51,8 @@ export function useChannelPreferences() {
 
   useEffect(() => {
     fetchPreferences();
-  }, [fetchPreferences]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]); // Only re-fetch when workspaceId changes
 
   const isChannelEnabled = (channel: keyof ChannelPreferences) => {
     return preferences[channel];

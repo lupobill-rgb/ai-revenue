@@ -34,7 +34,6 @@ BEGIN
   RAISE LOG 'dispatch_outbound_cron completed';
 END;
 $function$;
-
 -- 2. Fix run_job_queue_cron - use vault for anon key, no hardcoding
 CREATE OR REPLACE FUNCTION public.run_job_queue_cron()
  RETURNS void
@@ -76,16 +75,13 @@ BEGIN
   RAISE LOG 'run_job_queue_cron completed';
 END;
 $function$;
-
 -- 3. Restrict function execution to postgres role only (used by pg_cron)
 REVOKE EXECUTE ON FUNCTION public.dispatch_outbound_cron() FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.dispatch_outbound_cron() FROM anon;
 REVOKE EXECUTE ON FUNCTION public.dispatch_outbound_cron() FROM authenticated;
-
 REVOKE EXECUTE ON FUNCTION public.run_job_queue_cron() FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.run_job_queue_cron() FROM anon;
 REVOKE EXECUTE ON FUNCTION public.run_job_queue_cron() FROM authenticated;
-
 -- Only postgres (superuser/service role) can execute these
 GRANT EXECUTE ON FUNCTION public.dispatch_outbound_cron() TO postgres;
 GRANT EXECUTE ON FUNCTION public.run_job_queue_cron() TO postgres;

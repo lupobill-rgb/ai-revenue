@@ -6,13 +6,11 @@ CREATE OR REPLACE TRIGGER trg_deal_status_timestamps
   FOR EACH ROW
   WHEN (OLD.stage IS DISTINCT FROM NEW.stage)
   EXECUTE FUNCTION fn_deal_status_timestamps();
-
 -- Trigger: When a lead's status changes, record a stage event
 CREATE OR REPLACE TRIGGER trg_lead_stage_event
   AFTER INSERT OR UPDATE ON leads
   FOR EACH ROW
   EXECUTE FUNCTION fn_lead_stage_event();
-
 -- Trigger: Set tenant_id and data_mode on deal insert
 CREATE OR REPLACE TRIGGER trg_deal_set_tenant_mode
   BEFORE INSERT ON deals

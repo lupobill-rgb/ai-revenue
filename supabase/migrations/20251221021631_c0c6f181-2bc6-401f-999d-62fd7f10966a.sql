@@ -65,11 +65,9 @@ BEGIN
   );
 END;
 $$;
-
 -- Revoke from all roles except service_role
 REVOKE EXECUTE ON FUNCTION public.get_horizontal_scaling_metrics(integer) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.get_horizontal_scaling_metrics(integer) FROM anon;
 REVOKE EXECUTE ON FUNCTION public.get_horizontal_scaling_metrics(integer) FROM authenticated;
-
 -- Grant only to service_role
 GRANT EXECUTE ON FUNCTION public.get_horizontal_scaling_metrics(integer) TO service_role;

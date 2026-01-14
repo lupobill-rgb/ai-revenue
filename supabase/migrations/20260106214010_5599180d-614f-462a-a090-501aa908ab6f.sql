@@ -8,7 +8,6 @@ BEGIN
     EXECUTE 'DROP POLICY "Users can view workspace leads" ON public.leads';
   END IF;
 END $$;
-
 CREATE POLICY "Users can view workspace leads"
 ON public.leads
 FOR SELECT

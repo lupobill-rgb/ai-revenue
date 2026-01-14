@@ -37,7 +37,8 @@ export function useLeads() {
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]); // Only refresh when tenantId changes
 
   return { leads, totalCount, loading, refresh };
 }

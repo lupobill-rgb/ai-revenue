@@ -50,10 +50,11 @@ const Login = () => {
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
     try {
+      const redirectTo = `${window.location.origin}/auth/callback`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'https://cmo.ubigrowth.ai/auth/callback',
+          redirectTo,
         },
       });
 
@@ -150,8 +151,9 @@ const Login = () => {
     setIsResetting(true);
 
     try {
+      const redirectTo = `${window.location.origin}/change-password`;
       const { error } = await supabase.auth.resetPasswordForEmail(result.data, {
-        redirectTo: 'https://cmo.ubigrowth.ai/change-password',
+        redirectTo,
       });
 
       if (error) {

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifySvixSignature } from "../_shared/svix-verify.ts";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -244,31 +245,29 @@ serve(async (req) => {
     }
 
     // Optionally trigger reply suggestion agent
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
     let replySuggestion = null;
 
-    if (LOVABLE_API_KEY && payload.text) {
+    if (OPENAI_API_KEY && payload.text) {
       try {
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
+        const aiResponse = await openaiChatCompletionsRaw(
+          {
+            model,
             messages: [
-              { 
-                role: "system", 
-                content: "You are a sales reply assistant. Given a prospect's reply, suggest a brief, helpful response. Keep it conversational and focused on next steps. Return JSON: { \"suggested_reply\": \"...\", \"sentiment\": \"positive|neutral|negative\", \"next_action\": \"book_call|send_info|follow_up|close\" }" 
+              {
+                role: "system",
+                content:
+                  "You are a sales reply assistant. Given a prospect's reply, suggest a brief, helpful response. Keep it conversational and focused on next steps. Return JSON: { \"suggested_reply\": \"...\", \"sentiment\": \"positive|neutral|negative\", \"next_action\": \"book_call|send_info|follow_up|close\" }",
               },
-              { 
-                role: "user", 
-                content: `Prospect ${prospect.first_name} replied:\n\n${payload.text}\n\nSuggest a response.` 
+              {
+                role: "user",
+                content: `Prospect ${prospect.first_name} replied:\n\n${payload.text}\n\nSuggest a response.`,
               },
             ],
-          }),
-        });
+          },
+          OPENAI_API_KEY,
+        );
 
         if (aiResponse.ok) {
           const aiData = await aiResponse.json();

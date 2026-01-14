@@ -106,7 +106,7 @@ serve(async (req) => {
         created_at,
         channels:cmo_campaign_channels(channel_name)
       `)
-      .eq("tenant_id", tenantId)
+      .eq("workspace_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (campaignsError) {

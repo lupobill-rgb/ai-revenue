@@ -11,10 +11,8 @@ AS $$
     WHERE id = _workspace_id AND owner_id = _user_id
   )
 $$;
-
 -- Drop the problematic policy that causes recursion
 DROP POLICY IF EXISTS "Owners manage membership" ON public.workspace_members;
-
 -- Recreate with SECURITY DEFINER function instead of direct subquery
 CREATE POLICY "Owners manage membership" ON public.workspace_members
 FOR ALL

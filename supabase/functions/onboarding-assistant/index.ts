@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { googleStreamGenerateContent } from "../_shared/providers/google.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -96,18 +97,13 @@ Start by greeting ${userName || 'them'} warmly and asking what brings them to Ub
 
     console.log("[onboarding] Calling Gemini API");
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?key=${GEMINI_API_KEY}&alt=sse`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: geminiContents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 1024,
-        }
-      }),
+    const response = await googleStreamGenerateContent({
+      apiKey: GEMINI_API_KEY,
+      model: "gemini-1.5-flash",
+      contents: geminiContents,
+      temperature: 0.7,
+      maxOutputTokens: 1024,
+      timeoutMs: 55_000,
     });
 
     if (!response.ok) {

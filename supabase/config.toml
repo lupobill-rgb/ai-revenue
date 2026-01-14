@@ -323,3 +323,46 @@ verify_jwt = false
 
 [functions.process-scheduled-emails]
 verify_jwt = false
+
+# ============================================================
+# Channel MVP functions (Day 1-4)
+# NOTE: We disable platform-level JWT verification to avoid edge-gateway
+# "Invalid JWT" rejects observed in CI for these functions, while still
+# enforcing auth inside each function via verifyAuth / internal secrets.
+# ============================================================
+
+[functions.sms_generate]
+verify_jwt = false
+
+[functions.sms_send]
+verify_jwt = false
+
+[functions.sms_unsubscribe]
+verify_jwt = false
+
+[functions.sms_usage_guard]
+verify_jwt = false
+
+[functions.sms_cap_check]
+verify_jwt = false
+
+[functions.sms_event_log]
+verify_jwt = false
+
+[functions.social_generate_linkedin]
+verify_jwt = false
+
+[functions.social_submit_for_approval]
+verify_jwt = false
+
+[functions.social_publish_linkedin_manual]
+verify_jwt = false
+
+[functions.landing_page_generate]
+verify_jwt = false
+
+[functions.landing_page_submit_for_approval]
+verify_jwt = false
+
+[functions.landing_page_publish_vercel]
+verify_jwt = false

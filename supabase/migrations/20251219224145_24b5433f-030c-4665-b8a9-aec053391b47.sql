@@ -22,7 +22,6 @@ AS $$
   )
   OR public.is_platform_admin(auth.uid())
 $$;
-
 -- Helper function to safely drop and create policies (only if table exists)
 CREATE OR REPLACE FUNCTION pg_temp.safe_create_tenant_policies(table_name text)
 RETURNS void AS $$
@@ -47,7 +46,6 @@ BEGIN
   END IF;
 END;
 $$ LANGUAGE plpgsql;
-
 -- ============================================
 -- FIX RLS POLICIES FOR ALL AFFECTED TABLES
 -- ============================================

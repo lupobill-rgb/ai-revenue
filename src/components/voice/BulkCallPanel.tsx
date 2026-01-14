@@ -15,7 +15,6 @@ import { Progress } from '@/components/ui/progress';
 import { Loader2, Phone, Zap, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import type { VoicePhoneNumber } from '@/hooks/useVoiceData';
 
 interface Lead {
   id: string;
@@ -42,7 +41,6 @@ interface BulkCallStatus {
 interface BulkCallPanelProps {
   leads: Lead[];
   assistants: Assistant[];
-  phoneNumbers: VoicePhoneNumber[];
   tenantId: string;
   workspaceId: string;
   onCallComplete?: (results: BulkCallStatus[]) => void;
@@ -52,7 +50,6 @@ interface BulkCallPanelProps {
 export function BulkCallPanel({
   leads,
   assistants,
-  phoneNumbers,
   tenantId,
   workspaceId,
   onCallComplete,
@@ -60,7 +57,6 @@ export function BulkCallPanel({
 }: BulkCallPanelProps) {
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
   const [assistantId, setAssistantId] = useState<string>('');
-  const [phoneNumberId, setPhoneNumberId] = useState<string>(phoneNumbers[0]?.id || '');
   const [isBulkCalling, setIsBulkCalling] = useState(false);
   const [callStatuses, setCallStatuses] = useState<Map<string, BulkCallStatus>>(new Map());
 
@@ -85,8 +81,8 @@ export function BulkCallPanel({
   };
 
   const handleBulkCall = useCallback(async () => {
-    if (selectedLeadIds.size === 0 || !assistantId || !phoneNumberId) {
-      toast.error('Please select leads, an agent, and a phone number');
+    if (selectedLeadIds.size === 0 || !assistantId) {
+      toast.error('Please select leads and an agent');
       return;
     }
 
@@ -125,21 +121,24 @@ export function BulkCallPanel({
         // Create call record in database first
         const callRecord = await createCallRecord({
           lead_id: lead.id,
-          phone_number_id: phoneNumberId,
+          phone_number_id: null,
           call_type: 'outbound',
           status: 'queued',
           customer_number: lead.phone,
           customer_name: `${lead.first_name} ${lead.last_name}`,
         });
 
-        // Invoke the outbound call via VAPI
-        const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {
+        // Invoke the outbound call via ElevenLabs
+        const { data, error } = await supabase.functions.invoke('elevenlabs-make-call', {
           body: {
-            assistantId,
-            phoneNumberId,
-            customerNumber: lead.phone,
-            customerName: `${lead.first_name} ${lead.last_name}`,
-            leadId: lead.id,
+            agent_id: assistantId,
+            phone_number: lead.phone,
+            workspace_id: workspaceId,
+            lead_data: {
+              id: lead.id,
+              name: `${lead.first_name} ${lead.last_name}`,
+              company: lead.company,
+            },
           },
         });
 
@@ -150,7 +149,7 @@ export function BulkCallPanel({
         const status: BulkCallStatus = { 
           leadId: lead.id, 
           status: 'completed',
-          callId: data?.callId,
+          callId: data?.conversation_id,
         };
         
         setCallStatuses(prev => {
@@ -187,7 +186,7 @@ export function BulkCallPanel({
     
     toast.success(`Bulk calling completed: ${completed} successful, ${failed} failed`);
     onCallComplete?.(results);
-  }, [selectedLeadIds, assistantId, phoneNumberId, leads, createCallRecord, onCallComplete]);
+  }, [selectedLeadIds, assistantId, leads, createCallRecord, onCallComplete]);
 
   const completedCount = Array.from(callStatuses.values()).filter(s => s.status === 'completed').length;
   const failedCount = Array.from(callStatuses.values()).filter(s => s.status === 'failed').length;
@@ -302,22 +301,7 @@ export function BulkCallPanel({
               </SelectContent>
             </Select>
           </div>
-
-          <div className="space-y-2">
-            <Label>From Phone Number</Label>
-            <Select value={phoneNumberId} onValueChange={setPhoneNumberId} disabled={isBulkCalling}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a phone number" />
-              </SelectTrigger>
-              <SelectContent>
-                {phoneNumbers.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.phone_number} ({p.display_name})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* ElevenLabs phone calls do not require selecting a provider phone number here */}
 
           <div className="pt-4 border-t">
             <div className="flex items-center justify-between text-sm mb-4">
@@ -328,7 +312,7 @@ export function BulkCallPanel({
             <Button 
               className="w-full" 
               onClick={handleBulkCall}
-              disabled={isBulkCalling || selectedLeadIds.size === 0 || !assistantId || !phoneNumberId}
+              disabled={isBulkCalling || selectedLeadIds.size === 0 || !assistantId}
             >
               {isBulkCalling ? (
                 <>

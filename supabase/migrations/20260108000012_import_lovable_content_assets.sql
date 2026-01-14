@@ -6,7 +6,6 @@
 
 -- Disable triggers during import
 SET session_replication_role = replica;
-
 -- Import CMO content assets
 INSERT INTO cmo_content_assets (
   id, workspace_id, campaign_id, title, content_type, channel,
@@ -151,10 +150,8 @@ ON CONFLICT (id) DO UPDATE SET
   key_message = EXCLUDED.key_message,
   status = EXCLUDED.status,
   updated_at = EXCLUDED.updated_at;
-
 -- Re-enable triggers
 SET session_replication_role = DEFAULT;
-
 -- ============================================
 -- VERIFICATION
 -- ============================================
@@ -163,5 +160,4 @@ SET session_replication_role = DEFAULT;
 --   '28c3efe2-1fb0-471a-abfb-9a2a4ec10fea',
 --   '31b4760f-cdaf-4e3c-b91f-6c047f7c983f'
 -- );
--- SELECT title, content_type, channel, status FROM cmo_content_assets ORDER BY created_at DESC LIMIT 10;
-
+-- SELECT title, content_type, channel, status FROM cmo_content_assets ORDER BY created_at DESC LIMIT 10;;

@@ -30,7 +30,6 @@ CREATE TABLE IF NOT EXISTS public.prospects (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- OUTBOUND SEQUENCES
 -- ============================================
@@ -43,7 +42,6 @@ CREATE TABLE IF NOT EXISTS public.outbound_sequences (
   channel text NOT NULL,
   created_at timestamptz DEFAULT now()
 );
-
 -- ============================================
 -- OUTBOUND SEQUENCE STEPS
 -- ============================================
@@ -60,7 +58,6 @@ CREATE TABLE IF NOT EXISTS public.outbound_sequence_steps (
   template_id uuid,
   created_at timestamptz DEFAULT now()
 );
-
 -- ============================================
 -- SEQUENCE ENROLLMENTS
 -- ============================================
@@ -81,7 +78,6 @@ CREATE TABLE IF NOT EXISTS public.sequence_enrollments (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- ============================================
 -- SEQUENCE RUNS
 -- ============================================
@@ -102,7 +98,6 @@ CREATE TABLE IF NOT EXISTS public.sequence_runs (
   error_message text,
   created_at timestamptz DEFAULT now()
 );
-
 -- ============================================
 -- INDEXES
 -- ============================================
@@ -116,7 +111,6 @@ CREATE INDEX IF NOT EXISTS idx_sequence_enrollments_workspace_id ON public.seque
 CREATE INDEX IF NOT EXISTS idx_sequence_enrollments_status ON public.sequence_enrollments(status);
 CREATE INDEX IF NOT EXISTS idx_sequence_runs_enrollment_id ON public.sequence_runs(enrollment_id);
 CREATE INDEX IF NOT EXISTS idx_sequence_runs_status ON public.sequence_runs(status);
-
 -- ============================================
 -- ENABLE RLS
 -- ============================================
@@ -126,7 +120,6 @@ ALTER TABLE public.outbound_sequences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.outbound_sequence_steps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sequence_enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sequence_runs ENABLE ROW LEVEL SECURITY;
-
 -- ============================================
 -- RLS POLICIES
 -- ============================================
@@ -148,7 +141,6 @@ DO $$ BEGIN
       USING (user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- Outbound Sequences (tenant-based)
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'outbound_sequences' AND policyname = 'tenant_access_select') THEN
@@ -156,7 +148,6 @@ DO $$ BEGIN
       USING (tenant_id IS NULL OR user_belongs_to_tenant(tenant_id));
   END IF;
 END $$;
-
 -- Sequence Enrollments
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'sequence_enrollments' AND policyname = 'workspace_access_select') THEN
@@ -169,7 +160,6 @@ DO $$ BEGIN
       WITH CHECK (workspace_id IS NULL OR user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 -- Sequence Runs
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'sequence_runs' AND policyname = 'tenant_access_select') THEN
@@ -177,9 +167,7 @@ DO $$ BEGIN
       USING (tenant_id IS NULL OR user_belongs_to_tenant(tenant_id));
   END IF;
 END $$;
-
 -- ============================================
 -- MIGRATION COMPLETE: PART 5
 -- Outbound/Sequence tables created
--- ============================================
-
+-- ============================================;

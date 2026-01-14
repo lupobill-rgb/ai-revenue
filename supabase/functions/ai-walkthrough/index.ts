@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { runLLM, type LLMMessage } from "../_shared/llmRouter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,12 +71,6 @@ serve(async (req) => {
 
   try {
     const { messages, isFirstMessage, workspaceId } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    
-    if (!LOVABLE_API_KEY) {
-      console.error("LOVABLE_API_KEY is not configured");
-      throw new Error("AI service is not configured");
-    }
 
     // Fetch tenant context
     let tenantContext: TenantContext = {
@@ -172,43 +167,27 @@ serve(async (req) => {
 
     console.log(`[ai-walkthrough] Processing ${messages?.length || 0} messages, isFirst: ${isFirstMessage}`);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: conversationMessages,
-        stream: true,
-      }),
+    const llmMessages: LLMMessage[] = conversationMessages as LLMMessage[];
+    const tenantId = workspaceId || "public";
+
+    const out = await runLLM({
+      tenantId,
+      capability: "walkthrough",
+      messages: llmMessages,
+      temperature: 0.7,
+      maxTokens: 1200,
+      stream: true,
+      timeoutMs: 25_000,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "I'm getting a lot of questions right now. Please try again in a moment!" }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI credits depleted. Please contact support." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
+    if (out.kind !== "stream") {
       return new Response(
-        JSON.stringify({ error: "Unable to connect to AI service" }),
+        JSON.stringify({ error: "AI service error: expected stream response" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    return new Response(response.body, {
+    return new Response(out.response.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {

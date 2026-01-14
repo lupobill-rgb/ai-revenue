@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,10 +64,11 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
     }
+    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
 
     // Parse CSV
     const lines = csvContent.split(/\r?\n/).filter((line) => line.trim());
@@ -121,21 +123,17 @@ Example response:
 
 Only respond with valid JSON, no explanation.`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+    const aiResponse = await openaiChatCompletionsRaw(
+      {
+        model,
         messages: [
           { role: "system", content: "You are a precise data mapping assistant. Always respond with valid JSON only." },
           { role: "user", content: prompt },
         ],
         temperature: 0.1,
-      }),
-    });
+      },
+      OPENAI_API_KEY,
+    );
 
     if (!aiResponse.ok) {
       if (aiResponse.status === 429) {

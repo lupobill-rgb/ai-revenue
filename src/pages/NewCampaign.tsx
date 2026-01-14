@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import NavBar from "@/components/NavBar";
 import PageBreadcrumbs from "@/components/PageBreadcrumbs";
@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdge } from "@/lib/edgeInvoke";
 import { Loader2, Sparkles, Brain, Zap, Mail, Share2, Phone, Video, Layout, Bot } from "lucide-react";
 import AIPromptCard from "@/components/AIPromptCard";
 import WorkflowProgress from "@/components/WorkflowProgress";
@@ -78,37 +79,78 @@ const NewCampaign = () => {
   const [draftedEmailContent, setDraftedEmailContent] = useState("");
   const emailContentRef = useRef<HTMLTextAreaElement>(null);
   
-  // Channel selection
-  const [selectedChannels, setSelectedChannels] = useState({
-    email: true,
-    social: true,
-    voice: true,
-    video: true,
-    landing_page: true,
-  });
-
-  // Campaign schedule
-  const [schedule, setSchedule] = useState<ScheduleConfig>(DEFAULT_SCHEDULE);
-
-  // Update channel defaults when user preferences load
-  useEffect(() => {
-    if (!loadingPrefs) {
-      setSelectedChannels({
-        email: channelPrefs.email_enabled,
-        social: channelPrefs.social_enabled,
-        voice: channelPrefs.voice_enabled,
-        video: channelPrefs.video_enabled,
-        landing_page: channelPrefs.landing_pages_enabled,
-      });
-    }
-  }, [
-    loadingPrefs,
+  // Derive default channels from prefs (stable, primitive deps only)
+  const defaultChannels = useMemo(() => ({
+    email: !!channelPrefs.email_enabled,
+    social: !!channelPrefs.social_enabled,
+    voice: !!channelPrefs.voice_enabled,
+    video: !!channelPrefs.video_enabled,
+    landing_page: !!channelPrefs.landing_pages_enabled,
+  }), [
     channelPrefs.email_enabled,
     channelPrefs.social_enabled,
     channelPrefs.voice_enabled,
     channelPrefs.video_enabled,
     channelPrefs.landing_pages_enabled
   ]);
+
+  // Channel selection state
+  const [selectedChannels, setSelectedChannels] = useState(defaultChannels);
+
+  // Campaign schedule
+  const [schedule, setSchedule] = useState<ScheduleConfig>(DEFAULT_SCHEDULE);
+
+  // Idempotent setter - prevents accidental loops
+  const setSelectedChannelsIfChanged = useCallback((next: typeof defaultChannels) => {
+    setSelectedChannels((prev) => {
+      // Check if anything actually changed
+      if (
+        prev.email === next.email &&
+        prev.social === next.social &&
+        prev.voice === next.voice &&
+        prev.video === next.video &&
+        prev.landing_page === next.landing_page
+      ) {
+        return prev; // No change, return same object
+      }
+      
+      console.log('[NewCampaign] setSelectedChannels:', { prev, next });
+      return next;
+    });
+  }, []);
+
+  // Track initialization and user edits per workspace/draft
+  const initRef = useRef<{
+    key: string;
+    didInit: boolean;
+    userEdited: boolean;
+  }>({ key: '', didInit: false, userEdited: false });
+
+  // Create stable init key (no objects, primitives only)
+  const initKey = 'new-campaign-session';
+
+  // Initialize channel selection once per session
+  useEffect(() => {
+    // Reset guard if identity changed
+    if (initRef.current.key !== initKey) {
+      initRef.current.key = initKey;
+      initRef.current.didInit = false;
+      initRef.current.userEdited = false;
+    }
+
+    // Wait for prefs to load
+    if (loadingPrefs) return;
+
+    // Never overwrite after user interaction
+    if (initRef.current.userEdited) return;
+
+    // Initialize exactly once per key
+    if (initRef.current.didInit) return;
+
+    console.log('[NewCampaign] INIT_FROM_PREFS', defaultChannels);
+    setSelectedChannelsIfChanged(defaultChannels);
+    initRef.current.didInit = true;
+  }, [initKey, loadingPrefs, setSelectedChannelsIfChanged]);
 
   const insertTagAtCursor = (tag: string) => {
     const textarea = emailContentRef.current;
@@ -210,24 +252,22 @@ const NewCampaign = () => {
       });
 
       // Call orchestrator function
-      const { data, error } = await supabase.functions.invoke("campaign-orchestrator", {
-        body: {
-          campaignName,
-          vertical,
-          goal,
-          location: location || undefined,
-          businessType: businessType || undefined,
-          budget: budget ? parseFloat(budget) : undefined,
-          channels: selectedChannels,
-          schedule,
-          draftedEmail: draftedEmailContent ? {
-            subject: draftedEmailSubject || campaignName,
-            content: draftedEmailContent,
-          } : undefined,
-        },
+      const data: any = await invokeEdge("campaign-orchestrator", {
+        campaignName,
+        vertical,
+        goal,
+        location: location || undefined,
+        businessType: businessType || undefined,
+        budget: budget ? parseFloat(budget) : undefined,
+        channels: selectedChannels,
+        schedule,
+        draftedEmail: draftedEmailContent
+          ? {
+              subject: draftedEmailSubject || campaignName,
+              content: draftedEmailContent,
+            }
+          : undefined,
       });
-
-      if (error) throw error;
 
       toast({
         title: "Campaign Created",
@@ -408,9 +448,11 @@ const NewCampaign = () => {
                             <Checkbox
                               id="channel-email"
                               checked={selectedChannels.email}
-                              onCheckedChange={(checked) => 
-                                setSelectedChannels(prev => ({ ...prev, email: !!checked }))
-                              }
+                              onCheckedChange={(checked) => {
+                                console.log('[NewCampaign] USER_TOGGLE_EMAIL', checked);
+                                initRef.current.userEdited = true;
+                                setSelectedChannels(prev => ({ ...prev, email: !!checked }));
+                              }}
                             />
                             <div className="flex items-center gap-2">
                               <Mail className="h-4 w-4 text-primary" />
@@ -425,9 +467,11 @@ const NewCampaign = () => {
                             <Checkbox
                               id="channel-social"
                               checked={selectedChannels.social}
-                              onCheckedChange={(checked) => 
-                                setSelectedChannels(prev => ({ ...prev, social: !!checked }))
-                              }
+                              onCheckedChange={(checked) => {
+                                console.log('[NewCampaign] USER_TOGGLE_SOCIAL', checked);
+                                initRef.current.userEdited = true;
+                                setSelectedChannels(prev => ({ ...prev, social: !!checked }));
+                              }}
                             />
                             <div className="flex items-center gap-2">
                               <Share2 className="h-4 w-4 text-primary" />
@@ -442,9 +486,11 @@ const NewCampaign = () => {
                             <Checkbox
                               id="channel-voice"
                               checked={selectedChannels.voice}
-                              onCheckedChange={(checked) => 
-                                setSelectedChannels(prev => ({ ...prev, voice: !!checked }))
-                              }
+                              onCheckedChange={(checked) => {
+                                console.log('[NewCampaign] USER_TOGGLE_VOICE', checked);
+                                initRef.current.userEdited = true;
+                                setSelectedChannels(prev => ({ ...prev, voice: !!checked }));
+                              }}
                             />
                             <div className="flex items-center gap-2">
                               <Phone className="h-4 w-4 text-primary" />
@@ -459,9 +505,11 @@ const NewCampaign = () => {
                             <Checkbox
                               id="channel-video"
                               checked={selectedChannels.video}
-                              onCheckedChange={(checked) => 
-                                setSelectedChannels(prev => ({ ...prev, video: !!checked }))
-                              }
+                              onCheckedChange={(checked) => {
+                                console.log('[NewCampaign] USER_TOGGLE_VIDEO', checked);
+                                initRef.current.userEdited = true;
+                                setSelectedChannels(prev => ({ ...prev, video: !!checked }));
+                              }}
                             />
                             <div className="flex items-center gap-2">
                               <Video className="h-4 w-4 text-primary" />
@@ -476,9 +524,11 @@ const NewCampaign = () => {
                             <Checkbox
                               id="channel-landing"
                               checked={selectedChannels.landing_page}
-                              onCheckedChange={(checked) => 
-                                setSelectedChannels(prev => ({ ...prev, landing_page: !!checked }))
-                              }
+                              onCheckedChange={(checked) => {
+                                console.log('[NewCampaign] USER_TOGGLE_LANDING', checked);
+                                initRef.current.userEdited = true;
+                                setSelectedChannels(prev => ({ ...prev, landing_page: !!checked }));
+                              }}
                             />
                             <div className="flex items-center gap-2">
                               <Layout className="h-4 w-4 text-primary" />

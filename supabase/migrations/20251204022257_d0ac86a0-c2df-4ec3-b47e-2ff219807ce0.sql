@@ -16,7 +16,6 @@ CREATE TABLE public.cmo_funnels (
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   created_by UUID
 );
-
 -- CMO Funnel Stages table
 CREATE TABLE public.cmo_funnel_stages (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -40,11 +39,9 @@ CREATE TABLE public.cmo_funnel_stages (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
 -- Enable RLS
 ALTER TABLE public.cmo_funnels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cmo_funnel_stages ENABLE ROW LEVEL SECURITY;
-
 -- RLS Policies for cmo_funnels
 CREATE POLICY "Users can view workspace funnels" ON public.cmo_funnels
   FOR SELECT USING (user_has_workspace_access(workspace_id));
@@ -54,7 +51,6 @@ CREATE POLICY "Users can update workspace funnels" ON public.cmo_funnels
   FOR UPDATE USING (user_has_workspace_access(workspace_id));
 CREATE POLICY "Users can delete workspace funnels" ON public.cmo_funnels
   FOR DELETE USING (user_has_workspace_access(workspace_id));
-
 -- Helper function for funnel stage access
 CREATE OR REPLACE FUNCTION public.funnel_stage_workspace_access(stage_funnel_id uuid)
 RETURNS boolean
@@ -68,7 +64,6 @@ AS $$
       AND user_has_workspace_access(f.workspace_id)
   )
 $$;
-
 -- RLS Policies for cmo_funnel_stages
 CREATE POLICY "Users can view workspace funnel stages" ON public.cmo_funnel_stages
   FOR SELECT USING (funnel_stage_workspace_access(funnel_id));
@@ -78,12 +73,10 @@ CREATE POLICY "Users can update workspace funnel stages" ON public.cmo_funnel_st
   FOR UPDATE USING (funnel_stage_workspace_access(funnel_id));
 CREATE POLICY "Users can delete workspace funnel stages" ON public.cmo_funnel_stages
   FOR DELETE USING (funnel_stage_workspace_access(funnel_id));
-
 -- Triggers
 CREATE TRIGGER update_cmo_funnels_updated_at
   BEFORE UPDATE ON public.cmo_funnels
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
 CREATE TRIGGER update_cmo_funnel_stages_updated_at
   BEFORE UPDATE ON public.cmo_funnel_stages
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();

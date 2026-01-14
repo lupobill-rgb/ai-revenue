@@ -8,10 +8,8 @@ CREATE TABLE IF NOT EXISTS public.tenant_module_access (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   UNIQUE(tenant_id, module_id)
 );
-
 -- Enable RLS
 ALTER TABLE public.tenant_module_access ENABLE ROW LEVEL SECURITY;
-
 -- Create RLS policy for tenant isolation
 CREATE POLICY "tenant_isolation" ON public.tenant_module_access
 FOR ALL
@@ -19,11 +17,9 @@ USING (
   (tenant_id = auth.uid()) OR 
   (tenant_id IN (SELECT user_tenants.tenant_id FROM user_tenants WHERE user_tenants.user_id = auth.uid()))
 );
-
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_tenant_module_access_tenant_module 
 ON public.tenant_module_access(tenant_id, module_id);
-
 -- Create trigger for updated_at
 CREATE OR REPLACE TRIGGER update_tenant_module_access_updated_at
   BEFORE UPDATE ON public.tenant_module_access

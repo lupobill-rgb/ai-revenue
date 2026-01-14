@@ -12,7 +12,6 @@ CREATE TABLE public.rollout_phases (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Create gate checks table
 CREATE TABLE public.rollout_gate_checks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -27,7 +26,6 @@ CREATE TABLE public.rollout_gate_checks (
   required boolean DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Create rollout tenant assignments table
 CREATE TABLE public.rollout_tenant_assignments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -37,41 +35,32 @@ CREATE TABLE public.rollout_tenant_assignments (
   status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'removed')),
   UNIQUE(phase_id, tenant_id)
 );
-
 -- Enable RLS
 ALTER TABLE public.rollout_phases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rollout_gate_checks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rollout_tenant_assignments ENABLE ROW LEVEL SECURITY;
-
 -- Platform admin policies
 CREATE POLICY "Platform admins can manage rollout phases"
   ON public.rollout_phases FOR ALL USING (is_platform_admin());
-
 CREATE POLICY "Platform admins can manage gate checks"
   ON public.rollout_gate_checks FOR ALL USING (is_platform_admin());
-
 CREATE POLICY "Platform admins can manage tenant assignments"
   ON public.rollout_tenant_assignments FOR ALL USING (is_platform_admin());
-
 -- Insert default phases
 INSERT INTO public.rollout_phases (phase_number, phase_name, description, tenant_filter, required_duration_hours) VALUES
 (1, 'Internal Testing', 'Internal tenants only (24-48 hrs)', '{"type": "internal"}', 24),
 (2, 'Trusted Customers', '5-10 trusted customer tenants', '{"type": "trusted", "max_count": 10}', 48),
 (3, 'Open Rollout', 'All tenants enabled', '{"type": "all"}', 0);
-
 -- Insert default gates for each phase
 INSERT INTO public.rollout_gate_checks (phase_id, gate_name, gate_type, description, required)
 SELECT p.id, 'Zero Duplicates', 'zero_duplicates', 'No duplicate messages sent to same recipient within dedup window', true
 FROM rollout_phases p;
-
 INSERT INTO public.rollout_gate_checks (phase_id, gate_name, gate_type, description, required)
 SELECT p.id, 'SLA Met', 'sla_met', 'All SLO targets met (p95 latency, success rate)', true
 FROM rollout_phases p;
-
 INSERT INTO public.rollout_gate_checks (phase_id, gate_name, gate_type, description, required)
 SELECT p.id, 'No Provider Failures', 'no_provider_failures', 'No unexplained provider failures in the monitoring window', true
 FROM rollout_phases p;
-
 -- Function to check gate status
 CREATE OR REPLACE FUNCTION public.check_rollout_gate(p_gate_id uuid)
 RETURNS jsonb
@@ -130,7 +119,6 @@ BEGIN
   RETURN v_result;
 END;
 $$;
-
 -- Function to advance rollout phase
 CREATE OR REPLACE FUNCTION public.advance_rollout_phase(p_phase_id uuid)
 RETURNS jsonb

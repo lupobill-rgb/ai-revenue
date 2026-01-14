@@ -28,5 +28,4 @@ BEGIN
   RETURN v_tenant_id;
 END;
 $$;
-
 COMMENT ON FUNCTION get_tenant_id_from_user IS 'Retrieves tenant_id for a user via user_tenants or workspace membership';

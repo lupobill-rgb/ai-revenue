@@ -8,11 +8,11 @@
  * - No provider leakage in product code
  */
 import { openaiChat, openaiChatStream, openaiImageGenerate } from "./providers/openai.ts";
-import { googleChat } from "./providers/google.ts";
 import { createHash } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 import { encodeHex } from "https://deno.land/std@0.168.0/encoding/hex.ts";
 
-export type LLMProvider = "openai" | "google";
+// OpenAI-only baseline: do not route to other providers.
+export type LLMProvider = "openai";
 export type LLMRole = "system" | "user" | "assistant";
 
 export interface LLMMessage {
@@ -159,9 +159,9 @@ type RoutesConfig = {
 function defaultRoutes(): Record<string, LLMRoute> {
   // IMPORTANT: This is an MVP fallback. Override via `LLM_ROUTES_JSON`.
   return {
-    "ai.chat": { primary: { provider: "openai", model: "gpt-4o-mini" }, fallbacks: [{ provider: "google", model: "gemini-2.0-flash" }] },
-    "content.generate": { primary: { provider: "openai", model: "gpt-4o-mini" }, fallbacks: [{ provider: "google", model: "gemini-2.0-flash" }] },
-    "leads.analyze": { primary: { provider: "google", model: "gemini-2.0-flash" }, fallbacks: [{ provider: "openai", model: "gpt-4o-mini" }] },
+    "ai.chat": { primary: { provider: "openai", model: "gpt-4o-mini" }, fallbacks: [] },
+    "content.generate": { primary: { provider: "openai", model: "gpt-4o-mini" }, fallbacks: [] },
+    "leads.analyze": { primary: { provider: "openai", model: "gpt-4o-mini" }, fallbacks: [] },
     "image.generate": { primary: { provider: "openai", model: "gpt-image-1" }, fallbacks: [] },
   };
 }
@@ -183,7 +183,6 @@ function resolveRoute(tenantId: string, capability: string): LLMRoute {
 
 function providerKeyAvailable(provider: LLMProvider): boolean {
   if (provider === "openai") return !!Deno.env.get("OPENAI_API_KEY");
-  if (provider === "google") return !!(Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_GENERATIVE_AI_API_KEY"));
   return false;
 }
 
@@ -253,39 +252,7 @@ export async function runLLM(input: RunLLMInput): Promise<RunLLMResult> {
           });
           return { kind: "stream", provider: target.provider, model: target.model, response: resp, latencyMs };
         }
-
-        // Non-stream fallback wrapped as SSE
-        let text = "";
-        let usage: LLMUsage | undefined;
-        if (target.provider === "google") {
-          const out = await googleChat({
-            apiKey: Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_GENERATIVE_AI_API_KEY")!,
-            model: target.model,
-            messages: input.messages,
-            temperature: input.temperature,
-            maxTokens: input.maxTokens,
-            timeoutMs: input.timeoutMs,
-          });
-          text = out.text;
-          usage = out.usage;
-        } else {
-          throw new RouterError("Unknown provider", { provider: target.provider, model: target.model, retryable: false });
-        }
-
-        const latencyMs = nowMs() - attemptStart;
-        logCall({
-          requestId,
-          tenantId: input.tenantId,
-          capability: input.capability,
-          provider: target.provider,
-          model: target.model,
-          attempt: i,
-          fallbackUsed,
-          latencyMs,
-          outcome: "ok_stream_wrapped",
-          tokens: usage?.totalTokens,
-        });
-        return { kind: "stream", provider: target.provider, model: target.model, response: sseFromText(text), latencyMs };
+        throw new RouterError("Streaming not supported for this provider", { provider: target.provider, model: target.model, retryable: false });
       }
 
       // Non-streaming text generation
@@ -294,17 +261,6 @@ export async function runLLM(input: RunLLMInput): Promise<RunLLMResult> {
       if (target.provider === "openai") {
         const out = await openaiChat({
           apiKey: Deno.env.get("OPENAI_API_KEY")!,
-          model: target.model,
-          messages: input.messages,
-          temperature: input.temperature,
-          maxTokens: input.maxTokens,
-          timeoutMs: input.timeoutMs,
-        });
-        text = out.text;
-        usage = out.usage;
-      } else if (target.provider === "google") {
-        const out = await googleChat({
-          apiKey: Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_GENERATIVE_AI_API_KEY")!,
           model: target.model,
           messages: input.messages,
           temperature: input.temperature,

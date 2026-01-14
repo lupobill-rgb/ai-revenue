@@ -1,4 +1,3 @@
-
 -- ============================================================
 -- SINGLE WRITER ENFORCEMENT FOR campaign_runs
 -- Only run-job-queue edge function may update status/timestamps
@@ -38,7 +37,6 @@ BEGIN
   WHERE id = p_run_id;
 END;
 $function$;
-
 -- 2) Fix retry_job to NOT update campaign_runs (edge function handles this)
 CREATE OR REPLACE FUNCTION public.retry_job(p_job_id uuid)
 RETURNS boolean
@@ -69,7 +67,6 @@ BEGIN
   RETURN TRUE;
 END;
 $function$;
-
 -- 3) Fix deploy_campaign exception handler to NOT update campaign_runs directly
 -- The deploy_campaign function should fail cleanly without partial state
 CREATE OR REPLACE FUNCTION public.deploy_campaign(p_campaign_id uuid)
@@ -273,20 +270,16 @@ BEGIN
   -- Edge function is the ONLY writer for status updates after initial insert
 END;
 $function$;
-
 -- 4) Revoke direct UPDATE on campaign_runs from authenticated role
 -- Only service_role and SECURITY DEFINER functions can update
 REVOKE UPDATE ON public.campaign_runs FROM authenticated;
-
 -- 5) Grant INSERT to authenticated (for deploy_campaign via its SECURITY DEFINER)
 -- deploy_campaign uses SECURITY DEFINER so it runs as owner, not authenticated
 -- But we need authenticated to be able to SELECT for reading
 GRANT SELECT ON public.campaign_runs TO authenticated;
-
 -- 6) Add comment documenting the single-writer rule
 COMMENT ON TABLE public.campaign_runs IS 
 'Campaign execution runs. SINGLE WRITER RULE: Only run-job-queue edge function may update status/timestamps via update_campaign_run_status(). deploy_campaign() may INSERT with status=queued only.';
-
 -- 7) Add comment on the update function
 COMMENT ON FUNCTION public.update_campaign_run_status IS 
 'SECURITY DEFINER function for updating campaign_runs. Called ONLY by run-job-queue edge function via service_role.';

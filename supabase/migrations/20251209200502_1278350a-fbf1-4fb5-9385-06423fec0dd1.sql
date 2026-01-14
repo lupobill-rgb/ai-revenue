@@ -1,4 +1,3 @@
-
 -- Update the dispatch_outbound_cron function to use the vault secret
 CREATE OR REPLACE FUNCTION public.dispatch_outbound_cron()
  RETURNS void

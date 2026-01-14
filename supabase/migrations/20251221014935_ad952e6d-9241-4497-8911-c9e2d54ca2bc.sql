@@ -14,7 +14,6 @@ AS $$
     AND status IN ('sent', 'failed', 'skipped')
   )
 $$;
-
 -- Function to safely complete a campaign run (enforces terminal state requirement)
 CREATE OR REPLACE FUNCTION public.complete_campaign_run(p_run_id uuid)
 RETURNS jsonb
@@ -71,7 +70,6 @@ BEGIN
   );
 END;
 $$;
-
 -- Check launch prerequisites for any campaign/channel combination
 CREATE OR REPLACE FUNCTION public.check_campaign_launch_prerequisites(
   p_campaign_id uuid,
@@ -307,7 +305,6 @@ BEGIN
   );
 END;
 $$;
-
 -- Trigger to auto-complete campaign runs when all outbox entries are terminal
 CREATE OR REPLACE FUNCTION public.check_run_completion()
 RETURNS trigger
@@ -344,14 +341,12 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 -- Create trigger on channel_outbox
 DROP TRIGGER IF EXISTS trigger_check_run_completion ON channel_outbox;
 CREATE TRIGGER trigger_check_run_completion
 AFTER UPDATE OF status ON channel_outbox
 FOR EACH ROW
 EXECUTE FUNCTION check_run_completion();
-
 -- Grant execute permissions
 GRANT EXECUTE ON FUNCTION public.validate_campaign_completion(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.complete_campaign_run(uuid) TO authenticated;

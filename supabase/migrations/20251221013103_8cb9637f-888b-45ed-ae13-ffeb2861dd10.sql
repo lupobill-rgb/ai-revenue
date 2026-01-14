@@ -3,15 +3,12 @@ CREATE POLICY "Service role can manage rate limits"
   ON public.tenant_rate_limits FOR ALL
   USING (true)
   WITH CHECK (true);
-
 -- Drop and recreate with proper permissions (service role access)
 DROP POLICY IF EXISTS "Service role can manage rate limits" ON public.tenant_rate_limits;
-
 -- Add service role insert/update policy for rate limit events
 CREATE POLICY "Service role can insert rate limit events"
   ON public.rate_limit_events FOR INSERT
   WITH CHECK (true);
-
 -- Add RPC for updating campaign run status with rate_limited option
 CREATE OR REPLACE FUNCTION public.update_campaign_run_status(
   p_run_id uuid,

@@ -11,11 +11,9 @@ ALTER TABLE deals ADD COLUMN IF NOT EXISTS status text
       ELSE 'open'
     END
   ) STORED;
-
 -- 2) Add won_at and lost_at timestamps to deals
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS won_at timestamptz;
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS lost_at timestamptz;
-
 -- 3) Create lead_stage_events table for velocity tracking
 CREATE TABLE IF NOT EXISTS lead_stage_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -28,10 +26,8 @@ CREATE TABLE IF NOT EXISTS lead_stage_events (
   note text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 -- Enable RLS
 ALTER TABLE lead_stage_events ENABLE ROW LEVEL SECURITY;
-
 -- RLS policies for lead_stage_events
 CREATE POLICY "tenant_isolation_select" ON lead_stage_events
   FOR SELECT USING (user_belongs_to_tenant(tenant_id));
@@ -41,11 +37,9 @@ CREATE POLICY "tenant_isolation_update" ON lead_stage_events
   FOR UPDATE USING (user_belongs_to_tenant(tenant_id));
 CREATE POLICY "tenant_isolation_delete" ON lead_stage_events
   FOR DELETE USING (user_belongs_to_tenant(tenant_id));
-
 -- Index for efficient queries
 CREATE INDEX IF NOT EXISTS idx_lead_stage_events_lead ON lead_stage_events(lead_id);
 CREATE INDEX IF NOT EXISTS idx_lead_stage_events_workspace ON lead_stage_events(workspace_id);
-
 -- 4) Trigger to auto-populate won_at/lost_at on deals
 CREATE OR REPLACE FUNCTION fn_deal_status_timestamps()
 RETURNS TRIGGER AS $$
@@ -64,13 +58,11 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 DROP TRIGGER IF EXISTS trg_deal_status_timestamps ON deals;
 CREATE TRIGGER trg_deal_status_timestamps
   BEFORE INSERT OR UPDATE ON deals
   FOR EACH ROW
   EXECUTE FUNCTION fn_deal_status_timestamps();
-
 -- 5) Trigger to auto-create lead_stage_events on lead status changes
 CREATE OR REPLACE FUNCTION fn_lead_stage_event()
 RETURNS TRIGGER AS $$
@@ -83,13 +75,11 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 DROP TRIGGER IF EXISTS trg_lead_stage_event ON leads;
 CREATE TRIGGER trg_lead_stage_event
   AFTER INSERT OR UPDATE ON leads
   FOR EACH ROW
   EXECUTE FUNCTION fn_lead_stage_event();
-
 -- 6) Create v_data_quality_by_workspace (authoritative quality flags)
 CREATE OR REPLACE VIEW v_data_quality_by_workspace AS
 SELECT
@@ -111,7 +101,6 @@ LEFT JOIN ai_settings_stripe stripe ON stripe.tenant_id = w.id
 LEFT JOIN ai_settings_social social ON social.tenant_id = w.id
 LEFT JOIN ai_settings_voice voice ON voice.tenant_id = w.id
 LEFT JOIN ai_settings_email email ON email.tenant_id = w.id;
-
 -- 7) Create v_pipeline_metrics_by_workspace (authoritative pipeline KPIs)
 CREATE OR REPLACE VIEW v_pipeline_metrics_by_workspace AS
 WITH workspace_mode AS (
@@ -213,6 +202,5 @@ SELECT
 FROM lead_counts lc
 LEFT JOIN deal_counts dc ON dc.workspace_id = lc.workspace_id
 LEFT JOIN stage_velocity sv ON sv.workspace_id = lc.workspace_id;
-
 -- Enable realtime for lead_stage_events
 ALTER PUBLICATION supabase_realtime ADD TABLE lead_stage_events;

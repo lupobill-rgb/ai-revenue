@@ -60,10 +60,11 @@ const Signup = () => {
   const handleGoogleSignUp = async () => {
     setIsGoogleLoading(true);
     try {
+      const redirectTo = `${window.location.origin}/auth/callback`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'https://cmo.ubigrowth.ai/auth/callback',
+          redirectTo,
         },
       });
 
@@ -103,7 +104,7 @@ const Signup = () => {
     setIsLoading(true);
 
     try {
-      const redirectUrl = 'https://cmo.ubigrowth.ai/onboarding';
+      const redirectUrl = `${window.location.origin}/onboarding`;
       
       const { data, error } = await supabase.auth.signUp({
         email: result.data.email,

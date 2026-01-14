@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { openaiChatCompletionsRaw } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,15 +75,16 @@ serve(async (req) => {
       objections: icpSegments[0].objections,
     } : null;
 
-    // Call Lovable AI to enhance the landing page
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      console.error("LOVABLE_API_KEY not configured");
+    // Call GPT (OpenAI) to enhance the landing page
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      console.error("OPENAI_API_KEY not configured");
       return new Response(JSON.stringify({ error: "AI service not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
 
     const systemPrompt = `You are an expert landing page copywriter. Enhance the provided landing page content to be more compelling, persuasive, and conversion-focused.
 
@@ -113,21 +115,17 @@ Rules:
 
 Return the enhanced version as valid JSON with the same structure.`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+    const aiResponse = await openaiChatCompletionsRaw(
+      {
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         temperature: 0.7,
-      }),
-    });
+      },
+      OPENAI_API_KEY,
+    );
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();

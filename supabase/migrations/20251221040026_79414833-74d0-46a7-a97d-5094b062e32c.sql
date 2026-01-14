@@ -17,12 +17,10 @@ AS $$
     false
   )
 $$;
-
 -- Drop existing update policy if it exists
 DROP POLICY IF EXISTS "tenant_isolation_update" ON public.job_queue;
 DROP POLICY IF EXISTS "service_role_can_update_job_status" ON public.job_queue;
 DROP POLICY IF EXISTS "users_can_create_jobs" ON public.job_queue;
-
 -- Create restrictive update policy: only service role can update locked_by and status
 -- This is the ONLY way locked_by gets set - by worker edge functions
 CREATE POLICY "service_role_can_update_job_status"
@@ -46,7 +44,6 @@ WITH CHECK (
     user_belongs_to_tenant(tenant_id)
   )
 );
-
 -- Insert policy: users can create jobs but not set locked_by
 CREATE POLICY "users_can_create_jobs"
 ON public.job_queue
@@ -56,21 +53,18 @@ WITH CHECK (
   AND (locked_by IS NULL) -- Cannot pre-set locked_by on insert
   AND (status = 'queued')  -- New jobs must start as queued
 );
-
 -- Ensure select policy exists
 DROP POLICY IF EXISTS "tenant_isolation_select" ON public.job_queue;
 CREATE POLICY "tenant_isolation_select"
 ON public.job_queue
 FOR SELECT
 USING (user_belongs_to_tenant(tenant_id) OR is_service_role());
-
 -- Ensure delete policy exists
 DROP POLICY IF EXISTS "tenant_isolation_delete" ON public.job_queue;
 CREATE POLICY "tenant_isolation_delete"
 ON public.job_queue
 FOR DELETE
 USING (user_belongs_to_tenant(tenant_id) OR is_service_role());
-
 -- Add a trigger to prevent client-side locked_by modification
 -- This is defense-in-depth in case RLS is bypassed
 CREATE OR REPLACE FUNCTION public.protect_job_queue_worker_fields()
@@ -106,7 +100,6 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 -- Drop and recreate the trigger
 DROP TRIGGER IF EXISTS protect_job_queue_worker_fields_trigger ON public.job_queue;
 CREATE TRIGGER protect_job_queue_worker_fields_trigger

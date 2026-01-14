@@ -6,7 +6,6 @@
 
 -- Disable triggers during import
 SET session_replication_role = replica;
-
 -- Import CMO campaigns (adjusted for Phase 3 schema)
 INSERT INTO cmo_campaigns (
   id, workspace_id, campaign_name, campaign_type, objective, 
@@ -130,10 +129,8 @@ ON CONFLICT (id) DO UPDATE SET
   description = EXCLUDED.description,
   status = EXCLUDED.status,
   updated_at = EXCLUDED.updated_at;
-
 -- Re-enable triggers
 SET session_replication_role = DEFAULT;
-
 -- ============================================
 -- VERIFICATION
 -- ============================================
@@ -145,5 +142,4 @@ SET session_replication_role = DEFAULT;
 --   '1938621e-54de-45d8-be63-3ad571848e9c',
 --   '31b4760f-cdaf-4e3c-b91f-6c047f7c983f',
 --   '11111111-2222-3333-4444-555555555555'
--- );
-
+-- );;

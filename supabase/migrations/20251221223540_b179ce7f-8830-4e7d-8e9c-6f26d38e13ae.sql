@@ -13,7 +13,6 @@ AS $$
     WHERE user_id = auth.uid()
   );
 $$;
-
 DROP POLICY IF EXISTS "platform_admin_select_all" ON public.channel_outbox;
 CREATE POLICY "platform_admin_select_all"
 ON public.channel_outbox
