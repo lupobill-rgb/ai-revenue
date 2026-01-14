@@ -3,6 +3,7 @@ import { runDecisionEngine } from "./decision-engine.ts";
 import { executeDecision } from "./dispatcher.ts";
 import { validateKernelEvent } from "./validate.ts";
 import type { KernelDecision, KernelEvent, KernelRuntimeContext } from "./types.ts";
+import { assertLockedV1OrRefuseExecution } from "../system_mode.ts";
 
 export function makeDefaultRuntimeContext(mode: "shadow" | "enforce", correlation_id: string): KernelRuntimeContext {
   return {
@@ -114,6 +115,20 @@ export async function ingestKernelEvent(supabase: any, input: unknown, opts?: { 
     decisionsCreated++;
 
     try {
+      // HARD SCOPE FREEZE: enforcement mode must fail-closed unless LOCKED_V1.
+      if (ctx.mode === "enforce") {
+        await assertLockedV1OrRefuseExecution(supabase, {
+          tenant_id: event.tenant_id,
+          component: "revenue_os_kernel",
+          action: "execute_decision",
+          extra: {
+            decision_id: decisionId,
+            policy_name: d.policy_name,
+            decision_type: d.decision_type,
+          },
+        });
+      }
+
       await executeDecision(supabase, d, ctx);
       if (ctx.mode === "enforce") {
         await updateDecisionStatus(supabase, decisionId, "executed");

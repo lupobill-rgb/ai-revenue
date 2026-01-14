@@ -24,6 +24,7 @@ import {
   type EmailBatchItem,
   type VoiceBatchItem,
 } from "../_shared/provider-batching.ts";
+import { assertLockedV1OrRefuseExecution } from "../_shared/system_mode.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1313,6 +1314,15 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // ============================================================
+    // HARD SCOPE FREEZE: refuse execution unless LOCKED_V1
+    // ============================================================
+    await assertLockedV1OrRefuseExecution(supabase, {
+      component: "run-job-queue",
+      action: "process_jobs",
+      extra: { worker_id: workerId, invocation_type: invocationType },
+    });
 
     // Get API keys
     const resendApiKey = Deno.env.get("RESEND_API_KEY") || "";

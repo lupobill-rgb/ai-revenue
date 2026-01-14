@@ -24,6 +24,18 @@ interface MetricResult {
   details: Record<string, unknown>;
 }
 
+type AlertRow = {
+  alert_type: string;
+  severity: string;
+  message: string;
+  metric_name: string;
+  metric_value: number;
+  threshold: number;
+  details: Record<string, unknown>;
+  tenant_id?: string | null;
+  workspace_id?: string | null;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -53,15 +65,7 @@ Deno.serve(async (req) => {
     }
 
     const metrics: MetricResult[] = [];
-    const alerts: Array<{
-      alert_type: string;
-      severity: string;
-      message: string;
-      metric_name: string;
-      metric_value: number;
-      threshold: number;
-      details: Record<string, unknown>;
-    }> = [];
+    const alerts: AlertRow[] = [];
 
     // Calculate each metric
     for (const config of (configs || []) as SLOConfig[]) {
@@ -127,6 +131,9 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Drift detection (alert-only; existing data only)
+    await _appendDriftAlerts(supabase, alerts);
+
     // Store alerts
     if (alerts.length > 0) {
       const { error: alertError } = await supabase.from("slo_alerts").insert(alerts);
@@ -138,6 +145,8 @@ Deno.serve(async (req) => {
       const webhookUrl = Deno.env.get("OPS_WEBHOOK_URL");
       if (webhookUrl) {
         await sendWebhookNotification(webhookUrl, alerts);
+      } else {
+        console.warn("[SLO Monitor] OPS_WEBHOOK_URL not configured; alerts recorded only");
       }
     }
 
@@ -167,6 +176,238 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// ============================================================
+// Drift Detection Alerts (existing data only; alert-only)
+// Triggers:
+// 1) Approval rate < 40% for 3 consecutive days
+// 2) Any execution_failed or verification_failed event (or job_failed/launch_failed)
+// 3) Net spend delta exceeds configured caps (even if approved)
+// ============================================================
+
+async function shouldSendAlert(
+  supabase: SupabaseClient,
+  metricName: string,
+  workspaceId: string | null,
+  cooldownMinutes: number
+): Promise<boolean> {
+  const since = new Date(Date.now() - cooldownMinutes * 60 * 1000).toISOString();
+  const q = supabase
+    .from("slo_alerts")
+    .select("id")
+    .eq("metric_name", metricName)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  const { data } = workspaceId ? await q.eq("workspace_id", workspaceId).maybeSingle() : await q.maybeSingle();
+  return !data;
+}
+
+function buildActivityFeedLink(workspaceId: string | null): string {
+  const base = Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("APP_URL") || "";
+  const path = "/os";
+  if (!base) return path;
+  return workspaceId ? `${base}${path}?workspace=${workspaceId}` : `${base}${path}`;
+}
+
+async function getWorkspaceMap(supabase: SupabaseClient, workspaceIds: string[]): Promise<Map<string, { name: string; slug: string }>> {
+  const uniq = Array.from(new Set(workspaceIds.filter(Boolean)));
+  if (uniq.length === 0) return new Map();
+
+  const { data } = await supabase
+    .from("workspaces")
+    .select("id,name,slug")
+    .in("id", uniq);
+
+  const map = new Map<string, { name: string; slug: string }>();
+  (data || []).forEach((w: any) => {
+    if (w?.id) map.set(w.id, { name: w.name || w.id, slug: w.slug || "" });
+  });
+  return map;
+}
+
+async function collectDriftAlerts(supabase: SupabaseClient): Promise<AlertRow[]> {
+  const out: AlertRow[] = [];
+
+  // Cooldown to avoid spam (slo-monitor can run frequently)
+  const COOLDOWN_MINUTES = 360; // 6h
+
+  // ----------------------------
+  // 1) Approval rate < 40% for 3 consecutive days
+  // ----------------------------
+  const approvalThreshold = 0.4;
+  const daysBack = 3;
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  start.setUTCDate(start.getUTCDate() - (daysBack - 1));
+
+  const { data: approvalRows } = await supabase
+    .from("v_approval_rate_daily_by_workspace" as any)
+    .select("workspace_id,tenant_id,day,approval_rate,total")
+    .gte("day", start.toISOString());
+
+  const approvalsByWs = new Map<string, Array<{ day: string; rate: number | null; total: number }>>();
+  (approvalRows || []).forEach((r: any) => {
+    const ws = r.workspace_id as string | null;
+    if (!ws) return;
+    const arr = approvalsByWs.get(ws) || [];
+    arr.push({
+      day: r.day,
+      rate: typeof r.approval_rate === "number" ? r.approval_rate : (r.approval_rate == null ? null : Number(r.approval_rate)),
+      total: Number(r.total || 0),
+    });
+    approvalsByWs.set(ws, arr);
+  });
+
+  const wsMap1 = await getWorkspaceMap(supabase, Array.from(approvalsByWs.keys()));
+
+  for (const [workspace_id, rows] of approvalsByWs.entries()) {
+    // Need 3 calendar days worth of rows; if missing any day, treat as not consecutive breach.
+    const dayToRate = new Map<string, { rate: number | null; total: number }>();
+    rows.forEach((x) => dayToRate.set(new Date(x.day).toISOString().slice(0, 10), { rate: x.rate, total: x.total }));
+
+    const days: string[] = [];
+    for (let i = 0; i < daysBack; i++) {
+      const d = new Date(start);
+      d.setUTCDate(start.getUTCDate() + i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+
+    const series = days.map((d) => dayToRate.get(d) || null);
+    const hasAllDays = series.every(Boolean);
+    if (!hasAllDays) continue;
+
+    const breachedAll =
+      series.every((s) => s && s.total > 0 && s.rate != null && s.rate < approvalThreshold);
+
+    if (!breachedAll) continue;
+
+    if (!(await shouldSendAlert(supabase, "approval_rate_3d", workspace_id, COOLDOWN_MINUTES))) continue;
+
+    const wsInfo = wsMap1.get(workspace_id);
+    const link = buildActivityFeedLink(workspace_id);
+    const lastRate = series[series.length - 1]?.rate ?? null;
+
+    out.push({
+      alert_type: "drift",
+      severity: "warning",
+      metric_name: "approval_rate_3d",
+      metric_value: lastRate != null ? Math.round(lastRate * 1000) / 10 : 0,
+      threshold: 40,
+      tenant_id: null,
+      workspace_id,
+      message: `Approval rate drift: <40% for 3 consecutive days`,
+      details: {
+        account: wsInfo?.name || workspace_id,
+        workspace_id,
+        threshold_pct: 40,
+        days,
+        rates_pct: series.map((s) => (s?.rate != null ? Math.round(s.rate * 1000) / 10 : null)),
+        link,
+      },
+    });
+  }
+
+  // ----------------------------
+  // 2) Any execution_failed or verification_failed event
+  // ----------------------------
+  const windowMinutes = 10;
+  const since = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
+  const failureEventTypes = ["execution_failed", "verification_failed", "job_failed", "launch_failed"];
+
+  const { data: failEvents } = await supabase
+    .from("campaign_audit_log")
+    .select("tenant_id,workspace_id,event_type,created_at,details")
+    .in("event_type", failureEventTypes)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  const eventsByWs = new Map<string, any[]>();
+  (failEvents || []).forEach((e: any) => {
+    const ws = e.workspace_id as string | null;
+    if (!ws) return;
+    const arr = eventsByWs.get(ws) || [];
+    arr.push(e);
+    eventsByWs.set(ws, arr);
+  });
+
+  const wsMap2 = await getWorkspaceMap(supabase, Array.from(eventsByWs.keys()));
+
+  for (const [workspace_id, evts] of eventsByWs.entries()) {
+    if (evts.length === 0) continue;
+    if (!(await shouldSendAlert(supabase, "execution_or_verification_failed", workspace_id, COOLDOWN_MINUTES))) continue;
+
+    const wsInfo = wsMap2.get(workspace_id);
+    const link = buildActivityFeedLink(workspace_id);
+    const latest = evts[0];
+
+    out.push({
+      alert_type: "drift",
+      severity: "critical",
+      metric_name: "execution_or_verification_failed",
+      metric_value: evts.length,
+      threshold: 0,
+      tenant_id: latest?.tenant_id || null,
+      workspace_id,
+      message: `Execution/verification failure event detected`,
+      details: {
+        account: wsInfo?.name || workspace_id,
+        workspace_id,
+        window_minutes: windowMinutes,
+        count: evts.length,
+        latest_event_type: latest?.event_type,
+        latest_at: latest?.created_at,
+        latest_details: latest?.details || null,
+        link,
+      },
+    });
+  }
+
+  // ----------------------------
+  // 3) Net spend delta exceeds configured caps (even if approved)
+  // ----------------------------
+  const { data: spendRows } = await supabase
+    .from("v_spend_delta_7d_by_workspace" as any)
+    .select("workspace_id,tenant_id,monthly_budget_cap,spend_delta_7d,cap_prorated_7d,is_breached")
+    .eq("is_breached", true)
+    .limit(200);
+
+  const wsMap3 = await getWorkspaceMap(supabase, (spendRows || []).map((r: any) => r.workspace_id).filter(Boolean));
+
+  for (const r of (spendRows || []) as any[]) {
+    const workspace_id = r.workspace_id as string | null;
+    if (!workspace_id) continue;
+    if (!(await shouldSendAlert(supabase, "spend_delta_cap", workspace_id, COOLDOWN_MINUTES))) continue;
+
+    const wsInfo = wsMap3.get(workspace_id);
+    const link = buildActivityFeedLink(workspace_id);
+    const delta = Number(r.spend_delta_7d || 0);
+    const cap = Number(r.cap_prorated_7d || 0);
+
+    out.push({
+      alert_type: "drift",
+      severity: "critical",
+      metric_name: "spend_delta_cap",
+      metric_value: delta,
+      threshold: cap,
+      tenant_id: r.tenant_id || null,
+      workspace_id,
+      message: `Spend delta exceeded configured cap`,
+      details: {
+        account: wsInfo?.name || workspace_id,
+        workspace_id,
+        spend_delta_7d: delta,
+        cap_prorated_7d: cap,
+        monthly_budget_cap: Number(r.monthly_budget_cap || 0),
+        link,
+      },
+    });
+  }
+
+  return out;
+}
 
 // Scheduler SLA: % of jobs that started within 120s of being queued
 async function calculateSchedulerSLA(
@@ -487,4 +728,12 @@ async function sendWebhookNotification(
   } catch (error) {
     console.error("[SLO Monitor] Failed to send webhook:", error);
   }
+}
+
+// Hook drift alerts into the existing SLO monitor loop without changing behavior.
+// We append drift alerts (alert-only) to the same storage + notification pipeline.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function _appendDriftAlerts(supabase: SupabaseClient, alerts: AlertRow[]) {
+  const drift = await collectDriftAlerts(supabase);
+  alerts.push(...drift);
 }
