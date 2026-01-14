@@ -213,10 +213,10 @@ const Reports = () => {
     <ProtectedRoute>
       <div className="flex min-h-screen flex-col bg-background">
         <NavBar />
-        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:py-8 sm:px-6 lg:px-8">
           <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-4xl font-bold text-foreground">Analytics Dashboard</h1>
+              <h1 className="text-3xl sm:text-4xl font-bold text-foreground">Analytics Dashboard</h1>
               <p className="mt-2 text-muted-foreground">Lead conversion rates, pipeline velocity, and campaign performance</p>
             </div>
             {isDemoMode && (
@@ -232,7 +232,7 @@ const Reports = () => {
           )}
 
           {/* CRM TRUTH GUARDRAIL - Non-negotiable transparency */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground">
+          <div className="flex items-start sm:items-center gap-2 px-3 py-2 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground leading-snug">
             <Database className="h-3 w-3 flex-shrink-0" />
             <span>Metrics are driven from CRM deal outcomes. No inferred or estimated revenue.</span>
           </div>
@@ -408,30 +408,41 @@ const Reports = () => {
                   ) : campaigns.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">No active campaigns</div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Campaign</TableHead>
-                          <TableHead>Channel</TableHead>
-                          <TableHead className="text-right">Impressions</TableHead>
-                          <TableHead className="text-right">Clicks</TableHead>
-                          <TableHead className="text-right">Revenue</TableHead>
-                          <TableHead className="text-right">ROI</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {campaigns.map((campaign) => (
-                          <TableRow key={campaign.id}>
-                            <TableCell className="font-medium">{campaign.asset_name}</TableCell>
-                            <TableCell><Badge variant="outline">{campaign.channel}</Badge></TableCell>
-                            <TableCell className="text-right">{formatNumber(campaign.impressions)}</TableCell>
-                            <TableCell className="text-right">{formatNumber(campaign.clicks)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(campaign.revenue)}</TableCell>
-                            <TableCell className="text-right">{campaign.roi > 0 ? `${campaign.roi.toFixed(0)}%` : "—"}</TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Campaign</TableHead>
+                            <TableHead className="hidden md:table-cell">Channel</TableHead>
+                            <TableHead className="text-right hidden lg:table-cell">Impressions</TableHead>
+                            <TableHead className="text-right hidden lg:table-cell">Clicks</TableHead>
+                            <TableHead className="text-right hidden xl:table-cell">Revenue</TableHead>
+                            <TableHead className="text-right">ROI</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {campaigns.map((campaign) => (
+                            <TableRow key={campaign.id}>
+                              <TableCell className="font-medium">
+                                <div className="min-w-0">
+                                  <span className="block truncate">{campaign.asset_name}</span>
+                                  <span className="mt-1 block text-xs text-muted-foreground capitalize md:hidden">
+                                    {campaign.channel}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                <Badge variant="outline">{campaign.channel}</Badge>
+                              </TableCell>
+                              <TableCell className="text-right hidden lg:table-cell">{formatNumber(campaign.impressions)}</TableCell>
+                              <TableCell className="text-right hidden lg:table-cell">{formatNumber(campaign.clicks)}</TableCell>
+                              <TableCell className="text-right hidden xl:table-cell">{formatCurrency(campaign.revenue)}</TableCell>
+                              <TableCell className="text-right">{campaign.roi > 0 ? `${campaign.roi.toFixed(0)}%` : "—"}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>

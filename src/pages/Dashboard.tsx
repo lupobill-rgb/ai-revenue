@@ -342,7 +342,7 @@ const Dashboard = () => {
     <ProtectedRoute>
       <div className="flex min-h-screen flex-col bg-background">
         <NavBar />
-        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:py-8 sm:px-6 lg:px-8">
           <WorkflowProgress
             steps={[
               { label: "Create", status: "completed" },
@@ -352,10 +352,10 @@ const Dashboard = () => {
             className="mb-8"
           />
           
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-4xl font-bold text-foreground">Campaign Dashboard</h1>
+                <h1 className="text-3xl sm:text-4xl font-bold text-foreground">Campaign Dashboard</h1>
                 {/* DATA MODE LABEL - Clear indicator of data source */}
                 {dataIntegrity.isDemoMode ? (
                   <Badge className="bg-amber-500 text-white px-3 py-1 text-sm font-semibold">
@@ -374,18 +374,19 @@ const Dashboard = () => {
                 <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
               <Button 
                 variant="outline" 
                 onClick={() => {
                   storageRemove("ubigrowth-ai-walkthrough-seen");
                   setShowTour(true);
                 }}
+                className="w-full sm:w-auto"
               >
                 <HelpCircle className="mr-2 h-4 w-4" />
                 AI Guide
               </Button>
-              <Button onClick={() => navigate("/new-campaign")} size="lg">
+              <Button onClick={() => navigate("/new-campaign")} size="lg" className="w-full sm:w-auto">
                 <Plus className="mr-2 h-4 w-4" />
                 New Campaign
               </Button>
@@ -523,7 +524,7 @@ const Dashboard = () => {
                     <DollarSign className="h-5 w-5 text-green-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-foreground">
+                    <div className="text-2xl sm:text-3xl font-bold text-foreground">
                       {/* RULE 3: If Stripe not connected in live mode, show $0 */}
                       {dataIntegrity.shouldShowRevenue 
                         ? dataIntegrity.formatRevenue(metrics.totalRevenue)
@@ -553,7 +554,7 @@ const Dashboard = () => {
                     <DollarSign className="h-5 w-5 text-orange-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-foreground">
+                    <div className="text-2xl sm:text-3xl font-bold text-foreground">
                       ${metrics.totalCost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
@@ -576,7 +577,7 @@ const Dashboard = () => {
                     <TrendingUp className="h-5 w-5 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-foreground">
+                    <div className="text-2xl sm:text-3xl font-bold text-foreground">
                       {/* RULE 3: If Stripe not connected in live mode, show "—" */}
                       {dataIntegrity.shouldShowRevenue 
                         ? dataIntegrity.formatROI(metrics.totalROI)
@@ -606,7 +607,7 @@ const Dashboard = () => {
                     <Eye className="h-5 w-5 text-blue-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-foreground">
+                    <div className="text-2xl sm:text-3xl font-bold text-foreground">
                       {/* RULE 4: If no analytics connected in live mode, show 0 */}
                       {dataIntegrity.shouldShowImpressions 
                         ? dataIntegrity.formatImpressions(metrics.totalImpressions).toLocaleString()
@@ -631,7 +632,7 @@ const Dashboard = () => {
                     <CheckCircle className="h-5 w-5 text-green-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-foreground">
+                    <div className="text-2xl sm:text-3xl font-bold text-foreground">
                       {/* Always from actual campaign records, never placeholders */}
                       {metrics.activeCampaigns}
                     </div>
@@ -749,19 +750,19 @@ const Dashboard = () => {
                             <th className="pb-3 text-left text-sm font-medium text-muted-foreground">
                               Campaign
                             </th>
-                            <th className="pb-3 text-left text-sm font-medium text-muted-foreground">
+                            <th className="pb-3 text-left text-sm font-medium text-muted-foreground hidden md:table-cell">
                               Channel
                             </th>
-                            <th className="pb-3 text-right text-sm font-medium text-muted-foreground">
+                            <th className="pb-3 text-right text-sm font-medium text-muted-foreground hidden lg:table-cell">
                               Impressions
                             </th>
-                            <th className="pb-3 text-right text-sm font-medium text-muted-foreground">
+                            <th className="pb-3 text-right text-sm font-medium text-muted-foreground hidden lg:table-cell">
                               Clicks
                             </th>
-                            <th className="pb-3 text-right text-sm font-medium text-muted-foreground">
+                            <th className="pb-3 text-right text-sm font-medium text-muted-foreground hidden xl:table-cell">
                               Revenue
                             </th>
-                            <th className="pb-3 text-right text-sm font-medium text-muted-foreground">
+                            <th className="pb-3 text-right text-sm font-medium text-muted-foreground hidden xl:table-cell">
                               Cost
                             </th>
                             <th className="pb-3 text-right text-sm font-medium text-muted-foreground">
@@ -787,24 +788,29 @@ const Dashboard = () => {
                                 <td className="py-4">
                                   <div className="flex items-center gap-3">
                                     <Icon className="h-4 w-4 text-primary flex-shrink-0" />
-                                    <span className="text-sm font-medium text-foreground">
-                                      {campaign.name}
-                                    </span>
+                                    <div className="min-w-0">
+                                      <span className="block text-sm font-medium text-foreground truncate">
+                                        {campaign.name}
+                                      </span>
+                                      <span className="mt-1 block text-xs text-muted-foreground capitalize md:hidden">
+                                        {campaign.channel}
+                                      </span>
+                                    </div>
                                   </div>
                                 </td>
-                                <td className="py-4 text-sm text-muted-foreground capitalize">
+                                <td className="py-4 text-sm text-muted-foreground capitalize hidden md:table-cell">
                                   {campaign.channel}
                                 </td>
-                                <td className="py-4 text-sm text-foreground text-right">
+                                <td className="py-4 text-sm text-foreground text-right hidden lg:table-cell">
                                   {showImpressions ? campaign.views.toLocaleString() : "—"}
                                 </td>
-                                <td className="py-4 text-sm text-foreground text-right">
+                                <td className="py-4 text-sm text-foreground text-right hidden lg:table-cell">
                                   {showImpressions ? campaign.clicks.toLocaleString() : "—"}
                                 </td>
-                                <td className="py-4 text-sm text-foreground text-right">
+                                <td className="py-4 text-sm text-foreground text-right hidden xl:table-cell">
                                   {showRevenue ? `$${campaign.revenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"}
                                 </td>
-                                <td className="py-4 text-sm text-foreground text-right">
+                                <td className="py-4 text-sm text-foreground text-right hidden xl:table-cell">
                                   {showRevenue ? `$${campaign.cost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"}
                                 </td>
                                 <td className="py-4 text-sm font-bold text-right">

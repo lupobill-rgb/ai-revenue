@@ -615,7 +615,7 @@ const Approvals = () => {
       <div className="flex min-h-screen flex-col bg-background">
         <NavBar />
         <PageBreadcrumbs items={[{ label: "Approvals" }]} />
-        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:py-8 sm:px-6 lg:px-8">
           <WorkspaceGate feature="approvals">
           <WorkflowProgress
             steps={[
@@ -627,7 +627,7 @@ const Approvals = () => {
           />
           
           <div className="mb-8">
-            <h1 className="text-4xl font-bold text-foreground">Review & Deploy</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold text-foreground">Review & Deploy</h1>
             <p className="mt-2 text-sm text-muted-foreground">
               Review and approve content to automatically deploy across all distribution channels
             </p>
@@ -699,7 +699,7 @@ const Approvals = () => {
             </div>
           ) : (
             <Card className="border-border bg-card shadow-md">
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <CardTitle className="text-foreground text-2xl">
                     Pending Approvals
@@ -708,14 +708,14 @@ const Approvals = () => {
                     {pendingAssets.length} {pendingAssets.length === 1 ? "asset" : "assets"} awaiting review
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-col sm:w-auto sm:flex-row sm:items-center gap-2">
                   {pendingAssets.length > 0 && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={generateAllThumbnails}
                       disabled={bulkGeneratingThumbnails}
-                      className="flex items-center gap-2"
+                      className="w-full sm:w-auto flex items-center justify-center gap-2"
                     >
                       {bulkGeneratingThumbnails ? (
                         <>
@@ -845,15 +845,15 @@ const Approvals = () => {
                                   <span className="capitalize">{asset.type.replace("_", " ")}</span>
                                   <span>•</span>
                                   <span>{asset.channel}</span>
-                                  <span>•</span>
-                                  <span>{formatDate(asset.created_at)}</span>
+                                  <span className="hidden sm:inline">•</span>
+                                  <span className="hidden sm:inline">{formatDate(asset.created_at)}</span>
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 sm:flex-shrink-0 flex-wrap">
+                            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2 sm:flex-shrink-0 sm:flex-wrap">
                               {/* Coming Soon badge for video assets */}
                               {isVideo ? (
-                                <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                                <Badge variant="secondary" className="col-span-2 sm:col-span-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
                                   Coming Soon - After Platform Approval
                                 </Badge>
                               ) : (
@@ -867,7 +867,7 @@ const Approvals = () => {
                                         setSelectedAssetForTest(asset);
                                         setTestEmailOpen(true);
                                       }}
-                                      className="flex items-center gap-1"
+                                      className="w-full sm:w-auto flex items-center justify-center gap-1"
                                       title="Send test email"
                                     >
                                       <Send className="h-4 w-4" />
@@ -881,7 +881,7 @@ const Approvals = () => {
                                       size="sm"
                                       onClick={() => generateThumbnail(asset)}
                                       disabled={generatingThumbnails.has(asset.id)}
-                                      className="flex items-center gap-1"
+                                      className="w-full sm:w-auto flex items-center justify-center gap-1"
                                       title="Generate branded thumbnail"
                                     >
                                       {generatingThumbnails.has(asset.id) ? (
@@ -900,7 +900,7 @@ const Approvals = () => {
                                         setSelectedAssetForRun(asset);
                                         setRunDetailsOpen(true);
                                       }}
-                                      className="flex items-center gap-1"
+                                      className="w-full sm:w-auto flex items-center justify-center gap-1"
                                     >
                                       <Eye className="h-4 w-4" />
                                       Runs
@@ -910,6 +910,7 @@ const Approvals = () => {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => navigate(`/assets/${asset.id}`)}
+                                    className="w-full sm:w-auto"
                                   >
                                     Review
                                   </Button>
@@ -918,12 +919,13 @@ const Approvals = () => {
                                     size="sm"
                                     className="text-red-500 border-red-500/20 hover:bg-red-500/10"
                                     onClick={() => handleDelete(asset.id, asset.name)}
+                                    aria-label="Delete asset"
                                   >
                                     <X className="h-4 w-4" />
                                   </Button>
                                   <Button
                                     size="sm"
-                                    className="bg-green-500 hover:bg-green-600 text-white"
+                                    className="col-span-2 sm:col-span-1 w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white"
                                     onClick={() => handleApprove(asset.id, asset.name, asset.type, asset.channel)}
                                   >
                                     <CheckCircle className="mr-1 h-4 w-4" />

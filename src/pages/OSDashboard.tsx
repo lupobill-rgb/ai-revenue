@@ -201,7 +201,7 @@ export default function OSDashboard() {
     <ProtectedRoute>
       <div className="min-h-screen bg-background flex flex-col">
         <NavBar />
-        <main className="flex-1 container py-8">
+        <main className="flex-1 container py-6 sm:py-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
             <div>
               <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -212,12 +212,12 @@ export default function OSDashboard() {
                 Unified marketing operations dashboard — watch your AI engine work
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => navigate("/automation")}>
+            <div className="flex w-full flex-col sm:w-auto sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => navigate("/automation")} className="w-full sm:w-auto">
                 <Calendar className="h-4 w-4 mr-2" />
                 Content Calendar
               </Button>
-              <Button onClick={() => navigate("/crm")}>
+              <Button onClick={() => navigate("/crm")} className="w-full sm:w-auto">
                 <Users className="h-4 w-4 mr-2" />
                 CRM
               </Button>
@@ -293,16 +293,16 @@ export default function OSDashboard() {
 
           {/* Main Content */}
           <Tabs defaultValue="activity" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="activity">
+            <TabsList className="w-full justify-start overflow-x-auto">
+              <TabsTrigger value="activity" className="flex-shrink-0">
                 <Activity className="h-4 w-4 mr-2" />
                 Live Activity
               </TabsTrigger>
-              <TabsTrigger value="content">
+              <TabsTrigger value="content" className="flex-shrink-0">
                 <Calendar className="h-4 w-4 mr-2" />
                 Content Pipeline
               </TabsTrigger>
-              <TabsTrigger value="automations">
+              <TabsTrigger value="automations" className="flex-shrink-0">
                 <Zap className="h-4 w-4 mr-2" />
                 Automation Jobs
               </TabsTrigger>
@@ -340,7 +340,7 @@ export default function OSDashboard() {
                           return (
                             <div
                               key={item.id}
-                              className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
+                              className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
                             >
                               <div className="flex items-center gap-3">
                                 <div className={`p-2 rounded-full ${isJob ? 'bg-primary/10' : 'bg-blue-500/10'}`}>
@@ -362,7 +362,7 @@ export default function OSDashboard() {
                                   </p>
                                 </div>
                               </div>
-                              <Badge variant="outline" className={getStatusColor(item.status)}>
+                              <Badge variant="outline" className={`w-fit ${getStatusColor(item.status)}`}>
                                 {item.status}
                               </Badge>
                             </div>
