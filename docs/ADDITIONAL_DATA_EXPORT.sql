@@ -92,7 +92,7 @@ ON CONFLICT (id) DO NOTHING;
 -- NOTE: Revenue OS Kernel invariant:
 -- Do not write directly to channel_outbox from docs exports/fixtures.
 -- Outbox rows must only be created by dispatcher/allowlisted code paths.
--- Removed: INSERT INTO channel_outbox (...) VALUES (...) ON CONFLICT ...
+-- Removed outbox seeding here. Dispatcher-only.
 --
 -- If you need outbox records for debugging, export them via dashboard CSV or pg_dump and load manually
 -- into a scratch environment (do not commit the insert statements).

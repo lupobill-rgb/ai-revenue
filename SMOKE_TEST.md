@@ -277,7 +277,7 @@ Run these tests after deployment to verify all features are working.
    -- NOTE: Revenue OS Kernel invariant:
    -- Do not write directly to channel_outbox from docs exports/fixtures.
    -- Outbox rows must only be created by dispatcher/allowlisted code paths.
-   -- Removed: INSERT INTO channel_outbox (...) VALUES (...) ON CONFLICT ...
+   -- Removed outbox seeding here. Dispatcher-only.
    ```
    **Expected**: Error - unique constraint violation (23505)
 
