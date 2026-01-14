@@ -38,6 +38,51 @@ export class GoogleAdsClientWrapper {
     return await this.customer.query<T>(gaql);
   }
 
+  async getAdGroupStatus(adGroupId: string | number): Promise<{ resourceName: string; status: string }> {
+    const resourceName = ResourceNames.adGroup(this.customerId, adGroupId);
+    const rows = await this.query<GAQLRow[]>(`
+      SELECT ad_group.resource_name, ad_group.status
+      FROM ad_group
+      WHERE ad_group.resource_name = "${resourceName}"
+      LIMIT 1
+    `);
+    const status = rows?.[0]?.ad_group?.status as string | undefined;
+    if (!status) throw new Error(`Ad group not found for resource_name=${resourceName}`);
+    return { resourceName, status };
+  }
+
+  async getKeywordCpcBidMicros(args: {
+    adGroupId: string | number;
+    criterionId: string | number;
+  }): Promise<{ resourceName: string; cpcBidMicros: number; status?: string }> {
+    const resourceName = ResourceNames.adGroupCriterion(this.customerId, args.adGroupId, args.criterionId);
+    const rows = await this.query<GAQLRow[]>(`
+      SELECT ad_group_criterion.resource_name, ad_group_criterion.status, ad_group_criterion.cpc_bid_micros
+      FROM ad_group_criterion
+      WHERE ad_group_criterion.resource_name = "${resourceName}"
+      LIMIT 1
+    `);
+    const current = rows?.[0]?.ad_group_criterion;
+    const bid = current?.cpc_bid_micros as number | undefined;
+    if (typeof bid !== "number") throw new Error(`Keyword criterion not found or missing bid for resource_name=${resourceName}`);
+    return { resourceName, cpcBidMicros: bid, status: current?.status as string | undefined };
+  }
+
+  async getCampaignBudgetAmountMicros(args: {
+    campaignBudgetId: string | number;
+  }): Promise<{ resourceName: string; amountMicros: number }> {
+    const resourceName = ResourceNames.campaignBudget(this.customerId, args.campaignBudgetId);
+    const rows = await this.query<GAQLRow[]>(`
+      SELECT campaign_budget.resource_name, campaign_budget.amount_micros
+      FROM campaign_budget
+      WHERE campaign_budget.resource_name = "${resourceName}"
+      LIMIT 1
+    `);
+    const amt = rows?.[0]?.campaign_budget?.amount_micros as number | undefined;
+    if (typeof amt !== "number") throw new Error(`Campaign budget not found for resource_name=${resourceName}`);
+    return { resourceName, amountMicros: amt };
+  }
+
   /**
    * Idempotently pause an ad group (never delete).
    */
