@@ -75,3 +75,33 @@ export async function googleChat(args: {
   }
 }
 
+export async function googleStreamGenerateContent(args: {
+  apiKey: string;
+  model: string;
+  contents: any[];
+  temperature?: number;
+  maxOutputTokens?: number;
+  timeoutMs?: number;
+}): Promise<Response> {
+  const { signal, cleanup } = withTimeout(args.timeoutMs);
+  try {
+    const url =
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(args.model)}:streamGenerateContent?key=${encodeURIComponent(args.apiKey)}&alt=sse`;
+
+    return await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal,
+      body: JSON.stringify({
+        contents: args.contents,
+        generationConfig: {
+          temperature: typeof args.temperature === "number" ? args.temperature : 0.7,
+          maxOutputTokens: typeof args.maxOutputTokens === "number" ? args.maxOutputTokens : 1200,
+        },
+      }),
+    });
+  } finally {
+    cleanup();
+  }
+}
+
