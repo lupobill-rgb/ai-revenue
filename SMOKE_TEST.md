@@ -274,13 +274,10 @@ Run these tests after deployment to verify all features are working.
 
 4. Try to insert duplicate row manually:
    ```sql
-   INSERT INTO channel_outbox (
-     tenant_id, workspace_id, channel, provider, 
-     recipient_email, payload, status, idempotency_key
-   ) VALUES (
-     'your_tenant', 'your_workspace', 'email', 'resend',
-     'test@example.com', '{}', 'queued', 'SAME_KEY_AS_ABOVE'
-   );
+   -- NOTE: Revenue OS Kernel invariant:
+   -- Do not write directly to channel_outbox from docs exports/fixtures.
+   -- Outbox rows must only be created by dispatcher/allowlisted code paths.
+   -- Removed: INSERT INTO channel_outbox (...) VALUES (...) ON CONFLICT ...
    ```
    **Expected**: Error - unique constraint violation (23505)
 

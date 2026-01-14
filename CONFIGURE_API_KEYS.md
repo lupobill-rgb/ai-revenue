@@ -154,22 +154,10 @@ ELEVENLABS_API_KEY=****
 
 **Option 2: Via SQL**
 ```sql
--- Insert test email in outbox
-INSERT INTO channel_outbox (
-  channel,
-  recipient_id,
-  recipient_email,
-  payload,
-  status,
-  workspace_id
-) VALUES (
-  'email',
-  (SELECT id FROM leads LIMIT 1),
-  'your-email@example.com',
-  '{"subject": "Test Email", "html": "<h1>Hello from Phase 3!</h1>"}',
-  'queued',
-  (SELECT id FROM workspaces LIMIT 1)
-);
+-- NOTE: Revenue OS Kernel invariant:
+-- Do not write directly to channel_outbox from docs exports/fixtures.
+-- Outbox rows must only be created by dispatcher/allowlisted code paths.
+-- Removed: INSERT INTO channel_outbox (...) VALUES (...) ON CONFLICT ...
 
 -- Then invoke run-job-queue function
 ```
