@@ -55,6 +55,10 @@ import SettingsIntegrations from "./pages/SettingsIntegrations";
 import LandingPages from "./pages/LandingPages";
 import LeadsPage from "./pages/cmo/LeadsPage";
 import PlatformAdmin from "./pages/PlatformAdmin";
+import AdsOperatorActivityFeed from "./pages/ads-operator/ActivityFeed";
+import AdsOperatorApprovalQueue from "./pages/ads-operator/ApprovalQueue";
+import AdsOperatorGuardrails from "./pages/ads-operator/Guardrails";
+import AdsOperatorWeeklySummary from "./pages/ads-operator/WeeklySummary";
 import TenantIsolationQA from "./pages/platform-admin/TenantIsolationQA";
 import ExecutionCertQA from "./pages/platform-admin/ExecutionCertQA";
 import SLODashboard from "./pages/platform-admin/SLODashboard";
@@ -167,6 +171,12 @@ const AppContent = () => {
         <Route path="/settings/integrations" element={<SettingsIntegrations />} />
         <Route path="/landing-pages" element={<LandingPages />} />
         <Route path="/cmo/leads" element={<LeadsPage />} />
+
+        {/* Ads Operator (exactly 4 surfaces) */}
+        <Route path="/ads-operator" element={<AdsOperatorActivityFeed />} />
+        <Route path="/ads-operator/approvals" element={<AdsOperatorApprovalQueue />} />
+        <Route path="/ads-operator/guardrails" element={<AdsOperatorGuardrails />} />
+        <Route path="/ads-operator/weekly" element={<AdsOperatorWeeklySummary />} />
 
         {/* Platform admin QA routes require auth (otherwise invoke has no JWT and looks like "failed to grab") */}
         <Route
