@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getOpenAIChatCompletion } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -242,33 +243,19 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     // Call OpenAI (Gemini was returning 404s in this environment)
     console.log('[campaign-builder] Calling OpenAI API');
 
-    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      // Prevent hanging forever
-      signal: AbortSignal.timeout(55_000),
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
+    const aiResponse = await getOpenAIChatCompletion(
+      {
+        model: "gpt-4o-mini",
         temperature: 0.7,
         max_tokens: 4096,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
         ],
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('AI API error:', errorText);
-      throw new Error(`AI generation failed: ${aiResponse.status}`);
-    }
-
-    const aiData = await aiResponse.json();
-    const generatedContent = aiData.choices?.[0]?.message?.content;
+      },
+      OPENAI_API_KEY,
+    );
+    const generatedContent = aiResponse.choices?.[0]?.message?.content;
 
     if (!generatedContent) {
       throw new Error('No content generated from AI');

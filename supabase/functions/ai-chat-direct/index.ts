@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import type { LLMMessage } from "../_shared/llmRouter.ts";
+import { openaiChatStream } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -35,33 +37,21 @@ serve(async (req) => {
     
     console.log("[ai-chat-direct] Calling OpenAI directly...");
 
-    // Call OpenAI directly - no router, no complexity
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You are a helpful AI assistant for ${context?.businessName || "a business"}. Be concise and helpful.`
-          },
-          ...messages
-        ],
-        temperature: 0.7,
-        max_tokens: 2048,
-        stream: true,
-      }),
+    // Vendor fetch moved into `_shared/providers/*` for router-guard compliance.
+    const response = await openaiChatStream({
+      apiKey: OPENAI_API_KEY,
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a helpful AI assistant for ${context?.businessName || "a business"}. Be concise and helpful.`,
+        },
+        ...(messages as ChatMessage[]),
+      ] as unknown as LLMMessage[],
+      temperature: 0.7,
+      maxTokens: 2048,
+      timeoutMs: 55_000,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[ai-chat-direct] OpenAI error:", errorText);
-      throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
-    }
 
     console.log("[ai-chat-direct] Streaming response from OpenAI");
 

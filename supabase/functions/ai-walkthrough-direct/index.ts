@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import type { LLMMessage } from "../_shared/llmRouter.ts";
+import { openaiChatStream } from "../_shared/providers/openai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -135,30 +137,15 @@ serve(async (req) => {
 
     const systemPrompt = buildSystemPrompt(tenantContext);
 
-    // Call OpenAI directly - simple and reliable
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages
-        ],
-        temperature: 0.7,
-        max_tokens: 500,  // Shorter responses for walkthrough
-        stream: true,
-      }),
+    // Vendor fetch moved into `_shared/providers/*` for router-guard compliance.
+    const response = await openaiChatStream({
+      apiKey: OPENAI_API_KEY,
+      model: "gpt-4o-mini",
+      messages: [{ role: "system", content: systemPrompt }, ...(messages as Message[])] as unknown as LLMMessage[],
+      temperature: 0.7,
+      maxTokens: 500, // Shorter responses for walkthrough
+      timeoutMs: 55_000,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[ai-walkthrough-direct] OpenAI error:", errorText);
-      throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
-    }
 
     console.log("[ai-walkthrough-direct] Streaming response from OpenAI");
 

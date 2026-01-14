@@ -146,3 +146,36 @@ export async function openaiImageGenerate(args: {
   }
 }
 
+// Router-guard: vendor URLs are only allowed in `_shared/providers/*`.
+export type OpenAIChatCompletionPayload = {
+  model: string;
+  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  temperature?: number;
+  max_tokens?: number;
+  response_format?: unknown;
+};
+
+export async function getOpenAIChatCompletion(
+  payload: OpenAIChatCompletionPayload,
+  apiKey: string,
+): Promise<any> {
+  if (!apiKey) throw new Error("Missing OPENAI_API_KEY");
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "authorization": `Bearer ${apiKey}`,
+    },
+    // Supabase Edge (Deno) supports AbortSignal.timeout
+    signal: AbortSignal.timeout(55_000),
+    body: JSON.stringify(payload),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`OpenAI error ${res.status}: ${text}`);
+  }
+
+  return JSON.parse(text);
+}
