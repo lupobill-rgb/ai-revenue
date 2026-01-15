@@ -75,6 +75,8 @@ const NavBar = () => {
     { path: "/outbound", label: "Outbound", icon: Rocket },
     { path: "/websites", label: "Sites", icon: Globe },
     { path: "/automation", label: "Automation", icon: Workflow },
+    { path: "/sms", label: "SMS", icon: Mail },
+    { path: "/voicemail", label: "Voicemail", icon: Phone },
   ];
 
   // Admin items (shown conditionally)
