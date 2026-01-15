@@ -1,5 +1,5 @@
--- Standalone utility logging for SMS + Voicemail drops
--- Required by launch smoke tests: always log every SMS attempt.
+-- Standalone utility logging for SMS
+-- Required by launch smoke tests: always log every SMS attempt (including blocked).
 
 CREATE TABLE IF NOT EXISTS public.message_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
