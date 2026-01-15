@@ -1,3 +1,27 @@
+name: LLM Router Guard
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/**'
+      - 'src/**'
+
+jobs:
+  llm-router-checks:
+    name: LLM Router Architecture Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        run: |
+          git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '^supabase/functions/' > .changed_supabase_functions.txt || touch .changed_supabase_functions.txt
+          git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '^src/' > .changed_src.txt || touch .changed_src.txt
+
       - name: Guard vendor URLs stay behind adapters
         run: |
           set -euo pipefail
