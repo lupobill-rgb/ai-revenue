@@ -61,6 +61,7 @@ import SLODashboard from "./pages/platform-admin/SLODashboard";
 import TenantRateLimits from "./pages/platform-admin/TenantRateLimits";
 import RolloutPlan from "./pages/platform-admin/RolloutPlan";
 import SystemBanner from "./components/SystemBanner";
+import StandaloneSMS from "./pages/StandaloneSMS";
 
 const queryClient = new QueryClient();
 
@@ -167,6 +168,7 @@ const AppContent = () => {
         <Route path="/settings/integrations" element={<SettingsIntegrations />} />
         <Route path="/landing-pages" element={<LandingPages />} />
         <Route path="/cmo/leads" element={<LeadsPage />} />
+        <Route path="/sms" element={<StandaloneSMS />} />
 
         {/* Platform admin QA routes require auth (otherwise invoke has no JWT and looks like "failed to grab") */}
         <Route
