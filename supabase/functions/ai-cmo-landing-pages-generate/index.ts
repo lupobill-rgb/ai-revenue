@@ -184,7 +184,7 @@ Return the enhanced version as valid JSON with the same structure.`;
     await supabase.from("agent_runs").insert({
       agent: "landing_page_enhancer",
       tenant_id,
-      workspace_id: tenant_id,
+      tenant_id: tenant_id,
       status: "completed",
       input: { original: draft },
       output: { enhanced: enhancedDraft },

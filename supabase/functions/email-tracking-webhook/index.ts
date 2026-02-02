@@ -41,13 +41,13 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Extract lead_id and workspace_id from tags
+    // Extract lead_id and tenant_id from tags
     const leadId = event.data?.tags?.find(
       (tag: any) => tag.name === "lead_id"
     )?.value;
 
-    const workspaceId = event.data?.tags?.find(
-      (tag: any) => tag.name === "workspace_id"
+    const tenantId = event.data?.tags?.find(
+      (tag: any) => tag.name === "tenant_id"
     )?.value;
 
     if (!leadId) {
@@ -84,30 +84,30 @@ serve(async (req) => {
         });
     }
 
-    // Get lead's workspace_id if not provided in tags
-    let leadWorkspaceId = workspaceId;
+    // Get lead's tenant_id if not provided in tags
+    let leadWorkspaceId = tenantId;
     if (!leadWorkspaceId) {
       const { data: lead } = await supabaseClient
         .from("leads")
-        .select("workspace_id")
+        .select("tenant_id")
         .eq("id", leadId)
         .single();
-      leadWorkspaceId = lead?.workspace_id;
+      leadWorkspaceId = lead?.tenant_id;
     }
 
     if (!leadWorkspaceId) {
-      console.error("[email-tracking-webhook] Could not determine workspace_id for lead:", leadId);
-      return new Response(JSON.stringify({ received: true, error: "Missing workspace_id" }), {
+      console.error("[email-tracking-webhook] Could not determine tenant_id for lead:", leadId);
+      return new Response(JSON.stringify({ received: true, error: "Missing tenant_id" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Log activity with workspace_id for RLS compliance
+    // Log activity with tenant_id for RLS compliance
     const { error: activityError } = await supabaseClient
       .from("lead_activities")
       .insert({
         lead_id: leadId,
-        workspace_id: leadWorkspaceId,
+        tenant_id: leadWorkspaceId,
         activity_type: activityType,
         description: description,
         metadata: {

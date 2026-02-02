@@ -42,8 +42,8 @@ serve(async (req) => {
     }
 
     const body = JSON.parse(rawBody) as {
-      workspaceId: string;
-      tenantId?: string; // Support both workspaceId and tenantId
+      tenantId: string;
+      tenantId?: string; // Support both tenantId and tenantId
       password?: string;
       firstName: string;
       lastName: string;
@@ -62,7 +62,7 @@ serve(async (req) => {
     };
 
     const {
-      workspaceId,
+      tenantId,
       tenantId,
       password,
       firstName,
@@ -81,13 +81,13 @@ serve(async (req) => {
       landingPageSlug,
     } = body;
 
-    // Use tenantId if provided, otherwise fall back to workspaceId
-    const effectiveTenantId = tenantId || workspaceId;
+    // Use tenantId if provided, otherwise fall back to tenantId
+    const effectiveTenantId = tenantId || tenantId;
 
     // Validate required fields
     if (!effectiveTenantId) {
       return new Response(
-        JSON.stringify({ error: "Missing required field: tenantId or workspaceId" }),
+        JSON.stringify({ error: "Missing required field: tenantId or tenantId" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -135,18 +135,18 @@ serve(async (req) => {
       );
     }
 
-    // Check workspace form password (if workspaceId provided and password configured)
-    if (workspaceId) {
+    // Check tenant form password (if tenantId provided and password configured)
+    if (tenantId) {
       const { data: passOk, error: passError } = await supabaseClient.rpc(
-        "check_workspace_form_password",
+        "check_tenant_form_password",
         {
-          _workspace_id: workspaceId,
+          _tenant_id: tenantId,
           _password: password ?? "",
         }
       );
 
       if (passError || !passOk) {
-        console.error("[lead-capture] Invalid form password for workspace:", workspaceId);
+        console.error("[lead-capture] Invalid form password for tenant:", tenantId);
         return new Response(
           JSON.stringify({ error: "Invalid form password" }),
           {

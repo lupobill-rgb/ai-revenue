@@ -12,10 +12,10 @@ serve(async (req) => {
   }
 
   try {
-    const { workspace_id } = await req.json()
+    const { tenant_id } = await req.json()
 
-    if (!workspace_id) {
-      throw new Error('workspace_id is required')
+    if (!tenant_id) {
+      throw new Error('tenant_id is required')
     }
 
     // Get Supabase client
@@ -29,11 +29,11 @@ serve(async (req) => {
       }
     )
 
-    // Check if workspace already has agents
+    // Check if tenant already has agents
     const { data: existingAgents, error: checkError } = await supabaseClient
       .from('voice_agents')
       .select('id')
-      .eq('workspace_id', workspace_id)
+      .eq('tenant_id', tenant_id)
       .eq('status', 'active')
 
     if (checkError) {
@@ -55,28 +55,28 @@ serve(async (req) => {
       )
     }
 
-    // Get workspace details for personalization
-    const { data: workspace } = await supabaseClient
-      .from('workspaces')
+    // Get tenant details for personalization
+    const { data: tenant } = await supabaseClient
+      .from('tenants')
       .select('name')
-      .eq('id', workspace_id)
+      .eq('id', tenant_id)
       .single()
 
-    const workspaceName = workspace?.name || 'Your Company'
+    const tenantName = tenant?.name || 'Your Company'
 
-    // Create default agents for the workspace
+    // Create default agents for the tenant
     const agentsToCreate = [
       {
         use_case: 'sales_outreach',
-        name: `${workspaceName} Sales Agent`,
+        name: `${tenantName} Sales Agent`,
       },
       {
         use_case: 'lead_qualification',
-        name: `${workspaceName} Lead Qualifier`,
+        name: `${tenantName} Lead Qualifier`,
       },
       {
         use_case: 'appointment_setting',
-        name: `${workspaceName} Appointment Setter`,
+        name: `${tenantName} Appointment Setter`,
       },
     ]
 
@@ -88,7 +88,7 @@ serve(async (req) => {
       try {
         const createResponse = await supabaseClient.functions.invoke('elevenlabs-create-agent', {
           body: {
-            workspace_id: workspace_id,
+            tenant_id: tenant_id,
             use_case: agentConfig.use_case,
             name: agentConfig.name,
           },
@@ -124,7 +124,7 @@ serve(async (req) => {
         message: `Created ${createdAgents.length} out of ${agentsToCreate.length} agents`,
         agents: createdAgents,
         errors: errors.length > 0 ? errors : undefined,
-        workspace_id: workspace_id,
+        tenant_id: tenant_id,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -99,8 +99,8 @@ serve(async (req) => {
     // Fetch user and tenant settings
     const { data: { user } } = await supabaseClient.auth.getUser();
     
-    // Settings are now keyed by workspace_id (tenant-scoped)
-    const workspaceId: string | null = asset.workspace_id || null;
+    // Settings are now keyed by tenant_id (tenant-scoped)
+    const tenantId: string | null = asset.tenant_id || null;
 
 
 
@@ -110,11 +110,11 @@ serve(async (req) => {
     let replyToAddress = "noreply@resend.dev";
     let senderName = "Marketing Team";
 
-    if (workspaceId) {
+    if (tenantId) {
       const { data: emailSettings } = await supabaseClient
         .from("ai_settings_email")
         .select("from_address, reply_to_address, sender_name")
-        .eq("tenant_id", workspaceId)
+        .eq("tenant_id", tenantId)
         .maybeSingle();
 
       if (emailSettings) {
@@ -154,16 +154,16 @@ serve(async (req) => {
       console.log(`Using ${recipientList.length} emails from linked CRM leads`);
     }
 
-    // If still no recipients, fetch leads from the workspace with email addresses
+    // If still no recipients, fetch leads from the tenant with email addresses
     // Filter by segment codes if provided
-    if (recipientList.length === 0 && asset.workspace_id) {
+    if (recipientList.length === 0 && asset.tenant_id) {
       const hasSegmentFilter = segmentCodes && Array.isArray(segmentCodes) && segmentCodes.length > 0;
-      console.log(`No recipients specified, fetching leads from workspace ${asset.workspace_id}${hasSegmentFilter ? ` with segments: ${segmentCodes.join(', ')}` : ''}`);
+      console.log(`No recipients specified, fetching leads from tenant ${asset.tenant_id}${hasSegmentFilter ? ` with segments: ${segmentCodes.join(', ')}` : ''}`);
       
       let leadsQuery = supabaseClient
         .from("leads")
         .select("id, first_name, last_name, email, company, industry, job_title, phone, status, segment_code")
-        .eq("workspace_id", asset.workspace_id)
+        .eq("tenant_id", asset.tenant_id)
         .not("email", "is", null)
         .in("status", ["new", "contacted", "qualified"]); // Only send to active leads
       
@@ -172,16 +172,16 @@ serve(async (req) => {
         leadsQuery = leadsQuery.in("segment_code", segmentCodes);
       }
       
-      const { data: workspaceLeads, error: leadsError } = await leadsQuery;
+      const { data: tenantLeads, error: leadsError } = await leadsQuery;
 
       if (leadsError) {
-        console.error("Error fetching workspace leads:", leadsError);
-      } else if (workspaceLeads && workspaceLeads.length > 0) {
-        targetLeads = workspaceLeads;
-        recipientList = workspaceLeads
+        console.error("Error fetching tenant leads:", leadsError);
+      } else if (tenantLeads && tenantLeads.length > 0) {
+        targetLeads = tenantLeads;
+        recipientList = tenantLeads
           .filter((lead: any) => lead.email)
           .map((lead: any) => lead.email);
-        console.log(`Found ${recipientList.length} leads with emails in workspace${hasSegmentFilter ? ` (filtered by ${segmentCodes.length} segment(s))` : ''}`);
+        console.log(`Found ${recipientList.length} leads with emails in tenant${hasSegmentFilter ? ` (filtered by ${segmentCodes.length} segment(s))` : ''}`);
       }
     }
 
@@ -229,7 +229,7 @@ serve(async (req) => {
           channel: "email",
           status: "deploying",
           deployed_at: new Date().toISOString(),
-          workspace_id: asset.workspace_id,
+          tenant_id: asset.tenant_id,
           target_audience: { recipients: recipientList },
         })
         .select()
@@ -255,7 +255,7 @@ serve(async (req) => {
     }
     
     // Derive tenantId for channel_outbox
-    const tenantId = workspaceId || user?.id || "unknown";
+    const tenantId = tenantId || user?.id || "unknown";
     
     // Process each recipient with personalization
     const emailPromises = recipientList.map(async (recipientEmail: string) => {
@@ -278,7 +278,7 @@ serve(async (req) => {
           .from("channel_outbox")
           .insert({
             tenant_id: tenantId,
-            workspace_id: workspaceId,
+            tenant_id: tenantId,
             channel: "email",
             provider: "resend",
             recipient_id: leadId,
@@ -308,7 +308,7 @@ serve(async (req) => {
               .from("channel_outbox")
               .update({ skipped: true, skip_reason: "idempotent_replay" })
               .eq("tenant_id", tenantId)
-              .eq("workspace_id", workspaceId)
+              .eq("tenant_id", tenantId)
               .eq("idempotency_key", idempotencyKey);
             skippedCount++;
             return;
@@ -437,7 +437,7 @@ serve(async (req) => {
       // Create new metrics if none exist
       await supabaseClient.from("campaign_metrics").insert({
         campaign_id: campaign.id,
-        workspace_id: asset.workspace_id,
+        tenant_id: asset.tenant_id,
         sent_count: sentCount,
         delivered_count: 0,
         open_count: 0,

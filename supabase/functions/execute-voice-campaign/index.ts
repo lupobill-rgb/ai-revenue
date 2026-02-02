@@ -143,7 +143,7 @@ serve(async (req) => {
             .from('channel_outbox')
             .insert({
               tenant_id: effectiveTenantId,
-              workspace_id: asset.workspace_id,
+              tenant_id: asset.tenant_id,
               channel: 'voice',
               provider: 'vapi',
               idempotency_key: idempotencyKey,
@@ -210,7 +210,7 @@ serve(async (req) => {
             .from('channel_outbox')
             .insert({
               tenant_id: effectiveTenantId,
-              workspace_id: asset.workspace_id,
+              tenant_id: asset.tenant_id,
               channel: 'voice',
               provider: 'vapi',
               idempotency_key: idempotencyKey,
@@ -237,7 +237,7 @@ serve(async (req) => {
           .from('channel_outbox')
           .insert({
             tenant_id: effectiveTenantId,
-            workspace_id: asset.workspace_id,
+            tenant_id: asset.tenant_id,
             channel: 'voice',
             provider: 'vapi',
             idempotency_key: idempotencyKey,
@@ -275,10 +275,10 @@ serve(async (req) => {
         deployed_at: new Date().toISOString(),
       }).eq('id', campaign.id);
 
-      // Create/update campaign metrics - include workspace_id
+      // Create/update campaign metrics - include tenant_id
       await supabaseClient.from('campaign_metrics').upsert({
         campaign_id: campaign.id,
-        workspace_id: asset.workspace_id,
+        tenant_id: asset.tenant_id,
         sent_count: targetLeads.length,
         delivered_count: successCount,
         bounce_count: failCount,

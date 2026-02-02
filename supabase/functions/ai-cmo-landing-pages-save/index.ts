@@ -34,10 +34,18 @@ serve(async (req) => {
       });
     }
 
-    const { tenant_id, campaign_id, draft, publish } = await req.json();
+    const { campaign_id, draft, publish } = await req.json();
+    const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
 
-    if (!tenant_id || !draft) {
-      return new Response(JSON.stringify({ error: "Missing tenant_id or draft" }), {
+    if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
+      return new Response(JSON.stringify({ error: "tenant_id is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!draft) {
+      return new Response(JSON.stringify({ error: "Missing draft" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -51,15 +59,6 @@ serve(async (req) => {
       });
     }
 
-    // Get workspace ID
-    const { data: workspace } = await supabase
-      .from("workspaces")
-      .select("id")
-      .eq("owner_id", user.id)
-      .maybeSingle();
-
-    const workspaceId = workspace?.id || tenant_id;
-
     // Determine status
     const status = publish ? "published" : "draft";
 
@@ -67,8 +66,7 @@ serve(async (req) => {
     const { data: asset, error: assetError } = await supabase
       .from("cmo_content_assets")
       .insert({
-        tenant_id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         campaign_id: campaign_id || null,
         title: draft.internalName,
         content_type: "landing_page",
@@ -131,8 +129,7 @@ serve(async (req) => {
     // If publishing, create a calendar event
     if (publish) {
       await supabase.from("cmo_calendar_events").insert({
-        tenant_id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         title: `Landing Page Published: ${draft.internalName}`,
         event_type: "landing_page_published",
         scheduled_at: new Date().toISOString(),
@@ -151,7 +148,7 @@ serve(async (req) => {
     // Auto-wire the form submission config for lead capture
     // This metadata will be embedded in the rendered page's form
     const formSubmissionConfig = {
-      workspaceId,
+      tenantId,
       campaignId: campaign_id || null,
       landingPageSlug: draft.urlSlug,
       landingPageUrl: publishedUrl,
@@ -176,8 +173,7 @@ serve(async (req) => {
     // Log agent run
     await supabase.from("agent_runs").insert({
       agent: "landing_page_save",
-      tenant_id,
-      workspace_id: workspaceId,
+      tenant_id: tenantId,
       status: "completed",
       input: { draft, publish },
       output: { 
@@ -187,7 +183,7 @@ serve(async (req) => {
       },
     });
 
-    console.log(`Landing page ${publish ? "published" : "saved"} for tenant:`, tenant_id);
+    console.log(`Landing page ${publish ? "published" : "saved"} for tenant:`, tenantId);
 
     return new Response(JSON.stringify({
       id: asset.id,

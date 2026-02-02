@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
     // Find matching channel_outbox record by provider_message_id
     const { data: outboxRecord, error: findError } = await supabase
       .from("channel_outbox")
-      .select("id, status, tenant_id, workspace_id, run_id, recipient_email")
+      .select("id, status, tenant_id, tenant_id, run_id, recipient_email")
       .eq("provider_message_id", emailId)
       .eq("channel", "email")
       .maybeSingle();
@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
     // Log to campaign audit
     await supabase.from("campaign_audit_log").insert({
       tenant_id: outboxRecord.tenant_id,
-      workspace_id: outboxRecord.workspace_id,
+      tenant_id: outboxRecord.tenant_id,
       run_id: outboxRecord.run_id,
       event_type: `email_${newStatus}`,
       actor_type: "webhook",

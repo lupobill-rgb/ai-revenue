@@ -218,15 +218,15 @@ serve(async (req) => {
 
       // --- ANALYTICS: Record reply in campaign metrics for Outbound campaigns ---
       if (campaignId) {
-        // Get campaign to find workspace_id for CMO campaigns
+        // Get campaign to find tenant_id for CMO campaigns
         const { data: cmoCampaign } = await supabase
           .from("cmo_campaigns")
-          .select("id, workspace_id")
+          .select("id, tenant_id")
           .eq("id", campaignId)
           .maybeSingle();
 
-        if (cmoCampaign?.workspace_id) {
-          await recordReplyAnalytics(supabase, prospect.tenant_id, campaignId, cmoCampaign.workspace_id);
+        if (cmoCampaign?.tenant_id) {
+          await recordReplyAnalytics(supabase, prospect.tenant_id, campaignId, cmoCampaign.tenant_id);
         }
 
         // Also check outbound_campaigns
@@ -278,29 +278,29 @@ async function recordReplyAnalytics(
   supabase: any,
   tenantId: string,
   campaignId: string,
-  workspaceId?: string
+  tenantId?: string
 ) {
   try {
-    // Get workspace_id if not provided
-    let wsId = workspaceId;
+    // Get tenant_id if not provided
+    let wsId = tenantId;
     if (!wsId) {
       const { data: campaign } = await supabase
         .from("cmo_campaigns")
-        .select("workspace_id")
+        .select("tenant_id")
         .eq("id", campaignId)
         .maybeSingle();
-      wsId = campaign?.workspace_id;
+      wsId = campaign?.tenant_id;
     }
 
     if (!wsId) {
-      console.log(`[crm-email-reply-webhook] No workspace_id found for campaign ${campaignId}`);
+      console.log(`[crm-email-reply-webhook] No tenant_id found for campaign ${campaignId}`);
       return;
     }
 
     // Call RPC to increment reply count atomically
     const { error: incError } = await supabase.rpc("increment_campaign_reply_count", {
       p_campaign_id: campaignId,
-      p_workspace_id: wsId,
+      p_tenant_id: wsId,
     });
 
     if (incError) {
@@ -311,7 +311,7 @@ async function recordReplyAnalytics(
 
     // Record in metrics snapshot for optimizer
     const { error: snapError } = await supabase.rpc("record_reply_metric_snapshot", {
-      p_workspace_id: wsId,
+      p_tenant_id: wsId,
       p_campaign_id: campaignId,
       p_tenant_id: tenantId,
     });

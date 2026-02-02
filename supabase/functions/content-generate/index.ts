@@ -213,7 +213,7 @@ IMPORTANT RULES:
       if (aiResponse.status === 402) {
         console.error("Payment required");
         return new Response(
-          JSON.stringify({ error: "Payment required. Please add funds to your Lovable AI workspace." }),
+          JSON.stringify({ error: "Payment required. Please add funds to your Lovable AI tenant." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

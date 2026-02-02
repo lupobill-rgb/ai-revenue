@@ -30,61 +30,12 @@ serve(async (req) => {
 
     console.log("Starting campaign orchestration:", { campaignName, vertical, goal });
 
-    // Get user's workspace - try to find an existing workspace first
-    let workspaceId: string | null = null;
-
-    // First check if user owns a workspace
-    const { data: ownedWorkspace, error: ownedError } = await supabaseClient
-      .from("workspaces")
-      .select("id")
-      .eq("owner_id", user.id)
-      .limit(1)
-      .maybeSingle();
-    
-    if (ownedError) {
-      console.error("Error fetching owned workspace:", ownedError);
-    }
-    
-    workspaceId = ownedWorkspace?.id || null;
-
-    // If no owned workspace, check for any workspace the user has access to
-    if (!workspaceId) {
-      const { data: anyWorkspace, error: anyError } = await supabaseClient
-        .from("workspaces")
-        .select("id")
-        .limit(1)
-        .maybeSingle();
-      
-      if (anyError) {
-        console.error("Error fetching any workspace:", anyError);
-      }
-      
-      workspaceId = anyWorkspace?.id || null;
+    const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
+    if (!tenantId || typeof tenantId !== "string") {
+      throw new Error("tenant_id is required");
     }
 
-    // Create a default workspace if none exists
-    if (!workspaceId) {
-      console.log("No workspace found, creating default workspace...");
-      const slug = `workspace-${user.id.substring(0, 8)}-${Date.now()}`;
-      const { data: newWorkspace, error: wsError } = await supabaseClient
-        .from("workspaces")
-        .insert({
-          name: "Default Workspace",
-          slug: slug,
-          owner_id: user.id,
-        })
-        .select()
-        .single();
-      
-      if (wsError) {
-        console.error("Error creating workspace:", wsError);
-        throw new Error(`Failed to create workspace: ${wsError.message}`);
-      }
-      workspaceId = newWorkspace.id;
-      console.log("Created new workspace:", workspaceId);
-    }
-
-    console.log("Using workspace:", workspaceId);
+    console.log("Using tenant:", tenantId);
 
     // Fetch business profile for context
     const { data: businessProfile } = await supabaseClient
@@ -113,7 +64,7 @@ serve(async (req) => {
             revenue
           )
         `)
-        .eq("workspace_id", workspaceId)
+        .eq("tenant_id", tenantId)
         .in("status", ["active", "completed"])
         .order("created_at", { ascending: false })
         .limit(20);
@@ -167,7 +118,7 @@ serve(async (req) => {
     const { data: crmLeads } = await supabaseClient
       .from("leads")
       .select("id, first_name, last_name, email, phone, company, status")
-      .eq("workspace_id", workspaceId)
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -225,7 +176,7 @@ serve(async (req) => {
         channel: "email",
         goal: goal,
         created_by: user.id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         content: {
           subject: emailSubject,
           body: emailBody,
@@ -258,7 +209,7 @@ serve(async (req) => {
           channel: "email",
           status: "pending_approval",
           budget_allocated: budgetPerChannel,
-          workspace_id: workspaceId,
+          tenant_id: tenantId,
           schedule: schedule || null,
           target_audience: { 
             vertical, 
@@ -310,7 +261,7 @@ serve(async (req) => {
         channel: "social",
         goal: goal,
         created_by: user.id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         content: {
           text: socialContent?.content || "",
           vertical,
@@ -333,7 +284,7 @@ serve(async (req) => {
           channel: "social",
           status: "pending_approval",
           budget_allocated: budgetPerChannel,
-          workspace_id: workspaceId,
+          tenant_id: tenantId,
           schedule: schedule || null,
           target_audience: { vertical, campaignName, goal },
         }).select().single();
@@ -371,7 +322,7 @@ serve(async (req) => {
         channel: "video",
         goal: goal,
         created_by: user.id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         content: {
           script: videoContent?.content || "",
           vertical,
@@ -392,7 +343,7 @@ serve(async (req) => {
           channel: "video",
           status: "pending_approval",
           budget_allocated: budgetPerChannel,
-          workspace_id: workspaceId,
+          tenant_id: tenantId,
           schedule: schedule || null,
           target_audience: { vertical, campaignName, goal },
         }).select().single();
@@ -439,7 +390,7 @@ serve(async (req) => {
         channel: "voice",
         goal: goal,
         created_by: user.id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         content: {
           script: voiceContent?.content || "",
           vertical,
@@ -470,7 +421,7 @@ serve(async (req) => {
           channel: "voice",
           status: "pending_approval",
           budget_allocated: budgetPerChannel,
-          workspace_id: workspaceId,
+          tenant_id: tenantId,
           schedule: schedule || null,
           target_audience: { 
             vertical, 

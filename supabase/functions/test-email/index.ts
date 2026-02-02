@@ -10,7 +10,7 @@ interface TestEmailRequest {
   recipients: string[];
   subject: string;
   body: string;
-  workspaceId: string;
+  tenantId: string;
   assetId?: string;
   // Legacy support
   to?: string;
@@ -60,28 +60,28 @@ serve(async (req) => {
   // Utility: ensure all recipients exist in CRM
   const validateRecipientsInCRM = async (
     supabase: any,
-    workspaceId: string,
+    tenantId: string,
     emails: string[]
   ): Promise<{ valid: string[]; missing: string[]; leads: Map<string, any> }> => {
     const lowerEmails = emails.map((e) => e.toLowerCase().trim());
 
-    console.log(`[test-email] CRM lookup: workspaceId=${workspaceId}, searching for ${lowerEmails.length} emails`);
+    console.log(`[test-email] CRM lookup: tenantId=${tenantId}, searching for ${lowerEmails.length} emails`);
 
-    // Fetch all leads from workspace and filter client-side for case-insensitive matching
+    // Fetch all leads from tenant and filter client-side for case-insensitive matching
     // This works around PostgreSQL's case-sensitive .in() operator
     const { data: leadRows, error } = await supabase
       .from("leads")
       .select(
-        "id, email, first_name, last_name, company, industry, job_title, phone, vertical, custom_fields, workspace_id"
+        "id, email, first_name, last_name, company, industry, job_title, phone, vertical, custom_fields, tenant_id"
       )
-      .eq("workspace_id", workspaceId);
+      .eq("tenant_id", tenantId);
 
     if (error) {
       console.error("[test-email] CRM lookup error:", error);
       return { valid: [], missing: emails, leads: new Map() };
     }
 
-    console.log(`[test-email] Found ${leadRows?.length || 0} total leads in workspace ${workspaceId}`);
+    console.log(`[test-email] Found ${leadRows?.length || 0} total leads in tenant ${tenantId}`);
 
     // Filter leads by email (case-insensitive)
     const matchedLeads = (leadRows || []).filter((l: any) => 
@@ -114,7 +114,7 @@ serve(async (req) => {
     // If emails are missing, log sample for debugging
     if (missing.length > 0 && leadRows && leadRows.length > 0) {
       const sampleEmails = leadRows.slice(0, 5).map((l: any) => l?.email).filter(Boolean);
-      console.log(`[test-email] Sample emails in workspace: ${JSON.stringify(sampleEmails)}`);
+      console.log(`[test-email] Sample emails in tenant: ${JSON.stringify(sampleEmails)}`);
     }
 
     return { valid, missing, leads };
@@ -122,7 +122,7 @@ serve(async (req) => {
 
   try {
     const requestData: TestEmailRequest & { provider?: string } = await req.json();
-    const { recipients, subject, body, workspaceId, assetId, to, fromName, fromAddress, provider } =
+    const { recipients, subject, body, tenantId, assetId, to, fromName, fromAddress, provider } =
       requestData;
 
     // Lightweight "provider test" mode (used by Settings → Providers)
@@ -148,10 +148,10 @@ serve(async (req) => {
       );
     }
 
-    // Validate workspaceId
-    if (!workspaceId) {
+    // Validate tenantId
+    if (!tenantId) {
       return new Response(
-        JSON.stringify({ error: "workspaceId is required" }),
+        JSON.stringify({ error: "tenantId is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -191,12 +191,12 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch workspace email settings
-    console.log(`[test-email] Fetching email settings for workspace: ${workspaceId}`);
+    // Fetch tenant email settings
+    console.log(`[test-email] Fetching email settings for tenant: ${tenantId}`);
     const { data: emailSettings, error: settingsError } = await supabase
       .from("ai_settings_email")
       .select("sender_name, from_address, reply_to_address")
-      .eq("tenant_id", workspaceId)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
 
     if (settingsError) {
@@ -210,19 +210,19 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[test-email] Email settings for workspace ${workspaceId}:`, emailSettings ? 'Found' : 'Not found');
+    console.log(`[test-email] Email settings for tenant ${tenantId}:`, emailSettings ? 'Found' : 'Not found');
     if (emailSettings) {
       console.log(`[test-email] Sender: ${emailSettings.sender_name} <${emailSettings.from_address}>`);
     }
 
-    // Use workspace settings - REQUIRE configured email, don't fall back to defaults
+    // Use tenant settings - REQUIRE configured email, don't fall back to defaults
     if (!emailSettings?.from_address) {
-      console.warn(`[test-email] No email settings found for workspace ${workspaceId}`);
+      console.warn(`[test-email] No email settings found for tenant ${tenantId}`);
       return new Response(
         JSON.stringify({ 
           error: "Email integration not configured. Please set up your email address in Settings → Integrations → Email.",
           requiresSetup: true,
-          workspaceId: workspaceId 
+          tenantId: tenantId 
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -286,7 +286,7 @@ serve(async (req) => {
 
     // Validate all recipients exist in CRM (enforced server-side for all tenants)
     const { valid: validRecipients, missing: missingRecipients, leads: leadByEmail } =
-      await validateRecipientsInCRM(supabase, workspaceId, emailList);
+      await validateRecipientsInCRM(supabase, tenantId, emailList);
 
     if (missingRecipients.length > 0) {
       console.log(`[test-email] Rejected non-CRM emails: ${missingRecipients.join(", ")}`);
@@ -302,14 +302,14 @@ serve(async (req) => {
     }
 
     console.log(
-      `[test-email] Sending to ${validRecipients.length} CRM recipient(s) from ${senderName} <${senderAddress}> (workspace: ${workspaceId}, asset: ${assetId || "N/A"})`
+      `[test-email] Sending to ${validRecipients.length} CRM recipient(s) from ${senderName} <${senderAddress}> (tenant: ${tenantId}, asset: ${assetId || "N/A"})`
     );
 
     // Get lead IDs for channel_outbox tracking
     const { data: leadData } = await supabase
       .from("leads")
       .select("id, email")
-      .eq("workspace_id", workspaceId)
+      .eq("tenant_id", tenantId)
       .in("email", validRecipients);
     
     const leadIdByEmail = new Map<string, string>();
@@ -341,7 +341,7 @@ serve(async (req) => {
             html: personalizedHtml,
             // Add tracking tags for webhook correlation
             tags: [
-              { name: "workspace_id", value: workspaceId },
+              { name: "tenant_id", value: tenantId },
               ...(leadId ? [{ name: "lead_id", value: leadId }] : []),
               ...(assetId ? [{ name: "asset_id", value: assetId }] : []),
               { name: "test_email", value: "true" },
@@ -362,8 +362,8 @@ serve(async (req) => {
           const { error: outboxError } = await supabase
             .from("channel_outbox")
             .insert({
-              tenant_id: workspaceId,
-              workspace_id: workspaceId,
+              tenant_id: tenantId,
+              tenant_id: tenantId,
               channel: "email",
               provider: "resend",
               recipient_id: leadId || null,

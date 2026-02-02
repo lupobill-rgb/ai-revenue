@@ -53,7 +53,7 @@ serve(async (req) => {
 
     console.log(`[auto-score-lead] User ${user.id} scoring lead ${leadId}`);
 
-    // Fetch lead data - RLS will enforce workspace access
+    // Fetch lead data - RLS will enforce tenant access
     const { data: lead, error: leadError } = await supabaseClient
       .from("leads")
       .select("*")
@@ -191,7 +191,7 @@ serve(async (req) => {
           new_score: finalScore,
           breakdown: scoreBreakdown 
         },
-        workspace_id: lead.workspace_id,
+        tenant_id: lead.tenant_id,
       });
 
       console.log(`Lead ${leadId} score updated: ${previousScore} → ${finalScore}`);

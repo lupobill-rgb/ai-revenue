@@ -25,7 +25,7 @@ serve(async (req) => {
       );
     }
 
-    const { workspaceId, internal } = await req.json();
+    const { tenantId, internal } = await req.json();
 
     // Double-check this is an internal call
     if (!internal) {
@@ -35,10 +35,10 @@ serve(async (req) => {
       );
     }
 
-    // Require workspaceId for tenant isolation
-    if (!workspaceId) {
+    // Require tenantId for tenant isolation
+    if (!tenantId) {
       return new Response(
-        JSON.stringify({ error: 'workspaceId is required for tenant isolation' }),
+        JSON.stringify({ error: 'tenantId is required for tenant isolation' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -49,29 +49,29 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`[optimize-video-prompts] Starting optimization for workspace ${workspaceId}...`);
+    console.log(`[optimize-video-prompts] Starting optimization for tenant ${tenantId}...`);
 
-    // Fetch workspace info for business context
-    const { data: workspace } = await supabase
-      .from('workspaces')
+    // Fetch tenant info for business context
+    const { data: tenant } = await supabase
+      .from('tenants')
       .select('id, name, owner_id')
-      .eq('id', workspaceId)
+      .eq('id', tenantId)
       .single();
 
-    // Fetch business profile for this workspace's owner
+    // Fetch business profile for this tenant's owner
     let businessContext = 'your company';
     let industryContext = 'your industry';
     let targetAudience = 'your target customers';
     
-    if (workspace?.owner_id) {
+    if (tenant?.owner_id) {
       const { data: profile } = await supabase
         .from('business_profiles')
         .select('business_name, industry, business_description, target_audiences')
-        .eq('user_id', workspace.owner_id)
+        .eq('user_id', tenant.owner_id)
         .maybeSingle();
       
       if (profile) {
-        businessContext = profile.business_name || workspace.name || 'your company';
+        businessContext = profile.business_name || tenant.name || 'your company';
         industryContext = profile.industry || 'your industry';
         targetAudience = Array.isArray(profile.target_audiences) 
           ? profile.target_audiences.join(', ') 
@@ -79,7 +79,7 @@ serve(async (req) => {
       }
     }
 
-    // Fetch video campaigns with metrics - SCOPED BY WORKSPACE
+    // Fetch video campaigns with metrics - SCOPED BY TENANT
     const { data: campaigns, error: campaignsError } = await supabase
       .from('campaigns')
       .select(`
@@ -87,7 +87,7 @@ serve(async (req) => {
         channel,
         status,
         asset_id,
-        workspace_id,
+        tenant_id,
         assets!inner (
           id,
           name,
@@ -104,7 +104,7 @@ serve(async (req) => {
           video_views
         )
       `)
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('channel', 'video')
       .in('status', ['active', 'completed']);
 
@@ -118,7 +118,7 @@ serve(async (req) => {
     if (!campaigns || campaigns.length === 0) {
       return new Response(JSON.stringify({ 
         success: true, 
-        workspaceId,
+        tenantId,
         message: 'No video campaigns to analyze yet',
         optimized: 0 
       }), {
@@ -164,11 +164,11 @@ serve(async (req) => {
 
     console.log(`Top performers: ${topPerformers.length}, Low performers: ${lowPerformers.length}`);
 
-    // Fetch existing video templates - SCOPED BY WORKSPACE
+    // Fetch existing video templates - SCOPED BY TENANT
     const { data: existingTemplates, error: templatesError } = await supabase
       .from('content_templates')
       .select('*')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('template_type', 'video');
 
     if (templatesError) {
@@ -253,14 +253,14 @@ Return ONLY the JSON array, no other text.`;
       console.log('Raw AI content:', aiContent);
     }
 
-    // Upsert optimized templates - INCLUDING workspace_id
+    // Upsert optimized templates - INCLUDING tenant_id
     let upsertedCount = 0;
     for (const template of optimizedTemplates) {
-      // Check if template with same name exists in this workspace
+      // Check if template with same name exists in this tenant
       const { data: existing } = await supabase
         .from('content_templates')
         .select('id')
-        .eq('workspace_id', workspaceId)
+        .eq('tenant_id', tenantId)
         .eq('template_name', template.template_name)
         .maybeSingle();
 
@@ -284,11 +284,11 @@ Return ONLY the JSON array, no other text.`;
 
         if (!updateError) upsertedCount++;
       } else {
-        // Insert new - INCLUDING workspace_id
+        // Insert new - INCLUDING tenant_id
         const { error: insertError } = await supabase
           .from('content_templates')
           .insert({
-            workspace_id: workspaceId, // CRITICAL: Include workspace_id
+            tenant_id: tenantId, // CRITICAL: Include tenant_id
             template_name: template.template_name,
             template_type: 'video',
             content: template.content,
@@ -327,15 +327,15 @@ Return ONLY the JSON array, no other text.`;
             updated_at: new Date().toISOString()
           })
           .eq('id', template.id)
-          .eq('workspace_id', workspaceId); // Extra safety
+          .eq('tenant_id', tenantId); // Extra safety
       }
     }
 
-    console.log(`[optimize-video-prompts] Workspace ${workspaceId}: Created/updated ${upsertedCount} templates.`);
+    console.log(`[optimize-video-prompts] Tenant ${tenantId}: Created/updated ${upsertedCount} templates.`);
 
     return new Response(JSON.stringify({ 
       success: true,
-      workspaceId,
+      tenantId,
       message: 'Video prompts optimized based on conversion data',
       optimized: upsertedCount,
       analyzed: performanceData.length,

@@ -8,7 +8,7 @@ const corsHeaders = {
 
 interface VoiceAgentBuilderInput {
   tenant_id: string;
-  workspace_id?: string;
+  tenant_id?: string;
   brand_voice: string;
   icp: string;
   offer: string;
@@ -46,7 +46,7 @@ serve(async (req) => {
     }
 
     const input: VoiceAgentBuilderInput = await req.json();
-    const { tenant_id, workspace_id, brand_voice, icp, offer, constraints = [] } = input;
+    const { tenant_id, tenant_id, brand_voice, icp, offer, constraints = [] } = input;
 
     if (!tenant_id || !brand_voice || !icp || !offer) {
       return new Response(JSON.stringify({ 
@@ -57,7 +57,7 @@ serve(async (req) => {
       });
     }
 
-    const workspaceId = workspace_id || tenant_id;
+    const tenantId = tenant_id || tenant_id;
 
     console.log(`Voice Agent Builder: Building agent for tenant ${tenant_id}`);
 
@@ -220,7 +220,7 @@ Make the system_prompt comprehensive and ready to use directly with Vapi or Elev
       .from('cmo_content_assets')
       .insert({
         tenant_id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         title: agentConfig.agent_name || 'Voice Agent Configuration',
         content_type: 'voice_agent_config',
         channel: 'voice',

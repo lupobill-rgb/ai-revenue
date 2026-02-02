@@ -33,25 +33,25 @@ serve(async (req) => {
     try {
       console.log('[run-migrations] Running Migration 1: Security Fixes...');
       
-      // Add workspace_id to asset_approvals
+      // Add tenant_id to asset_approvals
       await supabase.rpc('execute_sql', {
         query: `
-          -- Add workspace_id column
+          -- Add tenant_id column
           ALTER TABLE public.asset_approvals 
-            ADD COLUMN IF NOT EXISTS workspace_id UUID;
+            ADD COLUMN IF NOT EXISTS tenant_id UUID;
           
-          -- Backfill workspace_id
+          -- Backfill tenant_id
           UPDATE public.asset_approvals aa
-          SET workspace_id = a.workspace_id
+          SET tenant_id = a.tenant_id
           FROM public.assets a
-          WHERE aa.asset_id = a.id AND aa.workspace_id IS NULL;
+          WHERE aa.asset_id = a.id AND aa.tenant_id IS NULL;
           
           -- Delete orphaned records
-          DELETE FROM public.asset_approvals WHERE workspace_id IS NULL;
+          DELETE FROM public.asset_approvals WHERE tenant_id IS NULL;
           
           -- Make NOT NULL
           ALTER TABLE public.asset_approvals 
-            ALTER COLUMN workspace_id SET NOT NULL;
+            ALTER COLUMN tenant_id SET NOT NULL;
         `
       });
 
@@ -70,9 +70,9 @@ serve(async (req) => {
       
       // Create critical indexes
       const indexes = [
-        'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_workspace_status ON public.leads(workspace_id, status)',
-        'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_workspace_created ON public.leads(workspace_id, created_at DESC)',
-        'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_channel_outbox_processing ON public.channel_outbox(workspace_id, status, scheduled_at) WHERE status IN (\'scheduled\', \'pending\')',
+        'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_tenant_status ON public.leads(tenant_id, status)',
+        'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_tenant_created ON public.leads(tenant_id, created_at DESC)',
+        'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_channel_outbox_processing ON public.channel_outbox(tenant_id, status, scheduled_at) WHERE status IN (\'scheduled\', \'pending\')',
       ];
 
       for (const indexSQL of indexes) {

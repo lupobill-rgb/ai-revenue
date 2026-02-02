@@ -73,7 +73,7 @@ serve(async (req) => {
     if (assetId) {
       const { data: asset, error: assetError } = await supabase
         .from('assets')
-        .select('id, workspace_id')
+        .select('id, tenant_id')
         .eq('id', assetId)
         .single();
 
@@ -120,9 +120,9 @@ serve(async (req) => {
     const verticalPrompts: Record<string, string> = {
       'Biotechnology & Pharmaceuticals': `Modern pharmaceutical research laboratory with scientists in professional attire, advanced equipment, data visualization screens, clean clinical environment`,
       'Healthcare & Medical': `Modern healthcare facility with caring medical professionals, state-of-the-art medical equipment, warm and welcoming clinical environment`,
-      'Technology & SaaS': `Modern tech office with collaborative workspace, professionals using cutting-edge software, digital screens displaying interfaces, innovative atmosphere`,
+      'Technology & SaaS': `Modern tech office with collaborative tenant, professionals using cutting-edge software, digital screens displaying interfaces, innovative atmosphere`,
       'Financial Services': `Professional financial office with advisors meeting clients, market data on screens, trustworthy and sophisticated business environment`,
-      'Professional Services': `Modern consulting office with professionals in strategic meetings, presentation materials, collaborative workspace with city views`,
+      'Professional Services': `Modern consulting office with professionals in strategic meetings, presentation materials, collaborative tenant with city views`,
       'Manufacturing': `Advanced manufacturing facility with precision equipment, quality control processes, skilled workers demonstrating expertise`,
       'Retail & E-commerce': `Modern retail environment with happy customers, product showcases, seamless shopping experience, branded packaging`,
       'Real Estate': `Stunning property showcase with modern interiors, architectural details, lifestyle amenities, aspirational living spaces`,
@@ -171,7 +171,7 @@ serve(async (req) => {
       }
       if (imageResponse.status === 402) {
         return new Response(
-          JSON.stringify({ error: "AI credits exhausted. Please add credits to your Lovable workspace.", retryable: false }),
+          JSON.stringify({ error: "AI credits exhausted. Please add credits to your Lovable tenant.", retryable: false }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

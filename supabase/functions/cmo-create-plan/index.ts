@@ -72,7 +72,7 @@ serve(async (req) => {
     const { data: plan, error: planError } = await supabase
       .from('cmo_marketing_plans')
       .insert({
-        workspace_id: planInput.tenant_id,
+        tenant_id: planInput.tenant_id,
         tenant_id: planInput.tenant_id,
         plan_name: planInput.plan_name,
         plan_type: planInput.plan_type || '90-day',
@@ -110,7 +110,7 @@ serve(async (req) => {
 
     // Log agent run
     await supabase.from('agent_runs').insert({
-      workspace_id: planInput.tenant_id,
+      tenant_id: planInput.tenant_id,
       tenant_id: planInput.tenant_id,
       agent: 'cmo-create-plan',
       mode: 'create',

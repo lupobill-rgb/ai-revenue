@@ -18,7 +18,7 @@ const getBusinessPrompt = (
   const industryContext: Record<string, string> = {
     "Biotechnology & Pharmaceuticals": "modern laboratory setting, scientists in white coats, high-tech research equipment, clean clinical environment",
     "Healthcare & Medical": "professional medical facility, caring healthcare workers, modern equipment, welcoming patient environment",
-    "Technology & SaaS": "sleek modern office, innovative workspace, screens with data visualizations, collaborative tech team",
+    "Technology & SaaS": "sleek modern office, innovative tenant, screens with data visualizations, collaborative tech team",
     "Finance & Banking": "professional financial district setting, modern office tower, confident business professionals",
     "Real Estate & Property": "beautiful property showcase, modern architecture, inviting living spaces, premium finishes",
     "Education & Training": "inspiring learning environment, engaged students, modern classroom technology, collaborative spaces",
@@ -28,7 +28,7 @@ const getBusinessPrompt = (
     "Food & Beverage": "appetizing food presentation, modern restaurant or kitchen, fresh ingredients, culinary excellence",
     "Hospitality & Tourism": "luxury accommodation, welcoming staff, stunning destination views, premium guest experience",
     "Sports & Recreation": "active fitness environment, engaged participants, professional sports facility, energetic atmosphere",
-    "Marketing & Advertising": "creative agency workspace, brainstorming session, digital marketing screens, innovative campaigns",
+    "Marketing & Advertising": "creative agency tenant, brainstorming session, digital marketing screens, innovative campaigns",
     "Legal Services": "professional law office, confident attorneys, legal library, client consultation",
     "Non-Profit & NGO": "community impact scene, volunteers in action, positive social change, helping others",
   };
@@ -93,7 +93,7 @@ serve(async (req) => {
     if (assetId) {
       const { data: asset, error: assetError } = await supabaseClient
         .from("assets")
-        .select("id, content, workspace_id")
+        .select("id, content, tenant_id")
         .eq("id", assetId)
         .single();
 

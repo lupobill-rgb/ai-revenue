@@ -134,9 +134,8 @@ async function setupTestCampaign(
   config: { itemCount: number; channel: string }
 ) {
   const timestamp = Date.now();
-  // Generate valid UUIDs (tenants.id and workspaces.id are UUID type)
+  // Generate valid UUID for tenant (tenants.id is UUID type)
   const testTenantId = crypto.randomUUID();
-  const testWorkspaceId = crypto.randomUUID();
 
   try {
     // Create test tenant
@@ -153,26 +152,6 @@ async function setupTestCampaign(
 
     if (tenantError) throw tenantError;
 
-    // Create test workspace (need a valid owner_id)
-    const { data: anyUser } = await supabase
-      .from("platform_admins")
-      .select("user_id")
-      .limit(1)
-      .single();
-
-    const { data: workspace, error: wsError } = await supabase
-      .from("workspaces")
-      .insert({
-        id: testWorkspaceId,
-        name: `QA Workspace - ${timestamp}`,
-        slug: `qa-ws-${timestamp}`,
-        owner_id: anyUser?.user_id || "00000000-0000-0000-0000-000000000000",
-      })
-      .select()
-      .single();
-
-    if (wsError) throw wsError;
-
     // Create test asset (required for campaigns table FK)
     const { data: asset, error: assetError } = await supabase
       .from("assets")
@@ -181,7 +160,7 @@ async function setupTestCampaign(
         // asset.type enum: video | email | voice | landing_page | website
         type: config.channel === "email" ? "email" : config.channel === "voice" ? "voice" : "website",
         status: "approved",
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         channel: config.channel,
       })
       .select()
@@ -194,7 +173,7 @@ async function setupTestCampaign(
       .from("campaigns")
       .insert({
         asset_id: asset.id,
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         channel: config.channel,
         status: "active",
       })
@@ -209,7 +188,6 @@ async function setupTestCampaign(
       .insert({
         campaign_id: campaign.id,
         tenant_id: testTenantId,
-        workspace_id: testWorkspaceId,
         status: "pending",
         channel: config.channel,
       })
@@ -223,7 +201,6 @@ async function setupTestCampaign(
     for (let i = 0; i < config.itemCount; i++) {
       jobs.push({
         tenant_id: testTenantId,
-        workspace_id: testWorkspaceId,
         run_id: run.id,
         job_type: config.channel,
         status: "queued",
@@ -252,7 +229,7 @@ async function setupTestCampaign(
         success: true,
         data: {
           tenantId: testTenantId,
-          workspaceId: testWorkspaceId,
+          tenantId: testTenantId,
           campaignId: campaign.id,
           runId: run.id,
           jobIds: createdJobs?.map((j: { id: string }) => j.id) || [],
@@ -271,7 +248,7 @@ async function setupTestCampaign(
 
 async function runConcurrencyTest(
   supabase: AnySupabaseClient,
-  config: { runId: string; tenantId: string; workspaceId: string; jobIds: string[] }
+  config: { runId: string; tenantId: string; tenantId: string; jobIds: string[] }
 ) {
   const results: TestResult[] = [];
   const startTime = Date.now();
@@ -351,7 +328,7 @@ async function runConcurrencyTest(
 async function processJobAttempt(
   supabase: AnySupabaseClient,
   jobId: string,
-  config: { runId: string; tenantId: string; workspaceId: string },
+  config: { runId: string; tenantId: string; tenantId: string },
   workerId: string
 ) {
   try {
@@ -374,7 +351,7 @@ async function processJobAttempt(
       .from("channel_outbox")
       .insert({
         tenant_id: config.tenantId,
-        workspace_id: config.workspaceId,
+        tenant_id: config.tenantId,
         run_id: config.runId,
         job_id: jobId,
         channel: job.job_type,
@@ -622,9 +599,8 @@ async function createLaunchTestCampaign(
   config: { channel: string; leadCount: number }
 ) {
   const timestamp = Date.now();
-  // Use proper UUIDs for tenant and workspace (both tables require UUID type)
+  // Use proper UUID for tenant (tenants.id requires UUID type)
   const testTenantId = crypto.randomUUID();
-  const testWorkspaceId = crypto.randomUUID();
 
   try {
     // Create test tenant
@@ -641,31 +617,11 @@ async function createLaunchTestCampaign(
 
     if (tenantError) throw tenantError;
 
-    // Get a platform admin user for owner
-    const { data: anyUser } = await supabase
-      .from("platform_admins")
-      .select("user_id")
-      .limit(1)
-      .single();
-
-    const { data: workspace, error: wsError } = await supabase
-      .from("workspaces")
-      .insert({
-        id: testWorkspaceId,
-        name: `Launch Test WS - ${timestamp}`,
-        slug: `launch-ws-${timestamp}`,
-        owner_id: anyUser?.user_id || "00000000-0000-0000-0000-000000000000",
-      })
-      .select()
-      .single();
-
-    if (wsError) throw wsError;
-
     // Create test leads
     const leads = [];
     for (let i = 0; i < (config.leadCount || 3); i++) {
       leads.push({
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         email: `launch-test-${i}@qa-sandbox.local`,
         phone: `+1555999${i.toString().padStart(4, "0")}`,
         first_name: `Test${i}`,
@@ -690,7 +646,7 @@ async function createLaunchTestCampaign(
         // asset.type is an enum: video | email | voice | landing_page | website
         type: config.channel === "email" ? "email" : config.channel === "voice" ? "voice" : "website",
         status: "approved",
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         channel: config.channel,
       })
       .select()
@@ -703,7 +659,7 @@ async function createLaunchTestCampaign(
       .from("campaigns")
       .insert({
         asset_id: asset.id,
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         channel: config.channel,
         status: "active",
       })
@@ -718,7 +674,7 @@ async function createLaunchTestCampaign(
       .insert({
         campaign_id: campaign.id,
         tenant_id: testTenantId,
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         status: "pending",
         channel: config.channel,
       })
@@ -732,7 +688,7 @@ async function createLaunchTestCampaign(
         success: true,
         data: {
           tenantId: testTenantId,
-          workspaceId: testWorkspaceId,
+          tenantId: testTenantId,
           campaignId: campaign.id,
           runId: run.id,
           leadIds: createdLeads?.map((l: { id: string }) => l.id) || [],
@@ -773,7 +729,7 @@ async function deployLaunchTest(
       })
       .eq("id", config.runId);
 
-    // Get run details for tenant/workspace
+    // Get run details for tenant
     const { data: run } = await supabase
       .from("campaign_runs")
       .select("*")
@@ -782,11 +738,11 @@ async function deployLaunchTest(
 
     if (!run) throw new Error("Run not found");
 
-    // Get leads for this workspace (leads table uses workspace_id, not tenant_id)
+    // Get leads for this tenant
     const { data: leads } = await supabase
       .from("leads")
       .select("*")
-      .eq("workspace_id", run.workspace_id)
+      .eq("tenant_id", run.tenant_id)
       .eq("source", "qa_launch_test")
       .limit(10);
 
@@ -823,7 +779,7 @@ async function deployLaunchTest(
     // Create job_queue entries for each lead
     const jobs = (leads || []).map((lead: { id: string; email: string; phone: string }) => ({
       tenant_id: run.tenant_id,
-      workspace_id: run.workspace_id,
+      tenant_id: run.tenant_id,
       run_id: config.runId,
       job_type: run.channel === "email" ? "email_send_batch" : 
                 run.channel === "voice" ? "voice_call_batch" : "social_post_batch",
@@ -854,7 +810,7 @@ async function deployLaunchTest(
     // Create outbox entries
     const outboxEntries = (leads || []).map((lead: { id: string; email: string; phone: string }) => ({
       tenant_id: run.tenant_id,
-      workspace_id: run.workspace_id,
+      tenant_id: run.tenant_id,
       run_id: config.runId,
       channel: run.channel,
       provider,
@@ -968,7 +924,7 @@ async function getLaunchStatus(
       .from("job_queue")
       .select("id, status, created_at, locked_at, completed_at, error")
       .eq("tenant_id", campaignRun?.tenant_id)
-      .eq("workspace_id", campaignRun?.workspace_id)
+      .eq("tenant_id", campaignRun?.tenant_id)
       .order("created_at", { ascending: false })
       .limit(20);
 
@@ -979,11 +935,11 @@ async function getLaunchStatus(
       .eq("run_id", config.runId)
       .order("created_at", { ascending: true });
 
-    // Voice-specific: Get voice_call_records for this tenant/workspace
+    // Voice-specific: Get voice_call_records for this tenant
     let voiceCallRecords: Array<{
       id: string;
       tenant_id: string;
-      workspace_id: string;
+      tenant_id: string;
       provider_call_id: string | null;
       status: string;
       customer_number: string | null;
@@ -994,9 +950,9 @@ async function getLaunchStatus(
     if (campaignRun && (campaignRun.channel === 'voice' || config.channel === 'voice')) {
       const { data: vcRecords } = await supabase
         .from("voice_call_records")
-        .select("id, tenant_id, workspace_id, provider_call_id, status, customer_number, duration_seconds, created_at")
+        .select("id, tenant_id, tenant_id, provider_call_id, status, customer_number, duration_seconds, created_at")
         .eq("tenant_id", campaignRun.tenant_id)
-        .eq("workspace_id", campaignRun.workspace_id)
+        .eq("tenant_id", campaignRun.tenant_id)
         .order("created_at", { ascending: false })
         .limit(20);
       
@@ -1043,7 +999,7 @@ async function checkProviderStatus(
   config: { channel: string }
 ) {
   try {
-    // Get any workspace with connected provider for the channel
+    // Get any tenant with connected provider for the channel
     if (config.channel === 'email') {
       const { data: emailSettings } = await supabase
         .from("ai_settings_email")
@@ -1172,9 +1128,8 @@ async function createL2FailureTest(
   config: { channel: string; failureType: string }
 ) {
   const timestamp = Date.now();
-  // Generate valid UUIDs (tenants.id and workspaces.id are UUID type)
+  // Generate valid UUID for tenant (tenants.id is UUID type)
   const testTenantId = crypto.randomUUID();
-  const testWorkspaceId = crypto.randomUUID();
 
   try {
     console.log(`Creating L2 failure test: channel=${config.channel}, failureType=${config.failureType}`);
@@ -1193,27 +1148,6 @@ async function createL2FailureTest(
 
     if (tenantError) throw tenantError;
 
-    // Get a platform admin as owner
-    const { data: anyUser } = await supabase
-      .from("platform_admins")
-      .select("user_id")
-      .limit(1)
-      .single();
-
-    // Create test workspace
-    const { data: workspace, error: wsError } = await supabase
-      .from("workspaces")
-      .insert({
-        id: testWorkspaceId,
-        name: `QA L2 Workspace - ${timestamp}`,
-        slug: `qa-l2-ws-${timestamp}`,
-        owner_id: anyUser?.user_id || "00000000-0000-0000-0000-000000000000",
-      })
-      .select()
-      .single();
-
-    if (wsError) throw wsError;
-
     // Create test asset (required for campaigns table FK)
     const { data: asset, error: assetError } = await supabase
       .from("assets")
@@ -1222,7 +1156,7 @@ async function createL2FailureTest(
         // asset.type is an enum: video | email | voice | landing_page | website
         type: config.channel === "email" ? "email" : config.channel === "voice" ? "voice" : "website",
         status: "approved",
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         channel: config.channel,
       })
       .select()
@@ -1235,7 +1169,7 @@ async function createL2FailureTest(
       .from("campaigns")
       .insert({
         asset_id: asset.id,
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         channel: config.channel,
         status: "active",
       })
@@ -1250,7 +1184,6 @@ async function createL2FailureTest(
       .insert({
         campaign_id: campaign.id,
         tenant_id: testTenantId,
-        workspace_id: testWorkspaceId,
         status: "pending",
         channel: config.channel,
         run_config: {
@@ -1263,10 +1196,10 @@ async function createL2FailureTest(
 
     if (runError) throw runError;
 
-    // Create test leads for this workspace (leads table uses workspace_id, not tenant_id)
+    // Create test leads for this tenant
     const testLeads = [
       {
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         first_name: "L2 Test",
         last_name: "Lead",
         email: `l2-test-${timestamp}@qa-sandbox.local`,
@@ -1287,7 +1220,6 @@ async function createL2FailureTest(
         success: true,
         data: {
           tenantId: testTenantId,
-          workspaceId: testWorkspaceId,
           campaignId: campaign.id,
           runId: run.id,
           failureType: config.failureType,
@@ -1329,18 +1261,18 @@ async function deployL2FailureTest(
       })
       .eq("id", config.runId);
 
-    // Get leads for this workspace (leads table uses workspace_id, not tenant_id)
+    // Get leads for this tenant
     const { data: leads } = await supabase
       .from("leads")
       .select("*")
-      .eq("workspace_id", run.workspace_id)
+      .eq("tenant_id", run.tenant_id)
       .eq("source", "qa_l2_failure_test")
       .limit(10);
 
     // Create outbox entries that will fail
     const failureMessages: Record<string, string> = {
       smtp_host: "Connection refused: SMTP host 'invalid-smtp.fake-domain.local' not found. Check your email provider settings.",
-      missing_voice: "Voice call failed: No phone number configured for this workspace. Please configure a VAPI phone number in Settings.",
+      missing_voice: "Voice call failed: No phone number configured for this tenant. Please configure a VAPI phone number in Settings.",
       invalid_token: "Authentication failed: API token is invalid or expired. Error code: 401 Unauthorized. Please update your credentials.",
     };
 
@@ -1348,7 +1280,7 @@ async function deployL2FailureTest(
 
     const outboxEntries = (leads || []).map((lead: { id: string; email: string; phone: string }) => ({
       tenant_id: run.tenant_id,
-      workspace_id: run.workspace_id,
+      tenant_id: run.tenant_id,
       run_id: config.runId,
       channel: run.channel,
       provider: "sandbox",
@@ -1439,9 +1371,8 @@ async function createL3ScaleTest(
   config: { blastSize: number }
 ) {
   const timestamp = Date.now();
-  // Generate valid UUIDs for tenant and workspace (tenants.id is UUID type)
+  // Generate valid UUID for tenant (tenants.id is UUID type)
   const testTenantId = crypto.randomUUID();
-  const testWorkspaceId = crypto.randomUUID();
 
   try {
     // Create test tenant
@@ -1456,25 +1387,6 @@ async function createL3ScaleTest(
 
     if (tenantError) throw tenantError;
 
-    // Get a valid owner_id
-    const { data: anyUser } = await supabase
-      .from("platform_admins")
-      .select("user_id")
-      .limit(1)
-      .single();
-
-    // Create workspace
-    const { error: wsError } = await supabase
-      .from("workspaces")
-      .insert({
-        id: testWorkspaceId,
-        name: `L3 Scale Workspace - ${timestamp}`,
-        slug: `l3-ws-${timestamp}`,
-        owner_id: anyUser?.user_id || "00000000-0000-0000-0000-000000000000",
-      });
-
-    if (wsError) throw wsError;
-
     // Create asset first (campaigns.asset_id references assets)
     const { data: asset, error: assetError } = await supabase
       .from("assets")
@@ -1482,7 +1394,7 @@ async function createL3ScaleTest(
         name: `L3 Scale Test Asset - ${timestamp}`,
         type: "email",
         status: "approved",
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         channel: "email",
       })
       .select()
@@ -1497,7 +1409,7 @@ async function createL3ScaleTest(
         asset_id: asset.id,
         channel: "email",
         status: "active",
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
       })
       .select()
       .single();
@@ -1510,7 +1422,6 @@ async function createL3ScaleTest(
       .insert({
         campaign_id: campaign.id,
         tenant_id: testTenantId,
-        workspace_id: testWorkspaceId,
         status: "pending",
         channel: "email",
         run_config: {
@@ -1523,11 +1434,11 @@ async function createL3ScaleTest(
 
     if (runError) throw runError;
 
-    // Create leads for the test (leads table uses workspace_id, not tenant_id)
+    // Create leads for the test
     const leads = [];
     for (let i = 0; i < config.blastSize; i++) {
       leads.push({
-        workspace_id: testWorkspaceId,
+        tenant_id: testTenantId,
         email: `l3-test-${i}@qa-sandbox.local`,
         first_name: `L3Test`,
         last_name: `Lead${i}`,
@@ -1549,7 +1460,6 @@ async function createL3ScaleTest(
         success: true,
         data: {
           tenantId: testTenantId,
-          workspaceId: testWorkspaceId,
           campaignId: campaign.id,
           runId: run.id,
           blastSize: config.blastSize,
@@ -1620,18 +1530,18 @@ async function deployL3ScaleTest(
       })
       .eq("id", config.runId);
 
-    // Get leads for this workspace (leads table uses workspace_id, not tenant_id)
+    // Get leads for this tenant
     const { data: leads } = await supabase
       .from("leads")
       .select("*")
-      .eq("workspace_id", run.workspace_id)
+      .eq("tenant_id", run.tenant_id)
       .eq("source", "qa_l3_scale_test")
       .limit(config.blastSize);
 
     // Create outbox entries in bulk - simulating a small blast
     const outboxEntries = (leads || []).map((lead: { id: string; email: string }, idx: number) => ({
       tenant_id: run.tenant_id,
-      workspace_id: run.workspace_id,
+      tenant_id: run.tenant_id,
       run_id: config.runId,
       channel: "email",
       provider: "sandbox",
@@ -1650,7 +1560,7 @@ async function deployL3ScaleTest(
     const { error: outboxError } = await supabase
       .from("channel_outbox")
       .upsert(outboxEntries, {
-        onConflict: "tenant_id,workspace_id,idempotency_key",
+        onConflict: "tenant_id,tenant_id,idempotency_key",
         ignoreDuplicates: true,
       });
 
@@ -1665,7 +1575,7 @@ async function deployL3ScaleTest(
     // Also create job_queue entries to test worker metrics
     const jobs = (leads || []).slice(0, Math.min(10, leads?.length || 0)).map((lead: { email: string }, idx: number) => ({
       tenant_id: run.tenant_id,
-      workspace_id: run.workspace_id,
+      tenant_id: run.tenant_id,
       job_type: "email",
       status: "completed", // Mark as completed so they don't pile up
       payload: {

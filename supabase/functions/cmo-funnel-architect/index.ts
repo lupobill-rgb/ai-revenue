@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface FunnelRequest {
-  workspaceId: string;
+  tenantId: string;
   planId?: string;
   funnelType?: 'marketing' | 'sales' | 'product';
 }
@@ -146,7 +146,7 @@ serve(async (req) => {
   }
 
   try {
-    const { workspaceId, planId, funnelType } = await req.json() as FunnelRequest;
+    const { tenantId, planId, funnelType } = await req.json() as FunnelRequest;
     
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -160,9 +160,9 @@ serve(async (req) => {
     
     // Fetch all required data
     const [brandResult, icpResult, offersResult, planResult] = await Promise.all([
-      supabase.from('cmo_brand_profiles').select('*').eq('workspace_id', workspaceId).single(),
-      supabase.from('cmo_icp_segments').select('*').eq('workspace_id', workspaceId),
-      supabase.from('cmo_offers').select('*').eq('workspace_id', workspaceId),
+      supabase.from('cmo_brand_profiles').select('*').eq('tenant_id', tenantId).single(),
+      supabase.from('cmo_icp_segments').select('*').eq('tenant_id', tenantId),
+      supabase.from('cmo_offers').select('*').eq('tenant_id', tenantId),
       planId 
         ? supabase.from('cmo_marketing_plans').select('*').eq('id', planId).single()
         : Promise.resolve({ data: null })

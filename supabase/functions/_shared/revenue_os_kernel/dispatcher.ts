@@ -1,10 +1,6 @@
 import { makeIdempotencyKey } from "./hash.ts";
 import type { KernelDecision, KernelRuntimeContext, RevenueAction } from "./types.ts";
 
-function coalesceTenantToWorkspace(tenant_id: string, workspace_id?: string | null): string {
-  return workspace_id || tenant_id;
-}
-
 async function insertKernelActionRow(
   supabase: any,
   row: {
@@ -51,21 +47,19 @@ async function executeOutboundEmail(
   const html_body = String(meta.html_body || "");
   const to_email = meta.to_email ? String(meta.to_email) : null;
 
-  // If targeting a lead, fetch email + workspace_id
+  // If targeting a lead, fetch email.
   let recipient_email: string | null = to_email;
   let recipient_id: string | null = null;
-  let workspace_id: string | null = tenant_id;
 
   if (action.target.kind === "lead") {
     recipient_id = action.target.lead_id;
     const { data: lead, error } = await supabase
       .from("leads")
-      .select("email, workspace_id")
+      .select("email")
       .eq("id", recipient_id)
       .single();
     if (error || !lead) throw new Error(`KERNEL_EMAIL_LEAD_LOOKUP_FAILED: ${error?.message || "lead missing"}`);
     recipient_email = lead.email || recipient_email;
-    workspace_id = lead.workspace_id || workspace_id;
   }
 
   if (!recipient_email) {
@@ -98,7 +92,6 @@ async function executeOutboundEmail(
 
   const outboxInsert = {
     tenant_id,
-    workspace_id: coalesceTenantToWorkspace(tenant_id, workspace_id),
     channel: "email",
     provider: "resend",
     idempotency_key,
@@ -117,6 +110,7 @@ async function executeOutboundEmail(
       },
     },
   };
+  
 
   const { data, error } = await supabase
     .from("channel_outbox")
@@ -152,31 +146,34 @@ async function executeTaskCreate(
 
   let lead_id: string | null = null;
   let deal_id: string | null = null;
-  let workspace_id: string | null = tenant_id;
 
   if (action.target.kind === "lead") {
     lead_id = action.target.lead_id;
     const { data: lead, error } = await supabase
       .from("leads")
-      .select("workspace_id")
+      .select("tenant_id")
       .eq("id", lead_id)
       .single();
     if (error) throw new Error(`KERNEL_TASK_LEAD_LOOKUP_FAILED: ${error.message}`);
-    workspace_id = lead?.workspace_id || workspace_id;
+    if (lead?.tenant_id && lead.tenant_id !== tenant_id) {
+      throw new Error("KERNEL_TASK_LEAD_TENANT_MISMATCH");
+    }
   }
 
   if (action.target.kind === "deal") {
     deal_id = action.target.deal_id;
     const { data: deal, error } = await supabase
       .from("deals")
-      .select("workspace_id")
+      .select("tenant_id")
       .eq("id", deal_id)
       .single();
     if (error) throw new Error(`KERNEL_TASK_DEAL_LOOKUP_FAILED: ${error.message}`);
-    workspace_id = (deal as any)?.workspace_id || workspace_id;
+    if ((deal as any)?.tenant_id && (deal as any).tenant_id !== tenant_id) {
+      throw new Error("KERNEL_TASK_DEAL_TENANT_MISMATCH");
+    }
   }
 
-  // Tasks table does not (currently) include tenant_id; workspace_id is the scope.
+  // Tasks are scoped by tenant_id.
   const { data: inserted, error: insertError } = await supabase
     .from("tasks")
     .insert(
@@ -188,7 +185,7 @@ async function executeTaskCreate(
         due_date,
         status: "pending",
         task_type: meta.task_type || "follow_up",
-        workspace_id: coalesceTenantToWorkspace(tenant_id, workspace_id),
+        tenant_id,
       } as never
     )
     .select("id")

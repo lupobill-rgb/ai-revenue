@@ -38,7 +38,7 @@ serve(async (req) => {
       'Restaurants': `Upscale restaurant interior, delicious cuisine presentation, dining atmosphere, professional food photography, warm ambiance, ultra high resolution`,
       'Retail': `Modern retail store, premium shopping experience, product displays, professional retail photography, inviting atmosphere, ultra high resolution`,
       'Healthcare': `Modern healthcare facility, professional medical services, patient care environment, clean clinical setting, professional photography, ultra high resolution`,
-      'Technology': `Innovative tech company workspace, modern technology environment, digital innovation, professional tech photography, contemporary design, ultra high resolution`,
+      'Technology': `Innovative tech company tenant, modern technology environment, digital innovation, professional tech photography, contemporary design, ultra high resolution`,
       'Finance': `Professional financial services office, modern business environment, trust and reliability, professional corporate photography, sophisticated atmosphere, ultra high resolution`,
       'Real Estate': `Beautiful property exterior and interior, real estate showcase, professional property photography, inviting atmosphere, ultra high resolution`,
       'Automotive': `Premium automotive showroom, vehicles on display, professional automotive photography, sleek design, ultra high resolution`,
@@ -103,7 +103,7 @@ serve(async (req) => {
       }
       if (aiResponse.status === 402) {
         return new Response(
-          JSON.stringify({ error: "Payment required. Please add funds to your Lovable AI workspace." }),
+          JSON.stringify({ error: "Payment required. Please add funds to your Lovable AI tenant." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

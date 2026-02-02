@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface OptimizationRequest {
-  workspaceId: string;
+  tenantId: string;
   planId?: string;
   funnelId?: string;
   period?: 'last_7_days' | 'last_30_days' | 'last_90_days';
@@ -175,7 +175,7 @@ serve(async (req) => {
   }
 
   try {
-    const { workspaceId, planId, funnelId, period } = await req.json() as OptimizationRequest;
+    const { tenantId, planId, funnelId, period } = await req.json() as OptimizationRequest;
     
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -189,9 +189,9 @@ serve(async (req) => {
     
     // Fetch all required data
     const [brandResult, campaignsResult, metricsResult, planResult, funnelResult, stagesResult] = await Promise.all([
-      supabase.from('cmo_brand_profiles').select('*').eq('workspace_id', workspaceId).single(),
-      supabase.from('campaigns').select('*').eq('workspace_id', workspaceId),
-      supabase.from('campaign_metrics').select('*').eq('workspace_id', workspaceId),
+      supabase.from('cmo_brand_profiles').select('*').eq('tenant_id', tenantId).single(),
+      supabase.from('campaigns').select('*').eq('tenant_id', tenantId),
+      supabase.from('campaign_metrics').select('*').eq('tenant_id', tenantId),
       planId 
         ? supabase.from('cmo_marketing_plans').select('*').eq('id', planId).single()
         : Promise.resolve({ data: null }),
@@ -219,7 +219,7 @@ serve(async (req) => {
     });
 
     // Build context prompt
-    let contextPrompt = `## Workspace Overview
+    let contextPrompt = `## Tenant Overview
 - **Brand:** ${brand?.brand_name || 'Not configured'}
 - **Industry:** ${brand?.industry || 'Not specified'}
 - **Analysis Period:** ${period || 'last_30_days'}

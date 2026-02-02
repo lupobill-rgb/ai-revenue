@@ -169,13 +169,13 @@ serve(async (req) => {
     const assetContent = asset.content as any;
     let targetLeads = assetContent?.target_leads || [];
     
-    // If no target leads in asset, fetch from workspace with campaign targeting filters
-    if (targetLeads.length === 0 && campaign.workspace_id) {
+    // If no target leads in asset, fetch from tenant with campaign targeting filters
+    if (targetLeads.length === 0 && campaign.tenant_id) {
       // Build query with campaign targeting filters (tags + segments)
       let leadsQuery = supabaseClient
         .from("leads")
         .select("id, first_name, last_name, email, company, tags, segment_code")
-        .eq("workspace_id", campaign.workspace_id)
+        .eq("tenant_id", campaign.tenant_id)
         .not("email", "is", null)
         .in("status", ["new", "contacted", "qualified"]);
       
@@ -193,11 +193,11 @@ serve(async (req) => {
       
       leadsQuery = leadsQuery.limit(100);
       
-      const { data: workspaceLeads } = await leadsQuery;
+      const { data: tenantLeads } = await leadsQuery;
       
-      if (workspaceLeads) {
-        targetLeads = workspaceLeads;
-        console.log(`[schedule-outbox] Found ${workspaceLeads.length} leads matching campaign targeting`);
+      if (tenantLeads) {
+        targetLeads = tenantLeads;
+        console.log(`[schedule-outbox] Found ${tenantLeads.length} leads matching campaign targeting`);
       }
     }
 
@@ -205,7 +205,7 @@ serve(async (req) => {
       throw new Error("No leads found to schedule emails for");
     }
 
-    const tenantId = campaign.workspace_id || user.id;
+    const tenantId = campaign.tenant_id || user.id;
     let entriesCreated = 0;
     let entriesSkipped = 0;
 
@@ -224,7 +224,7 @@ serve(async (req) => {
           .from("channel_outbox")
           .insert({
             tenant_id: tenantId,
-            workspace_id: campaign.workspace_id,
+            tenant_id: campaign.tenant_id,
             channel: campaign.channel || "email",
             provider: "resend",
             recipient_id: lead.id || null,

@@ -81,7 +81,7 @@ serve(async (req) => {
     const { data: funnel, error: funnelError } = await supabase
       .from('cmo_funnels')
       .insert({
-        workspace_id: input.tenant_id,
+        tenant_id: input.tenant_id,
         tenant_id: input.tenant_id,
         plan_id: input.plan_id,
         funnel_name: input.funnel_name,
@@ -143,7 +143,7 @@ serve(async (req) => {
 
     // Log agent run
     await supabase.from('agent_runs').insert({
-      workspace_id: input.tenant_id,
+      tenant_id: input.tenant_id,
       tenant_id: input.tenant_id,
       agent: 'cmo-generate-funnel',
       mode: 'generate',

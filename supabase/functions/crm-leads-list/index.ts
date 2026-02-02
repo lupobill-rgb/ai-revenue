@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface LeadsListRequest {
-  workspace_id: string;
+  tenant_id: string;
   limit?: number;
   offset?: number;
   status_filter?: string;
@@ -51,7 +51,7 @@ serve(async (req) => {
 
     const payload: LeadsListRequest = await req.json();
     const {
-      workspace_id,
+      tenant_id,
       limit = 1000,
       offset = 0,
       status_filter,
@@ -60,8 +60,8 @@ serve(async (req) => {
       sort_order = 'desc',
     } = payload;
 
-    if (!workspace_id) {
-      return new Response(JSON.stringify({ error: 'workspace_id is required' }), {
+    if (!tenant_id) {
+      return new Response(JSON.stringify({ error: 'tenant_id is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -71,7 +71,7 @@ serve(async (req) => {
     let baseQuery = supabase
       .from('leads')
       .select('*', { count: 'exact' })
-      .eq('workspace_id', workspace_id);
+      .eq('tenant_id', tenant_id);
 
     // Apply status filter
     if (status_filter && status_filter !== 'all') {

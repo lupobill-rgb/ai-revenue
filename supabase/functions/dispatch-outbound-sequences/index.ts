@@ -33,7 +33,6 @@ type CampaignConfig = {
 type OutboundSequenceRun = {
   id: string;
   tenant_id: string;
-  workspace_id: string;
   campaign_id: string;
   sequence_id: string;
   prospect_id: string;
@@ -91,6 +90,33 @@ const DEFAULT_CONFIG: CampaignConfig = {
   timezone: "America/Chicago",
   linkedin_delivery_mode: "manual_queue",
 };
+
+const FORBIDDEN_WORKSPACE_KEYS = new Set(["tenant_id", "tenantId", "tenant"]);
+
+function hasForbiddenWorkspaceKeys(value: unknown): boolean {
+  if (!value) {
+    return false;
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(hasForbiddenWorkspaceKeys);
+  }
+
+  if (typeof value !== "object") {
+    return false;
+  }
+
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (FORBIDDEN_WORKSPACE_KEYS.has(key)) {
+      return true;
+    }
+    if (hasForbiddenWorkspaceKeys(nested)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 // ============================================
 // SETTINGS HELPERS (with per-invocation caching)
@@ -258,7 +284,7 @@ async function sendCrmWebhook(params: {
 // CORE HELPERS
 // ============================================
 
-async function getDueRuns(): Promise<OutboundSequenceRun[]> {
+async function getDueRuns(tenantId: string): Promise<OutboundSequenceRun[]> {
   const { data, error } = await supabase
     .from("outbound_sequence_runs")
     .select(`
@@ -266,11 +292,11 @@ async function getDueRuns(): Promise<OutboundSequenceRun[]> {
       outbound_sequences!inner(
         campaign_id,
         outbound_campaigns!inner(
-          workspace_id,
           config
         )
       )
     `)
+    .eq("tenant_id", tenantId)
     .eq("status", "active")
     .lte("next_step_due_at", new Date().toISOString())
     .limit(100);
@@ -282,7 +308,6 @@ async function getDueRuns(): Promise<OutboundSequenceRun[]> {
 
   return (data || []).map((run: any) => ({
     ...run,
-    workspace_id: run.outbound_sequences?.outbound_campaigns?.workspace_id,
     campaign_id: run.outbound_sequences?.campaign_id,
     config: { ...DEFAULT_CONFIG, ...(run.outbound_sequences?.outbound_campaigns?.config || {}) },
   })) as OutboundSequenceRun[];
@@ -379,11 +404,11 @@ async function getProspectInsights(prospectId: string) {
   return data[0];
 }
 
-async function getBrandContext(workspaceId: string) {
+async function getBrandContext(tenantId: string) {
   const { data } = await supabase
     .from("cmo_brand_profiles")
     .select("*")
-    .eq("workspace_id", workspaceId)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
 
   return data;
@@ -623,15 +648,13 @@ async function queueLinkedInTask(params: {
   prospect: any;
   message_text: string;
   tenant_id: string;
-  workspace_id: string;
   sequence_run_id: string;
   step_id: string;
 }) {
-  const { prospect, message_text, tenant_id, workspace_id, sequence_run_id, step_id } = params;
+  const { prospect, message_text, tenant_id, sequence_run_id, step_id } = params;
 
   const { error } = await supabase.from("linkedin_tasks").insert({
     tenant_id,
-    workspace_id,
     prospect_id: prospect.id,
     sequence_run_id,
     step_id,
@@ -676,7 +699,43 @@ serve(async (req) => {
   try {
     console.log("[dispatch] Starting dispatch cycle...");
 
-    const runs = await getDueRuns();
+    const rawBody = await req.text();
+    if (!rawBody) {
+      return new Response(
+        JSON.stringify({ error: "TENANT_ONLY_VIOLATION", message: "tenant_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody);
+    } catch (parseErr) {
+      console.error("[dispatch] Invalid JSON body:", parseErr);
+      return new Response(
+        JSON.stringify({ error: "INVALID_JSON", message: "Request body must be valid JSON" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (hasForbiddenWorkspaceKeys(body)) {
+      return new Response(
+        JSON.stringify({ error: "TENANT_ONLY_VIOLATION", message: "tenant fields are not allowed" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const tenantId = typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>).tenant_id
+      : undefined;
+    if (typeof tenantId !== "string" || tenantId.trim() === "") {
+      return new Response(
+        JSON.stringify({ error: "TENANT_ONLY_VIOLATION", message: "tenant_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const runs = await getDueRuns(tenantId);
     if (!runs.length) {
       console.log("[dispatch] No due sequences found");
       return new Response(
@@ -783,7 +842,7 @@ serve(async (req) => {
         }
 
         const insights = await getProspectInsights(run.prospect_id);
-        const brand = await getBrandContext(run.workspace_id);
+        const brand = await getBrandContext(run.tenant_id);
 
         // Call AI agent with calendar context for booking steps
         const outbound = await callOutboundCopyAgent({
@@ -825,7 +884,6 @@ serve(async (req) => {
             prospect,
             message_text: outbound.message_text,
             tenant_id: run.tenant_id,
-            workspace_id: run.workspace_id,
             sequence_run_id: run.id,
             step_id: step.id,
           });

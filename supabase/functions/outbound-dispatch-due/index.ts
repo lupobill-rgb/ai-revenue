@@ -164,10 +164,10 @@ serve(async (req) => {
         if (!messageText) {
           console.log(`[outbound-dispatch] Generating message for run ${run.id}, step ${step.id}`);
           
-          // Get workspace_id from campaign
+          // Get tenant_id from campaign
           const { data: campaign } = await supabase
             .from("outbound_campaigns")
-            .select("workspace_id")
+            .select("tenant_id")
             .eq("id", sequence?.campaign_id)
             .single();
 
@@ -180,7 +180,7 @@ serve(async (req) => {
             },
             body: JSON.stringify({
               tenant_id: run.tenant_id,
-              workspace_id: campaign?.workspace_id,
+              tenant_id: campaign?.tenant_id,
               prospect_profile: prospect,
               prospect_insights: {},
               step_context: {
@@ -280,7 +280,7 @@ serve(async (req) => {
             },
             body: JSON.stringify({
               tenant_id: run.tenant_id,
-              workspace_id: run.tenant_id, // fallback
+              tenant_id: run.tenant_id, // fallback
               last_event_at: now,
               channel,
               delay_days: nextStep.delay_days,

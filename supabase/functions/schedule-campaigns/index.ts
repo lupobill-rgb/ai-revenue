@@ -25,7 +25,7 @@ serve(async (req) => {
       );
     }
 
-    const { workspaceId, internal } = await req.json();
+    const { tenantId, internal } = await req.json();
 
     // Double-check this is an internal call
     if (!internal) {
@@ -35,10 +35,10 @@ serve(async (req) => {
       );
     }
 
-    // Require workspaceId for tenant isolation
-    if (!workspaceId) {
+    // Require tenantId for tenant isolation
+    if (!tenantId) {
       return new Response(
-        JSON.stringify({ error: 'workspaceId is required for tenant isolation' }),
+        JSON.stringify({ error: 'tenantId is required for tenant isolation' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -47,13 +47,13 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`[schedule-campaigns] Running deployment check for workspace ${workspaceId}...`);
+    console.log(`[schedule-campaigns] Running deployment check for tenant ${tenantId}...`);
 
-    // Fetch approved assets that haven't been deployed yet - SCOPED BY WORKSPACE
+    // Fetch approved assets that haven't been deployed yet - SCOPED BY TENANT
     const { data: approvedAssets, error: assetsError } = await supabase
       .from('assets')
       .select('*, asset_approvals!inner(*)')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('status', 'approved')
       .is('external_id', null);
 
@@ -134,12 +134,12 @@ serve(async (req) => {
           }
 
           if (deployResult.success) {
-            // Create campaign record - INCLUDING workspace_id
+            // Create campaign record - INCLUDING tenant_id
             const { data: campaign, error: campaignError } = await supabase
               .from('campaigns')
               .insert({
                 asset_id: asset.id,
-                workspace_id: workspaceId, // CRITICAL: Include workspace_id
+                tenant_id: tenantId, // CRITICAL: Include tenant_id
                 channel: integration.platform,
                 status: 'active',
                 deployed_at: new Date().toISOString(),
@@ -149,10 +149,10 @@ serve(async (req) => {
               .single();
 
             if (!campaignError && campaign) {
-              // Initialize campaign metrics - INCLUDING workspace_id
+              // Initialize campaign metrics - INCLUDING tenant_id
               await supabase.from('campaign_metrics').insert({
                 campaign_id: campaign.id,
-                workspace_id: workspaceId, // CRITICAL: Include workspace_id
+                tenant_id: tenantId, // CRITICAL: Include tenant_id
               });
 
               deploymentResults.push({
@@ -181,16 +181,16 @@ serve(async (req) => {
           .from('assets')
           .update({ status: 'live' })
           .eq('id', asset.id)
-          .eq('workspace_id', workspaceId); // Extra safety
+          .eq('tenant_id', tenantId); // Extra safety
       }
     }
 
-    console.log(`[schedule-campaigns] Workspace ${workspaceId}: ${deploymentResults.length} deployments processed`);
+    console.log(`[schedule-campaigns] Tenant ${tenantId}: ${deploymentResults.length} deployments processed`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        workspaceId,
+        tenantId,
         deploymentsProcessed: deploymentResults.length,
         results: deploymentResults,
       }),

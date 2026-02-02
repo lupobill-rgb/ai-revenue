@@ -65,19 +65,18 @@ serve(async (req) => {
       });
     }
 
-    // CRITICAL: Lookup workspace demo_mode to set correct data_mode
-    const { data: workspace } = await supabase
-      .from('workspaces')
+    // CRITICAL: Lookup tenant demo_mode to set correct data_mode
+    const { data: tenant } = await supabase
+      .from('tenants')
       .select('demo_mode')
       .eq('id', input.tenant_id)
       .maybeSingle();
     
-    const dataMode = workspace?.demo_mode ? 'demo' : 'live';
-    console.log(`[cmo-record-metrics] Workspace ${input.tenant_id} demo_mode=${workspace?.demo_mode}, using data_mode=${dataMode}`);
+    const dataMode = tenant?.demo_mode ? 'demo' : 'live';
+    console.log(`[cmo-record-metrics] Tenant ${input.tenant_id} demo_mode=${tenant?.demo_mode}, using data_mode=${dataMode}`);
 
     // Prepare snapshot inserts with correct data_mode
     const snapshotInserts = input.snapshots.map(snapshot => ({
-      workspace_id: input.tenant_id,
       tenant_id: input.tenant_id,
       campaign_id: snapshot.campaign_id,
       channel_id: snapshot.channel_id,
@@ -92,7 +91,7 @@ serve(async (req) => {
       revenue: snapshot.revenue || 0,
       roi: snapshot.roi || 0,
       custom_metrics: snapshot.custom_metrics || {},
-      data_mode: dataMode, // CRITICAL: Set based on workspace demo_mode
+      data_mode: dataMode, // CRITICAL: Set based on tenant demo_mode
     }));
 
     const { data: snapshots, error: snapshotsError } = await supabase
@@ -110,7 +109,6 @@ serve(async (req) => {
 
     // Log agent run
     await supabase.from('agent_runs').insert({
-      workspace_id: input.tenant_id,
       tenant_id: input.tenant_id,
       agent: 'cmo-record-metrics',
       mode: 'record',

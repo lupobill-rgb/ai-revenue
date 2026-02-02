@@ -161,7 +161,7 @@ serve(async (req) => {
                 status: 'active',
                 deployed_at: new Date().toISOString(),
                 external_campaign_id: (deployResult as any).postId || null,
-                workspace_id: asset.workspace_id,
+                tenant_id: asset.tenant_id,
               })
               .select()
               .single();
@@ -191,7 +191,7 @@ serve(async (req) => {
                 .from('campaign_metrics')
                 .insert({
                   campaign_id: campaign.id,
-                  workspace_id: asset.workspace_id,
+                  tenant_id: asset.tenant_id,
                   impressions: 0,
                   clicks: 0,
                   engagement_rate: 0,

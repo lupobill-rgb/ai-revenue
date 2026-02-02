@@ -25,7 +25,7 @@ serve(async (req) => {
       );
     }
 
-    const { workspaceId, internal } = await req.json();
+    const { tenantId, internal } = await req.json();
 
     // Double-check this is an internal call
     if (!internal) {
@@ -35,10 +35,10 @@ serve(async (req) => {
       );
     }
 
-    // Require workspaceId for tenant isolation
-    if (!workspaceId) {
+    // Require tenantId for tenant isolation
+    if (!tenantId) {
       return new Response(
-        JSON.stringify({ error: 'workspaceId is required for tenant isolation' }),
+        JSON.stringify({ error: 'tenantId is required for tenant isolation' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -47,24 +47,24 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`[email-sequence] Processing sequences for workspace ${workspaceId}...`);
+    console.log(`[email-sequence] Processing sequences for tenant ${tenantId}...`);
 
-    // Fetch workspace info for email sender context
-    const { data: workspace } = await supabase
-      .from('workspaces')
+    // Fetch tenant info for email sender context
+    const { data: tenant } = await supabase
+      .from('tenants')
       .select('id, name, owner_id')
-      .eq('id', workspaceId)
+      .eq('id', tenantId)
       .single();
 
-    // Fetch business profile for this workspace's owner
-    let businessName = workspace?.name || 'Marketing';
+    // Fetch business profile for this tenant's owner
+    let businessName = tenant?.name || 'Marketing';
     let fromEmail = 'campaigns@ubigrowth.com'; // Default fallback
     
-    if (workspace?.owner_id) {
+    if (tenant?.owner_id) {
       const { data: profile } = await supabase
         .from('business_profiles')
         .select('business_name')
-        .eq('user_id', workspace.owner_id)
+        .eq('user_id', tenant.owner_id)
         .maybeSingle();
       
       if (profile?.business_name) {
@@ -72,11 +72,11 @@ serve(async (req) => {
       }
     }
 
-    // Fetch email campaigns that need follow-ups - SCOPED BY WORKSPACE
+    // Fetch email campaigns that need follow-ups - SCOPED BY TENANT
     const { data: campaigns, error: campaignsError } = await supabase
       .from('campaigns')
       .select('*, assets!inner(*), campaign_metrics(*)')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('channel', 'email')
       .eq('status', 'active');
 
@@ -169,7 +169,7 @@ serve(async (req) => {
               tags: [
                 { name: 'campaign_id', value: campaign.id },
                 { name: 'sequence_type', value: followUpType },
-                { name: 'workspace_id', value: workspaceId },
+                { name: 'tenant_id', value: tenantId },
               ],
             }),
           });
@@ -201,12 +201,12 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[email-sequence] Workspace ${workspaceId}: processed ${sequenceResults.length} sequences`);
+    console.log(`[email-sequence] Tenant ${tenantId}: processed ${sequenceResults.length} sequences`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        workspaceId,
+        tenantId,
         sequencesProcessed: sequenceResults.length,
         results: sequenceResults,
       }),

@@ -288,7 +288,7 @@ Return the complete JSON with updated heroSupportingPoints and sections that mat
     await supabase.from("agent_runs").insert({
       agent: "cmo_landing_optimizer",
       tenant_id,
-      workspace_id: tenant_id,
+      tenant_id: tenant_id,
       status: "completed",
       input: { landing_page_id, overrides },
       output: { regenerated: true },

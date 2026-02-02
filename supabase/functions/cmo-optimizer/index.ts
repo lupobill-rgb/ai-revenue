@@ -19,7 +19,7 @@ interface OptimizationChange {
 
 interface OptimizerInput {
   tenant_id: string;
-  workspace_id?: string;
+  tenant_id?: string;
   campaign_id: string;
   goal: 'leads' | 'meetings' | 'revenue' | 'engagement';
   metrics: {
@@ -80,7 +80,7 @@ serve(async (req) => {
     }
 
     const input: OptimizerInput = await req.json();
-    const { tenant_id, workspace_id, campaign_id, goal, metrics, assets, constraints = [] } = input;
+    const { tenant_id, tenant_id, campaign_id, goal, metrics, assets, constraints = [] } = input;
 
     if (!tenant_id || !campaign_id || !goal || !metrics) {
       return new Response(JSON.stringify({ 
@@ -91,7 +91,7 @@ serve(async (req) => {
       });
     }
 
-    const workspaceId = workspace_id || tenant_id;
+    const tenantId = tenant_id || tenant_id;
 
     console.log(`Optimizer: Analyzing campaign ${campaign_id} for tenant ${tenant_id}`);
 
@@ -385,7 +385,7 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
       .from('campaign_optimizations')
       .insert({
         tenant_id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         campaign_id,
         optimization_type: 'ai_optimization',
         changes: optimizations.changes || [],
@@ -412,7 +412,7 @@ Recommend 2-5 specific changes based on the metrics. Focus on the weakest perfor
       .from('cmo_recommendations')
       .insert({
         tenant_id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         campaign_id,
         title: `AI Optimization: ${optimizations.priority_actions?.[0] || 'Performance improvements'}`,
         description: optimizations.summary,

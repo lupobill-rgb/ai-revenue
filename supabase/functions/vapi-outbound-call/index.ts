@@ -44,7 +44,7 @@ serve(async (req) => {
       customerName, 
       leadId,
       tenantId,
-      workspaceId,
+      tenantId,
       campaignId 
     } = await req.json();
 
@@ -57,7 +57,7 @@ serve(async (req) => {
 
     // Derive tenant context
     const effectiveTenantId = tenantId || user?.id || "unknown";
-    const effectiveWorkspaceId = workspaceId || effectiveTenantId;
+    const effectiveWorkspaceId = tenantId || effectiveTenantId;
 
     console.log(`[vapi-outbound-call] Initiating call to ${customerNumber} with assistant ${assistantId}`);
 
@@ -88,7 +88,7 @@ serve(async (req) => {
       .from("channel_outbox")
       .insert({
         tenant_id: effectiveTenantId,
-        workspace_id: effectiveWorkspaceId,
+        tenant_id: effectiveWorkspaceId,
         channel: "voice",
         provider: "vapi",
         recipient_id: leadId || null,
@@ -114,7 +114,7 @@ serve(async (req) => {
           .from("channel_outbox")
           .update({ skipped: true, skip_reason: "idempotent_replay" })
           .eq("tenant_id", effectiveTenantId)
-          .eq("workspace_id", effectiveWorkspaceId)
+          .eq("tenant_id", effectiveWorkspaceId)
           .eq("idempotency_key", idempotencyKey);
         
         return new Response(

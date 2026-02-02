@@ -33,7 +33,7 @@ if ($TwilioSid) {
     $TwilioPhone = Read-Host "   Enter Twilio Phone Number (format: +12345678900)"
     
     Write-Host "   Setting Twilio credentials..." -ForegroundColor Gray
-    supabase secrets set TWILIO_ACCOUNT_SID="$TwilioSid"
+    supabase secrets set TWILIO_AUTH_TOKEN="$TwilioSid"
     supabase secrets set TWILIO_AUTH_TOKEN="$TwilioToken"
     supabase secrets set TWILIO_FROM_NUMBER="$TwilioPhone"
     Write-Host "   ✓ Twilio credentials set!`n" -ForegroundColor Green

@@ -136,8 +136,8 @@ serve(async (req) => {
       const urlSlug = (metadata.urlSlug as string) || (bodyContent.urlSlug as string) || "";
       const formSubmissionConfig = metadata.formSubmissionConfig as Record<string, unknown> | undefined;
       
-      // Landing page is auto-wired if it has formSubmissionConfig with workspaceId
-      const isAutoWired = !!formSubmissionConfig?.workspaceId;
+      // Landing page is auto-wired if it has formSubmissionConfig with tenantId
+      const isAutoWired = !!formSubmissionConfig?.tenantId;
       
       return {
         id: asset.id,

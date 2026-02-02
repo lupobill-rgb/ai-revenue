@@ -166,7 +166,7 @@ serve(async (req) => {
           try {
             await serviceClient.from("lead_activities").insert({
               lead_id: outbox.recipient_id,
-              workspace_id: outbox.workspace_id,
+              tenant_id: outbox.tenant_id,
               activity_type: "email_sent",
               description: `Scheduled email sent: ${personalizedSubject}`,
               metadata: {

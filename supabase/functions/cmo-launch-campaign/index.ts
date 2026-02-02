@@ -79,7 +79,7 @@ serve(async (req) => {
     const { data: campaign, error: campaignError } = await supabase
       .from('cmo_campaigns')
       .insert({
-        workspace_id: input.tenant_id,
+        tenant_id: input.tenant_id,
         tenant_id: input.tenant_id,
         funnel_id: input.funnel_id,
         plan_id: input.plan_id,
@@ -139,7 +139,7 @@ serve(async (req) => {
 
     // Log agent run
     await supabase.from('agent_runs').insert({
-      workspace_id: input.tenant_id,
+      tenant_id: input.tenant_id,
       tenant_id: input.tenant_id,
       agent: 'cmo-launch-campaign',
       mode: 'launch',

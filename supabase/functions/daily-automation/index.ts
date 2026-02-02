@@ -29,7 +29,7 @@ serve(async (req) => {
       );
     }
 
-    const { workspaceId, internal } = await req.json();
+    const { tenantId, internal } = await req.json();
 
     // Double-check this is an internal call
     if (!internal) {
@@ -39,8 +39,8 @@ serve(async (req) => {
       );
     }
     
-    if (!workspaceId) {
-      return new Response(JSON.stringify({ error: 'workspaceId is required' }), {
+    if (!tenantId) {
+      return new Response(JSON.stringify({ error: 'tenantId is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -59,13 +59,13 @@ serve(async (req) => {
       errors: [] as string[],
     };
 
-    console.log(`[daily-automation] Starting for workspace ${workspaceId} at ${now.toISOString()}`);
+    console.log(`[daily-automation] Starting for tenant ${tenantId} at ${now.toISOString()}`);
 
-    // 1. Publish scheduled content for this workspace
+    // 1. Publish scheduled content for this tenant
     const { data: scheduledContent, error: contentError } = await supabase
       .from('content_calendar')
       .select('*')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('status', 'scheduled')
       .lte('scheduled_at', now.toISOString());
 
@@ -82,7 +82,7 @@ serve(async (req) => {
               'x-internal-secret': INTERNAL_SECRET,
             },
             body: JSON.stringify({ 
-              workspaceId, 
+              tenantId, 
               internal: true 
             })
           });
@@ -95,11 +95,11 @@ serve(async (req) => {
       }
     }
 
-    // 2. Run campaign optimization for this workspace
+    // 2. Run campaign optimization for this tenant
     const { data: activeCampaigns } = await supabase
       .from('campaigns')
       .select('id')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .in('status', ['active', 'scheduled']);
 
     if (activeCampaigns && activeCampaigns.length > 0) {
@@ -115,11 +115,11 @@ serve(async (req) => {
       }
     }
 
-    // 3. Process lead nurturing sequences for this workspace - use internal call
+    // 3. Process lead nurturing sequences for this tenant - use internal call
     const { data: activeEnrollments } = await supabase
       .from('sequence_enrollments')
       .select('*, leads(*), email_sequences(*)')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('status', 'active')
       .lte('next_email_at', now.toISOString());
 
@@ -133,7 +133,7 @@ serve(async (req) => {
             'x-internal-secret': INTERNAL_SECRET,
           },
           body: JSON.stringify({ 
-            workspaceId, 
+            tenantId, 
             internal: true 
           })
         });
@@ -147,7 +147,7 @@ serve(async (req) => {
     // 4. Sync campaign metrics
     try {
       await supabase.functions.invoke('sync-campaign-metrics', {
-        body: { syncAll: true, workspaceId }
+        body: { syncAll: true, tenantId }
       });
       results.metricsSync = 1;
     } catch (e: unknown) {
@@ -155,9 +155,9 @@ serve(async (req) => {
       results.errors.push(`Metrics sync error: ${errorMsg}`);
     }
 
-    // 5. Log automation job for this workspace
+    // 5. Log automation job for this tenant
     await supabase.from('automation_jobs').insert({
-      workspace_id: workspaceId,
+      tenant_id: tenantId,
       job_type: 'daily_automation',
       status: results.errors.length === 0 ? 'completed' : 'completed_with_errors',
       scheduled_at: now.toISOString(),
@@ -166,9 +166,9 @@ serve(async (req) => {
       result: results,
     });
 
-    console.log(`[daily-automation] Completed for workspace ${workspaceId}:`, results);
+    console.log(`[daily-automation] Completed for tenant ${tenantId}:`, results);
 
-    return new Response(JSON.stringify({ success: true, workspaceId, results }), {
+    return new Response(JSON.stringify({ success: true, tenantId, results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: unknown) {

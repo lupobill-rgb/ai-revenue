@@ -69,7 +69,7 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, isFirstMessage, workspaceId } = await req.json();
+    const { messages, isFirstMessage } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     
     if (!LOVABLE_API_KEY) {
@@ -98,23 +98,20 @@ serve(async (req) => {
       const { data: { user } } = await supabaseClient.auth.getUser();
       
       if (user) {
-        // Get workspace ID if not provided
-        let wsId = workspaceId;
-        if (!wsId) {
-          const { data: workspace } = await supabaseClient
-            .from("workspaces")
-            .select("id")
-            .eq("owner_id", user.id)
-            .maybeSingle();
-          wsId = workspace?.id;
+        const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
+        if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
+          return new Response(
+            JSON.stringify({ error: "tenant_id is required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
         }
 
-        if (wsId) {
+        if (tenantId) {
           // Fetch business profile
           const { data: profile } = await supabaseClient
             .from("business_profiles")
             .select("business_name, industry")
-            .eq("workspace_id", wsId)
+            .eq("tenant_id", tenantId)
             .maybeSingle();
 
           if (profile) {
@@ -126,7 +123,7 @@ serve(async (req) => {
           const { data: segments } = await supabaseClient
             .from("cmo_icp_segments")
             .select("segment_name")
-            .eq("workspace_id", wsId)
+            .eq("tenant_id", tenantId)
             .limit(5);
 
           if (segments) {
@@ -139,7 +136,7 @@ serve(async (req) => {
           const { count: leadCount } = await supabaseClient
             .from("crm_leads")
             .select("*", { count: "exact", head: true })
-            .eq("workspace_id", wsId);
+            .eq("tenant_id", tenantId);
 
           tenantContext.leadCount = leadCount || 0;
 
@@ -147,7 +144,7 @@ serve(async (req) => {
           const { count: campaignCount } = await supabaseClient
             .from("cmo_campaigns")
             .select("*", { count: "exact", head: true })
-            .eq("workspace_id", wsId);
+            .eq("tenant_id", tenantId);
 
           tenantContext.campaignCount = campaignCount || 0;
         }

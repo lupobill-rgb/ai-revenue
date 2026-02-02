@@ -86,7 +86,7 @@ serve(async (req) => {
       const { data: asset, error: assetError } = await supabase
         .from('cmo_content_assets')
         .insert({
-          workspace_id: input.tenant_id,
+          tenant_id: input.tenant_id,
           tenant_id: input.tenant_id,
           campaign_id: input.campaign_id,
           content_id: assetInput.content_id,
@@ -144,7 +144,7 @@ serve(async (req) => {
 
     // Log agent run
     await supabase.from('agent_runs').insert({
-      workspace_id: input.tenant_id,
+      tenant_id: input.tenant_id,
       tenant_id: input.tenant_id,
       agent: 'cmo-generate-content',
       mode: 'generate',

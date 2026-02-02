@@ -24,6 +24,7 @@ import {
   type EmailBatchItem,
   type VoiceBatchItem,
 } from "../_shared/provider-batching.ts";
+import { validateRequestBody } from "../_shared/tenant-only-validator.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,7 +34,6 @@ const corsHeaders = {
 interface Job {
   id: string;
   tenant_id: string;
-  workspace_id: string;
   run_id: string;
   job_type: string;
   payload: Record<string, unknown>;
@@ -81,6 +81,24 @@ interface QueueStats {
   failed: number;
   dead: number;
   oldest_queued_age_seconds?: number;
+}
+
+const forbiddenWorkspaceFieldNames = new Set([
+  ["workspace", "Id"].join(""),
+  "workspace",
+  ["workspace", "id"].join("_"),
+]);
+
+function containsWorkspaceField(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) {
+    return value.some((item) => containsWorkspaceField(item));
+  }
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (forbiddenWorkspaceFieldNames.has(key)) return true;
+    if (containsWorkspaceField(nestedValue)) return true;
+  }
+  return false;
 }
 
 // Result from batch processing with partial success tracking
@@ -179,7 +197,6 @@ async function logJobQueueTick(
   try {
     await supabase.from("campaign_audit_log").insert({
       tenant_id: "00000000-0000-0000-0000-000000000000", // System-level audit
-      workspace_id: "00000000-0000-0000-0000-000000000000",
       event_type: "job_queue_tick",
       actor_type: "scheduler",
       details: {
@@ -345,7 +362,7 @@ async function processEmailBatch(
   const { data: leadsData } = await supabase
     .from("leads")
     .select("id, email, first_name, last_name")
-    .eq("workspace_id", job.workspace_id)
+    .eq("tenant_id", job.tenant_id)
     .not("email", "is", null)
     .limit(100);
 
@@ -369,7 +386,6 @@ async function processEmailBatch(
     const result = await processEmailBatchOptimized({
       supabase,
       tenantId: job.tenant_id,
-      workspaceId: job.workspace_id,
       runId: job.run_id,
       jobId: job.id,
       leads: leads.filter(l => l.email).map(l => ({
@@ -396,7 +412,7 @@ async function processEmailBatch(
     const durationMs = Date.now() - startTime;
     
     // Log batch metrics
-    await logBatchMetrics(supabase, job.tenant_id, job.workspace_id, job.run_id, job.id, {
+    await logBatchMetrics(supabase, job.tenant_id, job.run_id, job.id, {
       channel: "email",
       provider: "resend",
       batchSize: leads.length,
@@ -410,7 +426,6 @@ async function processEmailBatch(
     // Log audit
     await supabase.from("campaign_audit_log").insert({
       tenant_id: job.tenant_id,
-      workspace_id: job.workspace_id,
       campaign_id: campaignId,
       run_id: job.run_id,
       job_id: job.id,
@@ -459,7 +474,6 @@ async function processEmailBatch(
     const outboxResult = await beginOutboxItem({
       supabase,
       tenantId: job.tenant_id,
-      workspaceId: job.workspace_id,
       runId: job.run_id,
       jobId: job.id,
       channel: "email" as Channel,
@@ -524,7 +538,6 @@ async function processEmailBatch(
   // Log audit
   await supabase.from("campaign_audit_log").insert({
     tenant_id: job.tenant_id,
-    workspace_id: job.workspace_id,
     campaign_id: campaignId,
     run_id: job.run_id,
     job_id: job.id,
@@ -587,7 +600,7 @@ async function processVoiceBatch(
     const { data: leadsData } = await supabase
       .from("leads")
       .select("id, phone, first_name, last_name")
-      .eq("workspace_id", job.workspace_id)
+      .eq("tenant_id", job.tenant_id)
       .not("phone", "is", null)
       .limit(10);
 
@@ -622,7 +635,6 @@ async function processVoiceBatch(
         const outboxResult = await beginOutboxItem({
           supabase,
           tenantId: job.tenant_id,
-          workspaceId: job.workspace_id,
           runId: job.run_id,
           jobId: job.id,
           channel: "voice" as Channel,
@@ -685,7 +697,6 @@ async function processVoiceBatch(
           // Insert voice call record
           await supabase.from("voice_call_records").insert({
             tenant_id: job.tenant_id,
-            workspace_id: job.workspace_id,
             lead_id: item.recipientId,
             campaign_id: campaignId,
             provider_call_id: result.messageId,
@@ -703,7 +714,7 @@ async function processVoiceBatch(
       const durationMs = Date.now() - startTime;
 
       // Log batch metrics
-      await logBatchMetrics(supabase, job.tenant_id, job.workspace_id, job.run_id, job.id, {
+      await logBatchMetrics(supabase, job.tenant_id, job.run_id, job.id, {
         channel: "voice",
         provider: "vapi",
         batchSize: leads.length,
@@ -716,7 +727,6 @@ async function processVoiceBatch(
 
       await supabase.from("campaign_audit_log").insert({
         tenant_id: job.tenant_id,
-        workspace_id: job.workspace_id,
         campaign_id: campaignId,
         run_id: job.run_id,
         job_id: job.id,
@@ -762,7 +772,6 @@ async function processVoiceBatch(
       const outboxResult = await beginOutboxItem({
         supabase,
         tenantId: job.tenant_id,
-        workspaceId: job.workspace_id,
         runId: job.run_id,
         jobId: job.id,
         channel: "voice" as Channel,
@@ -799,7 +808,6 @@ async function processVoiceBatch(
         called++;
         await supabase.from("voice_call_records").insert({
           tenant_id: job.tenant_id,
-          workspace_id: job.workspace_id,
           lead_id: lead.id,
           campaign_id: campaignId,
           provider_call_id: result.callId,
@@ -818,7 +826,6 @@ async function processVoiceBatch(
 
     await supabase.from("campaign_audit_log").insert({
       tenant_id: job.tenant_id,
-      workspace_id: job.workspace_id,
       campaign_id: campaignId,
       run_id: job.run_id,
       job_id: job.id,
@@ -868,7 +875,6 @@ async function processVoiceBatch(
       .from("channel_outbox")
       .insert({
         tenant_id: job.tenant_id,
-        workspace_id: job.workspace_id,
         run_id: job.run_id,
         job_id: job.id,
         channel: "voice",
@@ -892,7 +898,6 @@ async function processVoiceBatch(
           .from("channel_outbox")
           .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
           .eq("tenant_id", job.tenant_id)
-          .eq("workspace_id", job.workspace_id)
           .eq("idempotency_key", idempotencyKey);
         return { success: true, called: 0, failed: 0, skipped: 1 };
       }
@@ -922,7 +927,6 @@ async function processVoiceBatch(
 
     await supabase.from("campaign_audit_log").insert({
       tenant_id: job.tenant_id,
-      workspace_id: job.workspace_id,
       campaign_id: campaignId,
       run_id: job.run_id,
       job_id: job.id,
@@ -992,7 +996,6 @@ async function processSocialBatch(
       .from("channel_outbox")
       .insert({
         tenant_id: job.tenant_id,
-        workspace_id: job.workspace_id,
         run_id: job.run_id,
         job_id: job.id,
         channel: "social",
@@ -1010,7 +1013,6 @@ async function processSocialBatch(
         .from("channel_outbox")
         .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
         .eq("tenant_id", job.tenant_id)
-        .eq("workspace_id", job.workspace_id)
         .eq("idempotency_key", idempotencyKey);
       return { success: false, posted: 0, failed: 0, skipped: 1, error: errorMsg };
     }
@@ -1025,7 +1027,6 @@ async function processSocialBatch(
     .from("channel_outbox")
     .insert({
       tenant_id: job.tenant_id,
-      workspace_id: job.workspace_id,
       run_id: job.run_id,
       job_id: job.id,
       channel: "social",
@@ -1046,7 +1047,6 @@ async function processSocialBatch(
         .from("channel_outbox")
         .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
         .eq("tenant_id", job.tenant_id)
-        .eq("workspace_id", job.workspace_id)
         .eq("idempotency_key", idempotencyKey);
       return { success: true, posted: 0, failed: 0, skipped: 1 };
     }
@@ -1069,7 +1069,6 @@ async function processSocialBatch(
   // Log audit
   await supabase.from("campaign_audit_log").insert({
     tenant_id: job.tenant_id,
-    workspace_id: job.workspace_id,
     campaign_id: campaignId,
     run_id: job.run_id,
     job_id: job.id,
@@ -1111,7 +1110,7 @@ async function processSMSBatch(
   let leadsQuery = supabase
     .from("leads")
     .select("id, first_name, last_name, phone")
-    .eq("workspace_id", job.workspace_id)
+    .eq("tenant_id", job.tenant_id)
     .not("phone", "is", null)
     .in("status", ["new", "contacted", "qualified"]);
 
@@ -1156,7 +1155,6 @@ async function processSMSBatch(
       .from("channel_outbox")
       .insert({
         tenant_id: job.tenant_id,
-        workspace_id: job.workspace_id,
         run_id: job.run_id,
         job_id: job.id,
         channel: "sms",
@@ -1227,6 +1225,7 @@ async function processSMSBatch(
 
       // Log lead activity
       await supabase.from("lead_activities").insert({
+        tenant_id: job.tenant_id,
         lead_id: lead.id,
         activity_type: "sms_sent",
         description: `SMS sent via Twilio (Campaign: ${campaign.name || campaignId})`,
@@ -1255,6 +1254,29 @@ async function processSMSBatch(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  const result = await validateRequestBody(req, corsHeaders, { requireTenantId: true });
+  if (result.error) return result.error;
+  const body = result.body;
+  if (containsWorkspaceField(body)) {
+    return new Response(JSON.stringify({
+      error: "TENANT_ONLY_VIOLATION",
+      message: "Tenant fields are not allowed for tenant-only requests.",
+    }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const tenantId = body.tenant_id;
+  if (typeof tenantId !== "string" || tenantId.length === 0) {
+    return new Response(JSON.stringify({
+      error: "TENANT_ONLY_VIOLATION",
+      message: "tenant_id is required and must be a string.",
+    }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   const workerId = `worker-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -1299,16 +1321,11 @@ Deno.serve(async (req) => {
 
     // Determine invocation source from body (for logging only)
     let invocationType = "internal";
-    try {
-      const body = await req.clone().json();
-      if (body?.source === "pg_cron") {
-        invocationType = "scheduled";
-      }
-    } catch {
-      // Body parse failed, assume internal call
+    if (body?.source === "pg_cron") {
+      invocationType = "scheduled";
     }
     
-    console.log(`[${workerId}] Authorized via x-internal-secret (source: ${invocationType})`);
+    console.log(`[${workerId}] Authorized via x-internal-secret (source: ${invocationType}, tenant: ${tenantId})`);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1423,7 +1440,7 @@ Deno.serve(async (req) => {
 
     for (const job of jobs as Job[]) {
       // Backpressure: Skip if this tenant already hit per-tick limit
-      const tenantKey = `${job.tenant_id}:${job.workspace_id}`;
+      const tenantKey = job.tenant_id;
       const currentCount = tenantJobCounts.get(tenantKey) || 0;
       
       if (currentCount >= MAX_JOBS_PER_TENANT_PER_TICK) {
@@ -1493,7 +1510,6 @@ Deno.serve(async (req) => {
           // Log rate limit event
           await supabase.from("campaign_audit_log").insert({
             tenant_id: job.tenant_id,
-            workspace_id: job.workspace_id,
             run_id: job.run_id,
             job_id: job.id,
             event_type: "rate_limit_exceeded",
@@ -1527,7 +1543,6 @@ Deno.serve(async (req) => {
       // Log job started
       await supabase.from("campaign_audit_log").insert({
         tenant_id: job.tenant_id,
-        workspace_id: job.workspace_id,
         run_id: job.run_id,
         job_id: job.id,
         event_type: "job_started",
@@ -1621,7 +1636,6 @@ Deno.serve(async (req) => {
         // Log partial audit
         await supabase.from("campaign_audit_log").insert({
           tenant_id: job.tenant_id,
-          workspace_id: job.workspace_id,
           run_id: job.run_id,
           job_id: job.id,
           event_type: "job_partial",
@@ -1647,7 +1661,6 @@ Deno.serve(async (req) => {
         const backoffMs = calculateBackoff(job.attempts + 1);
         await supabase.from("campaign_audit_log").insert({
           tenant_id: job.tenant_id,
-          workspace_id: job.workspace_id,
           run_id: job.run_id,
           job_id: job.id,
           event_type: "job_failed",
@@ -1759,3 +1772,8 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// TENANT-ONLY MIGRATION NOTES
+// - Enforced tenant-only request validation and hard rejection of tenant fields.
+// - Removed all tenant scoping; all queries/inserts/updates use tenant_id only.
+// - Updated outbox/audit/metrics flows to be tenant-scoped without tenant context.

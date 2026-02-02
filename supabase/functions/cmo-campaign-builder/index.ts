@@ -8,7 +8,7 @@ const corsHeaders = {
 
 interface CampaignBuilderInput {
   tenant_id: string;
-  workspace_id?: string;
+  tenant_id?: string;
   icp: string;
   offer: string;
   channels: string[];
@@ -57,62 +57,35 @@ serve(async (req) => {
     }
 
     const input: CampaignBuilderInput = await req.json();
-    const { tenant_id, workspace_id, icp, offer, channels, desired_result } = input;
+    const { icp, offer, channels, desired_result } = input;
 
-    if (!tenant_id || !icp || !offer || !channels?.length || !desired_result) {
+    if (!icp || !offer || !channels?.length || !desired_result) {
       return new Response(JSON.stringify({ 
-        error: 'Missing required fields: tenant_id, icp, offer, channels, desired_result' 
+        error: 'Missing required fields: icp, offer, channels, desired_result' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Resolve workspace_id: use provided, or lookup from user's workspaces
-    let workspaceId = workspace_id;
-    if (!workspaceId) {
-      // First try to find workspace where user is owner
-      const { data: ownedWorkspace } = await supabase
-        .from('workspaces')
-        .select('id')
-        .eq('owner_id', user.id)
-        .limit(1)
-        .single();
-      
-      if (ownedWorkspace) {
-        workspaceId = ownedWorkspace.id;
-      } else {
-        // Fall back to workspace membership
-        const { data: membership } = await supabase
-          .from('workspace_members')
-          .select('workspace_id')
-          .eq('user_id', user.id)
-          .limit(1)
-          .single();
-        
-        if (membership) {
-          workspaceId = membership.workspace_id;
-        }
-      }
-    }
-
-    if (!workspaceId) {
+    const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
+    if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
       return new Response(JSON.stringify({ 
-        error: 'No workspace found for user. Please create or join a workspace first.' 
+        error: 'tenant_id is required' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`Campaign Builder: Building campaign for tenant ${tenant_id}, workspace ${workspaceId}`);
+    console.log(`Campaign Builder: Building campaign for tenant ${tenantId}`);
     console.log(`Channels: ${channels.join(', ')}, Goal: ${desired_result}`);
 
     // Fetch brand profile for context
     const { data: brandProfile } = await supabase
       .from('cmo_brand_profiles')
       .select('*')
-      .eq('tenant_id', tenant_id)
+      .eq('tenant_id', tenantId)
       .single();
 
     const brandContext = brandProfile ? `
@@ -285,7 +258,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
       .from('cmo_campaigns')
       .insert({
         tenant_id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         campaign_name: assets.campaign_name || `AI Campaign - ${desired_result}`,
         campaign_type: 'autopilot',
         description: assets.campaign_summary || `Multi-channel ${desired_result} campaign`,
@@ -313,7 +286,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
           .from('cmo_content_assets')
           .insert({
             tenant_id,
-            workspace_id: workspaceId,
+            tenant_id: tenantId,
             campaign_id: campaign.id,
             title: `${post.channel} Post`,
             content_type: 'social_post',
@@ -335,7 +308,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
           .from('cmo_content_assets')
           .insert({
             tenant_id,
-            workspace_id: workspaceId,
+            tenant_id: tenantId,
             campaign_id: campaign.id,
             title: email.subject,
             content_type: 'email',
@@ -356,7 +329,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
           .from('cmo_content_assets')
           .insert({
             tenant_id,
-            workspace_id: workspaceId,
+            tenant_id: tenantId,
             campaign_id: campaign.id,
             title: `Voice Script - ${script.scenario}`,
             content_type: 'voice_script',
@@ -378,7 +351,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
           .from('cmo_content_assets')
           .insert({
             tenant_id,
-            workspace_id: workspaceId,
+            tenant_id: tenantId,
             campaign_id: campaign.id,
             title: `SMS Step ${sms.step}`,
             content_type: 'sms',
@@ -404,7 +377,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
           .from('cmo_content_assets')
           .insert({
             tenant_id,
-            workspace_id: workspaceId,
+            tenant_id: tenantId,
             campaign_id: campaign.id,
             title: page.internal_name || page.hero_headline,
             content_type: 'landing_page',
@@ -461,7 +434,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
             .from('automation_steps')
             .insert({
               tenant_id,
-              workspace_id: workspaceId,
+              tenant_id: tenantId,
               automation_id: campaign.id,
               step_type: 'trigger_form_submit',
               step_order: 0,
@@ -492,7 +465,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
           .from('automation_steps')
           .insert({
             tenant_id,
-            workspace_id: workspaceId,
+            tenant_id: tenantId,
             automation_id: campaign.id,
             step_type: step.type,
             step_order: step.step,
@@ -509,7 +482,7 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
       .from('agent_runs')
       .insert({
         tenant_id,
-        workspace_id: workspaceId,
+        tenant_id: tenantId,
         agent: 'cmo_campaign_builder',
         mode: 'autopilot',
         status: 'completed',

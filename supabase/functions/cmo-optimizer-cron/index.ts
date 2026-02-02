@@ -41,7 +41,7 @@ serve(async (req) => {
     // Query all autopilot-enabled campaigns
     const { data: campaigns, error: campaignsError } = await supabase
       .from("cmo_campaigns")
-      .select("id, tenant_id, workspace_id, campaign_name, goal")
+      .select("id, tenant_id, tenant_id, campaign_name, goal")
       .eq("autopilot_enabled", true)
       .eq("status", "active");
 
@@ -104,7 +104,7 @@ serve(async (req) => {
             },
             body: JSON.stringify({
               tenant_id: campaign.tenant_id,
-              workspace_id: campaign.workspace_id,
+              tenant_id: campaign.tenant_id,
               campaign_id: campaign.id,
               goal: campaign.goal || "leads",
               metrics,

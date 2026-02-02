@@ -37,14 +37,13 @@ serve(async (req) => {
       );
     }
 
-    // Get tenant context
-    const { data: userTenant } = await supabase
-      .from("user_tenants")
-      .select("tenant_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const tenantId = userTenant?.tenant_id || user.id;
+    const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
+    if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: "tenant_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Parse URL to determine route
     const url = new URL(req.url);
@@ -117,42 +116,31 @@ serve(async (req) => {
       );
     }
 
-    // Get workspace for leads/meetings aggregation
-    const { data: workspace } = await supabase
-      .from("workspaces")
-      .select("id")
-      .eq("owner_id", user.id)
-      .maybeSingle();
-
-    const workspaceId = workspace?.id;
-
     // Aggregate leads count per campaign (if leads table exists)
     let leadsCountMap: Record<string, number> = {};
     let meetingsCountMap: Record<string, number> = {};
 
-    if (workspaceId) {
-      // Try to get leads counts - campaigns may be linked to leads via tags or other mechanisms
-      const { data: leads } = await supabase
-        .from("leads")
-        .select("id, tags")
-        .eq("workspace_id", workspaceId);
+    // Try to get leads counts - campaigns may be linked to leads via tags or other mechanisms
+    const { data: leads } = await supabase
+      .from("leads")
+      .select("id, tags")
+      .eq("tenant_id", tenantId);
 
-      // For now, return 0 - real implementation would join on campaign_id or tags
-      // This is a placeholder for actual lead-campaign relationship
+    // For now, return 0 - real implementation would join on campaign_id or tags
+    // This is a placeholder for actual lead-campaign relationship
 
-      // Try to get meetings/bookings count from outbound data
-      const { data: sequenceRuns } = await supabase
-        .from("outbound_sequence_runs")
-        .select("id, campaign_id, status")
-        .eq("status", "booked");
+    // Try to get meetings/bookings count from outbound data
+    const { data: sequenceRuns } = await supabase
+      .from("outbound_sequence_runs")
+      .select("id, campaign_id, status")
+      .eq("status", "booked");
 
-      if (sequenceRuns) {
-        sequenceRuns.forEach((run: any) => {
-          if (run.campaign_id) {
-            meetingsCountMap[run.campaign_id] = (meetingsCountMap[run.campaign_id] || 0) + 1;
-          }
-        });
-      }
+    if (sequenceRuns) {
+      sequenceRuns.forEach((run: any) => {
+        if (run.campaign_id) {
+          meetingsCountMap[run.campaign_id] = (meetingsCountMap[run.campaign_id] || 0) + 1;
+        }
+      });
     }
 
     // Format response

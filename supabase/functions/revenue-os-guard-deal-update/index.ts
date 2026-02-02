@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 type DealUpdateRequest = {
-  tenant_id: string; // workspace/tenant id
+  tenant_id: string; // tenant id
   deal_id: string;
   updates: Record<string, any>;
   override_ack?: boolean;
@@ -51,10 +51,10 @@ serve(async (req) => {
       });
     }
 
-    // Load current deal state (tenant-safe: must match workspace_id)
+    // Load current deal state (tenant-safe: must match tenant_id)
     const { data: deal, error: dealError } = await supabase
       .from("deals")
-      .select("id, workspace_id, value, stage")
+      .select("id, tenant_id, value, stage")
       .eq("id", deal_id)
       .single();
 
@@ -65,7 +65,7 @@ serve(async (req) => {
       });
     }
 
-    if (deal.workspace_id !== tenant_id) {
+    if (deal.tenant_id !== tenant_id) {
       return new Response(JSON.stringify({ error: "Deal does not belong to this tenant" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

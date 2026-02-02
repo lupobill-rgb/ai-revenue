@@ -20,13 +20,13 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
     const body = await req.json();
-    const { contentId, action, workspaceId, internal } = body;
+    const { contentId, action, tenantId, internal } = body;
     const authHeader = req.headers.get('Authorization');
     const internalSecret = req.headers.get('x-internal-secret');
 
     // =========================================================
     // PATH 1: User-facing "publish_now" action
-    // Uses anon key + JWT, RLS enforces workspace access
+    // Uses anon key + JWT, RLS enforces tenant access
     // =========================================================
     if (action === 'publish_now' && contentId) {
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -51,7 +51,7 @@ serve(async (req) => {
 
       console.log(`[publish-scheduled-content] User ${user.id} publishing content ${contentId}`);
 
-      // RLS ensures user can only access content in their workspace
+      // RLS ensures user can only access content in their tenant
       const { data: content, error } = await supabase
         .from('content_calendar')
         .select('*, assets(*)')
@@ -99,7 +99,7 @@ serve(async (req) => {
 
     // =========================================================
     // PATH 2: Internal batch publish (cron/orchestration only)
-    // Requires x-internal-secret header + workspaceId
+    // Requires x-internal-secret header + tenantId
     // =========================================================
     if (internalSecret !== INTERNAL_SECRET) {
       console.error('[publish-scheduled-content] Invalid or missing x-internal-secret for batch operation');
@@ -116,24 +116,24 @@ serve(async (req) => {
       );
     }
 
-    if (!workspaceId) {
-      return new Response(JSON.stringify({ error: 'workspaceId required for batch operations' }), {
+    if (!tenantId) {
+      return new Response(JSON.stringify({ error: 'tenantId required for batch operations' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`[publish-scheduled-content] Internal batch publish for workspace ${workspaceId}`);
+    console.log(`[publish-scheduled-content] Internal batch publish for tenant ${tenantId}`);
 
     // Internal request: use service role for batch operations
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Check and publish all due content for this workspace
+    // Check and publish all due content for this tenant
     const now = new Date();
     const { data: dueContent, error: fetchError } = await supabase
       .from('content_calendar')
       .select('*')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('status', 'scheduled')
       .lte('scheduled_at', now.toISOString());
 
@@ -159,7 +159,7 @@ serve(async (req) => {
           .from('content_calendar')
           .update({ status: 'published', published_at: now.toISOString() })
           .eq('id', item.id)
-          .eq('workspace_id', workspaceId); // Extra safety
+          .eq('tenant_id', tenantId); // Extra safety
 
         published.push(item.id);
       } catch (e: unknown) {
@@ -168,14 +168,14 @@ serve(async (req) => {
           .from('content_calendar')
           .update({ status: 'failed' })
           .eq('id', item.id)
-          .eq('workspace_id', workspaceId);
+          .eq('tenant_id', tenantId);
         failed.push({ id: item.id, error: errorMsg });
       }
     }
 
-    console.log(`[publish-scheduled-content] Workspace ${workspaceId}: ${published.length} published, ${failed.length} failed`);
+    console.log(`[publish-scheduled-content] Tenant ${tenantId}: ${published.length} published, ${failed.length} failed`);
 
-    return new Response(JSON.stringify({ success: true, workspaceId, published, failed }), {
+    return new Response(JSON.stringify({ success: true, tenantId, published, failed }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: unknown) {

@@ -141,7 +141,7 @@ Return JSON with this structure:
           channel: asset.channel,
           goal: asset.goal,
           description: variation.hypothesis,
-          workspace_id: asset.workspace_id,
+          tenant_id: asset.tenant_id,
           created_by: user.id,
           content: {
             ...content,
@@ -171,7 +171,7 @@ Return JSON with this structure:
         asset_id: newAsset.id,
         channel: asset.channel || "mixed",
         status: "pending",
-        workspace_id: asset.workspace_id,
+        tenant_id: asset.tenant_id,
         target_audience: content?.target_audience,
       });
 

@@ -7,7 +7,6 @@ const corsHeaders = {
 };
 
 interface VoiceAgentRequest {
-  tenantId: string;
   campaignId?: string;
   brandVoice: string;
   icp: string;
@@ -46,28 +45,13 @@ serve(async (req) => {
     // Handle GET request - List voice agents
     if (req.method === "GET") {
       const url = new URL(req.url);
-      const tenantId = url.searchParams.get("tenantId");
       const campaignId = url.searchParams.get("campaignId");
 
-      if (!tenantId) {
+      const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
+      if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
         return new Response(
-          JSON.stringify({ error: "Missing tenantId query parameter" }),
+          JSON.stringify({ error: "tenant_id is required" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Verify tenant access
-      const { data: tenantAccess } = await supabase
-        .from("user_tenants")
-        .select("tenant_id")
-        .eq("user_id", user.id)
-        .eq("tenant_id", tenantId)
-        .single();
-
-      if (!tenantAccess && user.id !== tenantId) {
-        return new Response(
-          JSON.stringify({ error: "Access denied to tenant" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
@@ -107,53 +91,20 @@ serve(async (req) => {
 
     // Handle POST request - Create voice agent
     const body: VoiceAgentRequest = await req.json();
-    const { tenantId, campaignId, brandVoice, icp, offer, constraints = [] } = body;
+    const { campaignId, brandVoice, icp, offer, constraints = [] } = body;
+    const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
 
-    if (!tenantId || !brandVoice || !icp || !offer) {
+    if (!brandVoice || !icp || !offer) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: tenantId, brandVoice, icp, offer" }),
+        JSON.stringify({ error: "Missing required fields: brandVoice, icp, offer" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Verify tenant access
-    const { data: tenantAccess } = await supabase
-      .from("user_tenants")
-      .select("tenant_id")
-      .eq("user_id", user.id)
-      .eq("tenant_id", tenantId)
-      .single();
-
-    if (!tenantAccess && user.id !== tenantId) {
+    if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
       return new Response(
-        JSON.stringify({ error: "Access denied to tenant" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "tenant_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-    }
-
-    // Get workspace for tenant - use separate queries to avoid SQL injection
-    let workspaceId: string | null = null;
-    
-    // First try to find workspace where user is owner
-    const { data: ownedWorkspace } = await supabase
-      .from("workspaces")
-      .select("id")
-      .eq("owner_id", tenantId)
-      .limit(1)
-      .maybeSingle();
-    
-    if (ownedWorkspace) {
-      workspaceId = ownedWorkspace.id;
-    } else {
-      // Check workspace membership
-      const { data: membership } = await supabase
-        .from("workspace_members")
-        .select("workspace_id")
-        .eq("user_id", user.id)
-        .limit(1)
-        .maybeSingle();
-      
-      workspaceId = membership?.workspace_id || tenantId;
     }
 
     // Call kernel cmo_voice_agent_builder
@@ -168,7 +119,6 @@ serve(async (req) => {
       body: JSON.stringify({
         mode: "voice-agent-builder",
         tenant_id: tenantId,
-        workspace_id: workspaceId,
         payload: {
           brandVoice,
           icp,
@@ -198,7 +148,6 @@ serve(async (req) => {
       .from("cmo_content_assets")
       .insert({
         tenant_id: tenantId,
-        workspace_id: workspaceId,
         campaign_id: campaignId || null,
         title: agent_config.agent_name || "AI Voice Agent",
         content_type: "voice_agent",

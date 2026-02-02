@@ -25,7 +25,7 @@ serve(async (req) => {
       );
     }
 
-    const { workspaceId, internal } = await req.json();
+    const { tenantId, internal } = await req.json();
 
     // Double-check this is an internal call
     if (!internal) {
@@ -35,10 +35,10 @@ serve(async (req) => {
       );
     }
 
-    // Require workspaceId for tenant isolation
-    if (!workspaceId) {
+    // Require tenantId for tenant isolation
+    if (!tenantId) {
       return new Response(
-        JSON.stringify({ error: 'workspaceId is required for tenant isolation' }),
+        JSON.stringify({ error: 'tenantId is required for tenant isolation' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -49,37 +49,37 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`[batch-optimize-videos] Starting optimization for workspace ${workspaceId}...`);
+    console.log(`[batch-optimize-videos] Starting optimization for tenant ${tenantId}...`);
 
-    // Fetch workspace info for business context
-    const { data: workspace } = await supabase
-      .from('workspaces')
+    // Fetch tenant info for business context
+    const { data: tenant } = await supabase
+      .from('tenants')
       .select('id, name, owner_id')
-      .eq('id', workspaceId)
+      .eq('id', tenantId)
       .single();
 
-    // Fetch business profile for this workspace's owner
+    // Fetch business profile for this tenant's owner
     let businessContext = 'your company';
     let industryContext = 'your industry';
     
-    if (workspace?.owner_id) {
+    if (tenant?.owner_id) {
       const { data: profile } = await supabase
         .from('business_profiles')
         .select('business_name, industry, business_description')
-        .eq('user_id', workspace.owner_id)
+        .eq('user_id', tenant.owner_id)
         .maybeSingle();
       
       if (profile) {
-        businessContext = profile.business_name || workspace.name || 'your company';
+        businessContext = profile.business_name || tenant.name || 'your company';
         industryContext = profile.industry || 'your industry';
       }
     }
 
-    // Fetch all video assets in review status - SCOPED BY WORKSPACE
+    // Fetch all video assets in review status - SCOPED BY TENANT
     const { data: pendingAssets, error: fetchError } = await supabase
       .from('assets')
       .select('*')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('type', 'video')
       .in('status', ['review', 'draft'])
       .order('created_at', { ascending: false });
@@ -94,7 +94,7 @@ serve(async (req) => {
     if (!pendingAssets || pendingAssets.length === 0) {
       return new Response(JSON.stringify({ 
         success: true, 
-        workspaceId,
+        tenantId,
         message: 'No video assets pending optimization',
         optimized: 0 
       }), {
@@ -102,11 +102,11 @@ serve(async (req) => {
       });
     }
 
-    // Fetch the best optimized template - SCOPED BY WORKSPACE
+    // Fetch the best optimized template - SCOPED BY TENANT
     const { data: templates } = await supabase
       .from('content_templates')
       .select('*')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('template_type', 'video')
       .order('conversion_rate', { ascending: false })
       .order('last_optimized_at', { ascending: false })
@@ -221,7 +221,7 @@ Return ONLY the JSON object, no other text.`;
             updated_at: new Date().toISOString()
           })
           .eq('id', asset.id)
-          .eq('workspace_id', workspaceId); // Extra safety: ensure we only update within workspace
+          .eq('tenant_id', tenantId); // Extra safety: ensure we only update within tenant
 
         if (updateError) {
           console.error(`Update error for asset ${asset.id}:`, updateError);
@@ -254,11 +254,11 @@ Return ONLY the JSON object, no other text.`;
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
 
-    console.log(`[batch-optimize-videos] Workspace ${workspaceId}: Success: ${successCount}, Failed: ${failCount}`);
+    console.log(`[batch-optimize-videos] Tenant ${tenantId}: Success: ${successCount}, Failed: ${failCount}`);
 
     return new Response(JSON.stringify({ 
       success: true,
-      workspaceId,
+      tenantId,
       message: `Optimized ${successCount} video assets`,
       total: pendingAssets.length,
       optimized: successCount,

@@ -37,39 +37,12 @@ serve(async (req) => {
       );
     }
 
-    // Get workspace ID for user (tenant_id is the workspace_id)
-    let tenantId: string | null = null;
-
-    // Check if user owns a workspace
-    const { data: ownedWorkspace, error: ownedError } = await supabase
-      .from('workspaces')
-      .select('id')
-      .eq('owner_id', user.id)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (ownedError) {
-      console.warn('Error fetching owned workspace:', ownedError);
-    }
-
-    tenantId = ownedWorkspace?.id || null;
-
-    // If no owned workspace, check membership
-    if (!tenantId) {
-      const { data: membership, error: memberError } = await supabase
-        .from('workspace_members')
-        .select('workspace_id')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (memberError) {
-        console.warn('Error fetching workspace membership:', memberError);
-      }
-
-      tenantId = membership?.workspace_id || null;
+    const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
+    if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: "tenant_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Get tenant-specific VAPI key from ai_settings_voice (only if tenantId exists)
@@ -102,7 +75,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Fetching assistants from Vapi API for tenant ${user.id}...`);
+    console.log(`Fetching assistants from Vapi API for tenant ${tenantId}...`);
 
     // Fetch assistants from Vapi API using tenant's key
     const response = await fetch('https://api.vapi.ai/assistant', {
@@ -123,7 +96,7 @@ serve(async (req) => {
     }
 
     const assistants = await response.json();
-    console.log(`Successfully fetched ${assistants.length} assistants for tenant ${user.id}`);
+    console.log(`Successfully fetched ${assistants.length} assistants for tenant ${tenantId}`);
 
     // Return simplified assistant data
     const simplifiedAssistants = assistants.map((assistant: any) => ({

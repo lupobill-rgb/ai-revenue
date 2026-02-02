@@ -166,7 +166,7 @@ Return as JSON with keys: executive_summary, key_wins, challenges, recommendatio
     const { data: summary, error: summaryError } = await supabase
       .from('cmo_weekly_summaries')
       .insert({
-        workspace_id: input.tenant_id,
+        tenant_id: input.tenant_id,
         tenant_id: input.tenant_id,
         week_start: weekStart,
         week_end: weekEnd,
@@ -191,7 +191,7 @@ Return as JSON with keys: executive_summary, key_wins, challenges, recommendatio
 
     // Log agent run
     await supabase.from('agent_runs').insert({
-      workspace_id: input.tenant_id,
+      tenant_id: input.tenant_id,
       tenant_id: input.tenant_id,
       agent: 'cmo-summarize-weekly',
       mode: 'summarize',

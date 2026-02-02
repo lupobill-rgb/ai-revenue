@@ -76,7 +76,7 @@ serve(async (req) => {
   }
 
   try {
-    const { location, businessType, radius = 5000, maxResults = 20, workspaceId } = await req.json();
+    const { location, businessType, radius = 5000, maxResults = 20, tenantId } = await req.json();
 
     if (!location || !businessType) {
       return new Response(
@@ -85,9 +85,9 @@ serve(async (req) => {
       );
     }
 
-    if (!workspaceId) {
+    if (!tenantId) {
       return new Response(
-        JSON.stringify({ error: 'Workspace ID is required' }),
+        JSON.stringify({ error: 'Tenant ID is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -324,7 +324,7 @@ serve(async (req) => {
             owner_extracted: ownerInfo ? true : false,
           },
           created_by: user.id,
-          workspace_id: workspaceId,
+          tenant_id: tenantId,
         };
 
         const { data: newLead, error: insertError } = await supabaseClient
@@ -352,7 +352,7 @@ serve(async (req) => {
             total_reviews: details.user_ratings_total,
           },
           created_by: user.id,
-          workspace_id: workspaceId,
+          tenant_id: tenantId,
         });
 
         importedCount++;

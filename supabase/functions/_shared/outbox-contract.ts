@@ -29,7 +29,6 @@ export type Provider = "resend" | "gmail" | "smtp" | "vapi" | "elevenlabs" | "in
 export interface BeginOutboxParams {
   supabase: any;
   tenantId: string;
-  workspaceId: string;
   runId: string;
   jobId: string;
   channel: Channel;
@@ -76,7 +75,6 @@ export async function beginOutboxItem(params: BeginOutboxParams): Promise<BeginO
   const {
     supabase,
     tenantId,
-    workspaceId,
     runId,
     jobId,
     channel,
@@ -95,7 +93,6 @@ export async function beginOutboxItem(params: BeginOutboxParams): Promise<BeginO
 
   const insertData: Record<string, unknown> = {
     tenant_id: tenantId,
-    workspace_id: workspaceId,
     run_id: runId,
     job_id: jobId,
     channel,
@@ -127,7 +124,6 @@ export async function beginOutboxItem(params: BeginOutboxParams): Promise<BeginO
         .from("channel_outbox")
         .update({ skipped: true, skip_reason: "idempotent_replay", status: "skipped" } as never)
         .eq("tenant_id", tenantId)
-        .eq("workspace_id", workspaceId)
         .eq("idempotency_key", idempotencyKey);
 
       return { outboxId: null, skipped: true };

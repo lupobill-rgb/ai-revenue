@@ -79,27 +79,27 @@ serve(async (req) => {
       });
     }
 
-    // Fetch tenant's integration config from workspace settings
-    const { data: workspace, error: wsError } = await supabase
-      .from('workspaces')
+    // Fetch tenant's integration config from tenant settings
+    const { data: tenant, error: tenantError } = await supabase
+      .from('tenants')
       .select('settings')
       .eq('id', tenant_id)
       .single();
 
-    if (wsError || !workspace) {
-      return new Response(JSON.stringify({ error: 'Workspace not found' }), {
+    if (tenantError || !tenant) {
+      return new Response(JSON.stringify({ error: 'Tenant not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const integrations: IntegrationConfig = workspace.settings?.integrations || {};
+    const integrations: IntegrationConfig = tenant.settings?.integrations || {};
     const config = integrations[integration];
 
     if (!config) {
       return new Response(JSON.stringify({ 
         error: `Integration ${integration} not configured for this tenant`,
-        hint: 'Configure integrations in workspace settings'
+        hint: 'Configure integrations in tenant settings'
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -130,7 +130,7 @@ serve(async (req) => {
 
     // Log the outbound call
     await supabase.from('agent_runs').insert({
-      workspace_id: tenant_id,
+      tenant_id: tenant_id,
       tenant_id: tenant_id,
       agent: 'cmo-webhook-outbound',
       mode: `${integration}:${action}`,

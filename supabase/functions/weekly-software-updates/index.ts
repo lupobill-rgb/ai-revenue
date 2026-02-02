@@ -254,9 +254,9 @@ serve(async (req) => {
     const updates = customUpdates.length > 0 ? customUpdates : await getLatestUpdates(supabase);
     console.log(`Found ${updates.length} updates for this week`);
 
-    // Fetch UbiGrowth workspace email settings
-    const { data: workspace } = await supabase
-      .from('workspaces')
+    // Fetch UbiGrowth tenant email settings
+    const { data: tenant } = await supabase
+      .from('tenants')
       .select('id, name')
       .ilike('name', '%ubigrowth%')
       .single();
@@ -264,11 +264,11 @@ serve(async (req) => {
     let fromAddress = 'updates@ubigrowth.com';
     let senderName = 'UbiGrowth AI';
 
-    if (workspace) {
+    if (tenant) {
       const { data: emailSettings } = await supabase
         .from('ai_settings_email')
         .select('from_address, sender_name')
-        .eq('tenant_id', workspace.id)
+        .eq('tenant_id', tenant.id)
         .single();
 
       if (emailSettings) {

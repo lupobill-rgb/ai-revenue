@@ -10,20 +10,20 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
 
 serve(async (req) => {
   try {
-    const { workspace_id, user_id } = await req.json()
+    const { tenant_id, user_id } = await req.json()
     
-    if (!workspace_id) {
+    if (!tenant_id) {
       return new Response(
-        JSON.stringify({ error: 'Workspace ID required' }),
+        JSON.stringify({ error: 'Tenant ID required' }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       )
     }
     
-    console.log(`🚀 Auto-setup for workspace: ${workspace_id}`)
+    console.log(`🚀 Auto-setup for tenant: ${tenant_id}`)
     
     const setupResults = {
       success: true,
-      workspace_id,
+      tenant_id,
       setup_steps: [] as any[],
       agents_created: [] as any[],
       ready_to_use: false

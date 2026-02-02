@@ -32,25 +32,32 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } }
     });
 
-    const { workspaceId } = await req.json();
-    
-    if (!workspaceId) {
-      return new Response(JSON.stringify({ error: 'workspaceId is required' }), {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
+    if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
+      return new Response(JSON.stringify({ error: 'tenant_id is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Verify user has access to this workspace (RLS enforces this)
-    const { data: workspace, error: wsError } = await supabase
-      .from('workspaces')
+    // Verify user has access to this tenant (RLS enforces this)
+    const { data: tenant, error: tenantError } = await supabase
+      .from('tenants')
       .select('id, name')
-      .eq('id', workspaceId)
+      .eq('id', tenantId)
       .maybeSingle();
 
-    if (wsError || !workspace) {
-      console.error(`[Trigger Automation] No access to workspace ${workspaceId}`);
-      return new Response(JSON.stringify({ error: 'No access to this workspace' }), {
+    if (tenantError || !tenant) {
+      console.error(`[Trigger Automation] No access to tenant ${tenantId}`);
+      return new Response(JSON.stringify({ error: 'No access to this tenant' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -64,13 +71,13 @@ serve(async (req) => {
       errors: [] as string[],
     };
 
-    console.log(`[Trigger Automation] User triggered for workspace ${workspace.name} at ${now.toISOString()}`);
+    console.log(`[Trigger Automation] User triggered for tenant ${tenant.name} at ${now.toISOString()}`);
 
-    // 1. Publish scheduled content (RLS enforced - only user's workspace content)
+    // 1. Publish scheduled content (RLS enforced - only user's tenant content)
     const { data: scheduledContent, error: contentError } = await supabase
       .from('content_calendar')
       .select('*')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('status', 'scheduled')
       .lte('scheduled_at', now.toISOString());
 
@@ -103,7 +110,7 @@ serve(async (req) => {
     const { data: activeCampaigns } = await supabase
       .from('campaigns')
       .select('id')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .in('status', ['active', 'scheduled']);
 
     if (activeCampaigns) {
@@ -114,7 +121,7 @@ serve(async (req) => {
     const { data: activeEnrollments } = await supabase
       .from('sequence_enrollments')
       .select('id')
-      .eq('workspace_id', workspaceId)
+      .eq('tenant_id', tenantId)
       .eq('status', 'active')
       .lte('next_email_at', now.toISOString());
 
@@ -122,9 +129,9 @@ serve(async (req) => {
       results.leadsNurtured = activeEnrollments.length;
     }
 
-    // 4. Log automation job (RLS enforced - user must have workspace access)
+    // 4. Log automation job (RLS enforced - user must have tenant access)
     const { error: insertError } = await supabase.from('automation_jobs').insert({
-      workspace_id: workspaceId,
+      tenant_id: tenantId,
       job_type: 'manual_trigger',
       status: results.errors.length === 0 ? 'completed' : 'completed_with_errors',
       scheduled_at: now.toISOString(),
@@ -137,7 +144,7 @@ serve(async (req) => {
       console.error(`[Trigger Automation] Failed to log job: ${insertError.message}`);
     }
 
-    console.log(`[Trigger Automation] Completed for workspace ${workspace.name}:`, results);
+    console.log(`[Trigger Automation] Completed for tenant ${tenant.name}:`, results);
 
     return new Response(JSON.stringify({ success: true, results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

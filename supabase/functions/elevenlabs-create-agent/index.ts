@@ -25,12 +25,12 @@ serve(async (req) => {
       system_prompt,
       voice_id,
       language = 'en',
-      workspace_id,
+      tenant_id,
       industry,
       use_case = 'sales_outreach'
     } = await req.json()
 
-    // Get Supabase client for workspace data
+    // Get Supabase client for tenant data
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -41,26 +41,26 @@ serve(async (req) => {
       }
     )
 
-    // Get workspace/brand info if workspace_id provided
+    // Get tenant/brand info if tenant_id provided
     let brandName = 'Your Company'
     let brandVoice = 'professional and friendly'
     
-    if (workspace_id) {
-      const { data: workspace } = await supabaseClient
-        .from('workspaces')
+    if (tenant_id) {
+      const { data: tenant } = await supabaseClient
+        .from('tenants')
         .select('name')
-        .eq('id', workspace_id)
+        .eq('id', tenant_id)
         .single()
       
-      if (workspace) {
-        brandName = workspace.name || brandName
+      if (tenant) {
+        brandName = tenant.name || brandName
       }
 
       // Try to get brand settings
       const { data: brandSettings } = await supabaseClient
         .from('ai_settings_brand')
         .select('brand_voice, brand_values')
-        .eq('workspace_id', workspace_id)
+        .eq('tenant_id', tenant_id)
         .single()
       
       if (brandSettings?.brand_voice) {
@@ -168,13 +168,13 @@ Keep it conversational. Don't sound like you're reading from a script.`,
 
     console.log('✅ Agent created successfully:', agentData.agent_id)
 
-    // Store agent reference in database if workspace_id provided
-    if (workspace_id && agentData.agent_id) {
+    // Store agent reference in database if tenant_id provided
+    if (tenant_id && agentData.agent_id) {
       try {
         await supabaseClient
           .from('voice_agents')
           .insert({
-            workspace_id: workspace_id,
+            tenant_id: tenant_id,
             provider: 'elevenlabs',
             agent_id: agentData.agent_id,
             name: agentName,

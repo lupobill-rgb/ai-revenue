@@ -9,7 +9,7 @@ const corsHeaders = {
 // Internal secret for cron/orchestration calls
 const INTERNAL_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') || 'ubigrowth-internal-2024';
 
-// This function is called by pg_cron and runs daily-automation for ALL active workspaces
+// This function is called by pg_cron and runs daily-automation for ALL active tenants
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -38,28 +38,28 @@ serve(async (req) => {
 
     console.log(`[cron-daily-automation] Starting at ${new Date().toISOString()}`);
 
-    // Fetch all active workspaces
-    const { data: workspaces, error: workspacesError } = await supabase
-      .from('workspaces')
+    // Fetch all active tenants
+    const { data: tenants, error: tenantsError } = await supabase
+      .from('tenants')
       .select('id, name');
 
-    if (workspacesError) {
-      throw new Error(`Failed to fetch workspaces: ${workspacesError.message}`);
+    if (tenantsError) {
+      throw new Error(`Failed to fetch tenants: ${tenantsError.message}`);
     }
 
-    if (!workspaces || workspaces.length === 0) {
-      console.log('[cron-daily-automation] No workspaces found, skipping');
-      return new Response(JSON.stringify({ success: true, message: 'No workspaces to process' }), {
+    if (!tenants || tenants.length === 0) {
+      console.log('[cron-daily-automation] No tenants found, skipping');
+      return new Response(JSON.stringify({ success: true, message: 'No tenants to process' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`[cron-daily-automation] Processing ${workspaces.length} workspaces`);
+    console.log(`[cron-daily-automation] Processing ${tenants.length} tenants`);
 
-    const results: { workspaceId: string; workspaceName: string; success: boolean; error?: string }[] = [];
+    const results: { tenantId: string; tenantName: string; success: boolean; error?: string }[] = [];
 
-    // Run daily-automation for each workspace with internal secret
-    for (const workspace of workspaces) {
+    // Run daily-automation for each tenant with internal secret
+    for (const tenant of tenants) {
       try {
         const response = await fetch(`${supabaseUrl}/functions/v1/daily-automation`, {
           method: 'POST',
@@ -67,35 +67,35 @@ serve(async (req) => {
             'Content-Type': 'application/json',
             'x-internal-secret': INTERNAL_SECRET,
           },
-          body: JSON.stringify({ workspaceId: workspace.id, internal: true })
+          body: JSON.stringify({ tenantId: tenant.id, internal: true })
         });
 
         if (!response.ok) {
           const errorText = await response.text();
           results.push({
-            workspaceId: workspace.id,
-            workspaceName: workspace.name,
+            tenantId: tenant.id,
+            tenantName: tenant.name,
             success: false,
             error: errorText
           });
-          console.error(`[cron] Failed for workspace ${workspace.name}: ${errorText}`);
+          console.error(`[cron] Failed for tenant ${tenant.name}: ${errorText}`);
         } else {
           results.push({
-            workspaceId: workspace.id,
-            workspaceName: workspace.name,
+            tenantId: tenant.id,
+            tenantName: tenant.name,
             success: true
           });
-          console.log(`[cron] Completed for workspace ${workspace.name}`);
+          console.log(`[cron] Completed for tenant ${tenant.name}`);
         }
       } catch (e: unknown) {
         const errorMsg = e instanceof Error ? e.message : 'Unknown error';
         results.push({
-          workspaceId: workspace.id,
-          workspaceName: workspace.name,
+          tenantId: tenant.id,
+          tenantName: tenant.name,
           success: false,
           error: errorMsg
         });
-        console.error(`[cron] Error for workspace ${workspace.name}: ${errorMsg}`);
+        console.error(`[cron] Error for tenant ${tenant.name}: ${errorMsg}`);
       }
     }
 
@@ -106,7 +106,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
-      processed: workspaces.length,
+      processed: tenants.length,
       successCount,
       failCount,
       results

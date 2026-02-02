@@ -142,7 +142,7 @@ serve(async (req) => {
     // Fetch the lead details
     const { data: lead, error: leadError } = await supabaseClient
       .from("leads")
-      .select("*, workspace_id")
+      .select("*, tenant_id")
       .eq("id", leadId)
       .single();
 
@@ -154,8 +154,8 @@ serve(async (req) => {
       throw new Error("Lead has no email address");
     }
 
-    // Settings are now keyed by workspace_id (tenant-scoped)
-    const workspaceId = lead.workspace_id as string;
+    // Settings are now keyed by tenant_id (tenant-scoped)
+    const tenantId = lead.tenant_id as string;
 
     console.log("sendVia:", sendVia, "user:", user?.id || "null");
 
@@ -213,11 +213,11 @@ serve(async (req) => {
       // Send via Resend (default)
       let replyToAddress = "noreply@resend.dev";
 
-      if (workspaceId) {
+      if (tenantId) {
         const { data: emailSettings } = await supabaseClient
           .from("ai_settings_email")
           .select("from_address, reply_to_address, sender_name")
-          .eq("tenant_id", workspaceId)
+          .eq("tenant_id", tenantId)
           .maybeSingle();
 
         if (emailSettings) {
@@ -229,11 +229,11 @@ serve(async (req) => {
 
       // Fallback: Fetch business profile for sender name if not in email settings
       if (!senderName || senderName === "Stephen M. Blaising") {
-        if (workspaceId) {
+        if (tenantId) {
           const { data: profile } = await supabaseClient
             .from("business_profiles")
             .select("business_name")
-            .eq("workspace_id", workspaceId)
+            .eq("tenant_id", tenantId)
             .maybeSingle();
           
           if (profile?.business_name) {
@@ -250,7 +250,7 @@ serve(async (req) => {
       // Build tags for Resend - include all IDs needed for webhook tracking
       const emailTags = [
         { name: "lead_id", value: leadId },
-        { name: "workspace_id", value: lead.workspace_id },
+        { name: "tenant_id", value: lead.tenant_id },
         { name: "template_id", value: templateId || "custom" },
       ];
       
@@ -333,7 +333,7 @@ serve(async (req) => {
     // Log activity using service role (bypasses RLS for internal audit logging)
     const { error: activityError } = await serviceClient.from("lead_activities").insert({
       lead_id: leadId,
-      workspace_id: lead.workspace_id,
+      tenant_id: lead.tenant_id,
       activity_type: "email_sent",
       description: `Outreach email sent: ${subject}`,
       created_by: user?.id || null,
@@ -358,11 +358,11 @@ serve(async (req) => {
     let effectiveCampaignId = campaignId;
     
     if (!effectiveCampaignId) {
-      // Look for existing default CRM campaign for this workspace
+      // Look for existing default CRM campaign for this tenant
       const { data: existingCampaign } = await serviceClient
         .from("campaigns")
         .select("id")
-        .eq("workspace_id", lead.workspace_id)
+        .eq("tenant_id", lead.tenant_id)
         .eq("channel", "email")
         .eq("status", "active")
         .order("created_at", { ascending: true })
@@ -377,7 +377,7 @@ serve(async (req) => {
         const { data: defaultAsset } = await serviceClient
           .from("assets")
           .select("id")
-          .eq("workspace_id", lead.workspace_id)
+          .eq("tenant_id", lead.tenant_id)
           .eq("type", "email")
           .limit(1)
           .single();
@@ -386,7 +386,7 @@ serve(async (req) => {
           const { data: newCampaign } = await serviceClient
             .from("campaigns")
             .insert({
-              workspace_id: lead.workspace_id,
+              tenant_id: lead.tenant_id,
               asset_id: defaultAsset.id,
               channel: "email",
               status: "active",
@@ -399,7 +399,7 @@ serve(async (req) => {
             // Create initial metrics record
             await serviceClient.from("campaign_metrics").insert({
               campaign_id: newCampaign.id,
-              workspace_id: lead.workspace_id,
+              tenant_id: lead.tenant_id,
               sent_count: 0,
               delivered_count: 0,
             });
@@ -433,7 +433,7 @@ serve(async (req) => {
           .from("campaign_metrics")
           .insert({
             campaign_id: effectiveCampaignId,
-            workspace_id: lead.workspace_id,
+            tenant_id: lead.tenant_id,
             sent_count: 1,
             delivered_count: 1,
           });

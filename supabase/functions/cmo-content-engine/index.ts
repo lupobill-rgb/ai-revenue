@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface ContentEngineRequest {
-  workspaceId: string;
+  tenantId: string;
   campaignId?: string;
   funnelStage?: 'awareness' | 'consideration' | 'conversion' | 'retention' | 'advocacy';
   channels?: string[];
@@ -153,7 +153,7 @@ serve(async (req) => {
   }
 
   try {
-    const { workspaceId, campaignId, funnelStage, channels, ctaIntent, contentTypes } = await req.json() as ContentEngineRequest;
+    const { tenantId, campaignId, funnelStage, channels, ctaIntent, contentTypes } = await req.json() as ContentEngineRequest;
     
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -167,9 +167,9 @@ serve(async (req) => {
     
     // Fetch all required data
     const [brandResult, icpResult, offersResult] = await Promise.all([
-      supabase.from('cmo_brand_profiles').select('*').eq('workspace_id', workspaceId).single(),
-      supabase.from('cmo_icp_segments').select('*').eq('workspace_id', workspaceId),
-      supabase.from('cmo_offers').select('*').eq('workspace_id', workspaceId),
+      supabase.from('cmo_brand_profiles').select('*').eq('tenant_id', tenantId).single(),
+      supabase.from('cmo_icp_segments').select('*').eq('tenant_id', tenantId),
+      supabase.from('cmo_offers').select('*').eq('tenant_id', tenantId),
     ]);
 
     if (!brandResult.data) {

@@ -33,15 +33,15 @@ serve(async (req) => {
     // Use service role for cron operations
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Get all active workspaces with CMO data
-    const { data: workspaces, error: wsError } = await supabase
-      .from('workspaces')
+    // Get all active tenants with CMO data
+    const { data: tenants, error: tenantsError } = await supabase
+      .from('tenants')
       .select('id, name')
       .order('created_at', { ascending: false });
 
-    if (wsError) {
-      console.error('Error fetching workspaces:', wsError);
-      return new Response(JSON.stringify({ error: wsError.message }), {
+    if (tenantsError) {
+      console.error('Error fetching tenants:', tenantsError);
+      return new Response(JSON.stringify({ error: tenantsError.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -49,15 +49,15 @@ serve(async (req) => {
 
     const results: any[] = [];
 
-    for (const workspace of workspaces || []) {
-      // Check if workspace has any CMO campaigns
+    for (const tenant of tenants || []) {
+      // Check if tenant has any CMO campaigns
       const { count: campaignCount } = await supabase
         .from('cmo_campaigns')
         .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', workspace.id);
+        .eq('tenant_id', tenant.id);
 
       if (!campaignCount || campaignCount === 0) {
-        continue; // Skip workspaces without CMO data
+        continue; // Skip tenants without CMO data
       }
 
       try {
@@ -70,24 +70,24 @@ serve(async (req) => {
             'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ tenant_id: workspace.id }),
+          body: JSON.stringify({ tenant_id: tenant.id }),
         });
 
         const result = await response.json();
         
         results.push({
-          workspace_id: workspace.id,
-          workspace_name: workspace.name,
+          tenant_id: tenant.id,
+          tenant_name: tenant.name,
           success: response.ok,
           result: response.ok ? result : null,
           error: !response.ok ? result.error : null
         });
 
-        console.log(`Weekly summary for ${workspace.name}: ${response.ok ? 'success' : 'failed'}`);
+        console.log(`Weekly summary for ${tenant.name}: ${response.ok ? 'success' : 'failed'}`);
       } catch (error) {
         results.push({
-          workspace_id: workspace.id,
-          workspace_name: workspace.name,
+          tenant_id: tenant.id,
+          tenant_name: tenant.name,
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error'
         });
@@ -96,11 +96,10 @@ serve(async (req) => {
 
     // Log the cron run
     await supabase.from('agent_runs').insert({
-      workspace_id: workspaces?.[0]?.id || '00000000-0000-0000-0000-000000000000',
-      tenant_id: workspaces?.[0]?.id || '00000000-0000-0000-0000-000000000000',
+      tenant_id: tenants?.[0]?.id || '00000000-0000-0000-0000-000000000000',
       agent: 'cmo-cron-weekly',
       mode: 'batch',
-      input: { workspaces_processed: results.length },
+      input: { tenants_processed: results.length },
       output: { results },
       status: 'completed'
     });

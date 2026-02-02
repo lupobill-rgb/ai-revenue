@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface CampaignDesignerRequest {
-  workspaceId: string;
+  tenantId: string;
   funnelId?: string;
   planId?: string;
   stageId?: string;
@@ -176,7 +176,7 @@ serve(async (req) => {
   }
 
   try {
-    const { workspaceId, funnelId, planId, stageId, goal, preferredChannels, budgetNotes } = await req.json() as CampaignDesignerRequest;
+    const { tenantId, funnelId, planId, stageId, goal, preferredChannels, budgetNotes } = await req.json() as CampaignDesignerRequest;
     
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -190,9 +190,9 @@ serve(async (req) => {
     
     // Fetch all required data
     const [brandResult, icpResult, offersResult, funnelResult, stagesResult, planResult, campaignsResult] = await Promise.all([
-      supabase.from('cmo_brand_profiles').select('*').eq('workspace_id', workspaceId).single(),
-      supabase.from('cmo_icp_segments').select('*').eq('workspace_id', workspaceId),
-      supabase.from('cmo_offers').select('*').eq('workspace_id', workspaceId),
+      supabase.from('cmo_brand_profiles').select('*').eq('tenant_id', tenantId).single(),
+      supabase.from('cmo_icp_segments').select('*').eq('tenant_id', tenantId),
+      supabase.from('cmo_offers').select('*').eq('tenant_id', tenantId),
       funnelId 
         ? supabase.from('cmo_funnels').select('*').eq('id', funnelId).single()
         : Promise.resolve({ data: null }),
@@ -202,7 +202,7 @@ serve(async (req) => {
       planId 
         ? supabase.from('cmo_marketing_plans').select('*').eq('id', planId).single()
         : Promise.resolve({ data: null }),
-      supabase.from('campaigns').select('*').eq('workspace_id', workspaceId).eq('status', 'active')
+      supabase.from('campaigns').select('*').eq('tenant_id', tenantId).eq('status', 'active')
     ]);
 
     if (!brandResult.data) {

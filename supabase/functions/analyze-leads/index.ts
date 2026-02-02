@@ -31,7 +31,7 @@ serve(async (req) => {
   }
 
   try {
-    const { leads, workspaceId } = await req.json();
+    const { leads } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -54,7 +54,7 @@ serve(async (req) => {
     });
 
     // ============================================================
-    // TENANT VALIDATION: Get user from JWT and validate workspace access
+    // TENANT VALIDATION: Get user from JWT and derive tenant_id
     // This is the SINGLE SOURCE OF TRUTH for tenant identity
     // ============================================================
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -67,81 +67,31 @@ serve(async (req) => {
     }
 
     // ============================================================
-    // HARD GUARD: workspaceId is REQUIRED for multi-tenant isolation
+    // HARD GUARD: tenant_id is REQUIRED for multi-tenant isolation
     // ============================================================
-    if (!workspaceId) {
-      console.warn(`[analyze-leads] Missing workspaceId from user ${user.id}`);
+    const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
+    if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
+      console.warn(`[analyze-leads] Missing tenant_id from user ${user.id}`);
       return new Response(
-        JSON.stringify({ error: "Missing workspaceId", message: "Workspace context is required for this operation" }),
+        JSON.stringify({ error: "tenant_id is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Validate workspaceId: user must have access to this workspace
-    // Check ownership first (via RLS - user must be owner or member)
-    const { data: workspaceAccess } = await supabase
-      .from("workspaces")
-      .select("id, owner_id")
-      .eq("id", workspaceId)
-      .single();
-
-    if (!workspaceAccess) {
-      // Also check workspace_members
-      const { data: memberAccess } = await supabase
-        .from("workspace_members")
-        .select("workspace_id")
-        .eq("workspace_id", workspaceId)
-        .eq("user_id", user.id)
-        .single();
-
-      if (!memberAccess) {
-        console.warn(`[analyze-leads] User ${user.id} attempted access to unauthorized workspace ${workspaceId}`);
-        return new Response(
-          JSON.stringify({ error: "Workspace access denied" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    }
-
-    const validatedWorkspaceId = workspaceId;
     // ============================================================
 
-    // Fetch business profile using validated workspace/user context
+    // Fetch business profile using validated tenant/user context
     let businessContext = "your business";
     let industryContext = "";
     
-    if (validatedWorkspaceId) {
-      // Get business profile via workspace owner
-      const { data: workspace } = await supabase
-        .from("workspaces")
-        .select("owner_id")
-        .eq("id", validatedWorkspaceId)
-        .single();
+    const { data: profile } = await supabase
+      .from("business_profiles")
+      .select("business_name, industry, business_description")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
 
-      if (workspace?.owner_id) {
-        const { data: profile } = await supabase
-          .from("business_profiles")
-          .select("business_name, industry, business_description")
-          .eq("user_id", workspace.owner_id)
-          .single();
-
-        if (profile) {
-          businessContext = profile.business_name || "your business";
-          industryContext = profile.industry ? ` in the ${profile.industry} industry` : "";
-        }
-      }
-    } else {
-      // Fallback: use authenticated user's profile directly
-      const { data: profile } = await supabase
-        .from("business_profiles")
-        .select("business_name, industry, business_description")
-        .eq("user_id", user.id)
-        .single();
-
-      if (profile) {
-        businessContext = profile.business_name || "your business";
-        industryContext = profile.industry ? ` in the ${profile.industry} industry` : "";
-      }
+    if (profile) {
+      businessContext = profile.business_name || "your business";
+      industryContext = profile.industry ? ` in the ${profile.industry} industry` : "";
     }
 
     // Calculate key metrics for AI context

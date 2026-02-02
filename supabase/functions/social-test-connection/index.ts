@@ -39,57 +39,26 @@ serve(async (req) => {
 
     const { platform } = await req.json();
 
+    const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
+    if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: "tenant_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     console.log(`[social-test-connection] User ${user.id} testing connection for platform: ${platform}`);
 
-    // Fetch the integration for this user and platform
-    // Try by user_id first, then by workspace_id (for workspace-scoped integrations)
-    let integration = null;
-    let fetchError = null;
-
-    // First try by user_id
-    const userResult = await supabase
+    // Fetch the integration for this tenant and platform
+    const { data: integration, error: fetchError } = await supabase
       .from('social_integrations')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('tenant_id', tenantId)
       .eq('platform', platform)
       .maybeSingle();
 
-    if (userResult.error) {
-      console.error('Error fetching by user_id:', userResult.error);
-    }
-
-    integration = userResult.data;
-
-    // If not found by user_id, try to find by workspace membership
-    if (!integration) {
-      // Get user's workspaces
-      const { data: workspaces } = await supabase
-        .from('workspaces')
-        .select('id')
-        .eq('owner_id', user.id);
-      
-      const { data: memberships } = await supabase
-        .from('workspace_members')
-        .select('workspace_id')
-        .eq('user_id', user.id);
-
-      const workspaceIds = [
-        ...(workspaces?.map(w => w.id) || []),
-        ...(memberships?.map(m => m.workspace_id) || [])
-      ];
-
-      if (workspaceIds.length > 0) {
-        const wsResult = await supabase
-          .from('social_integrations')
-          .select('*')
-          .in('workspace_id', workspaceIds)
-          .eq('platform', platform)
-          .maybeSingle();
-
-        if (!wsResult.error) {
-          integration = wsResult.data;
-        }
-      }
+    if (fetchError) {
+      console.error('Error fetching integration:', fetchError);
     }
 
     if (!integration) {

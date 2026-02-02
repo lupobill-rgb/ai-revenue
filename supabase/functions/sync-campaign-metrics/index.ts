@@ -24,20 +24,12 @@ serve(async (req) => {
 
     console.log(`[sync-campaign-metrics] User ${userId} requesting metrics sync...`);
 
-    // Get user's tenant via workspace membership
-    const { data: membershipData } = await supabase
-      .from('workspace_members')
-      .select('workspaces!inner(tenant_id)')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
+    const tenantId = user.user_metadata?.tenant_id || user.app_metadata?.tenant_id;
 
-    const tenantId = (membershipData as any)?.workspaces?.tenant_id;
-
-    if (!tenantId) {
-      console.log('[sync-campaign-metrics] No tenant found for user via workspace membership');
+    if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
+      console.log('[sync-campaign-metrics] Missing tenant_id for user');
       return new Response(
-        JSON.stringify({ success: false, error: 'No tenant found', mode: 'unknown' }),
+        JSON.stringify({ success: false, error: 'tenant_id is required', mode: 'unknown' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -50,7 +42,7 @@ serve(async (req) => {
       .single();
 
     const metricsMode = tenant?.metrics_mode || 'real';
-    console.log(`[sync-campaign-metrics] Tenant ${userTenant.tenant_id} metrics_mode: ${metricsMode}`);
+    console.log(`[sync-campaign-metrics] Tenant ${tenantId} metrics_mode: ${metricsMode}`);
 
     // Only run simulation in 'demo' mode
     if (metricsMode !== 'demo') {
