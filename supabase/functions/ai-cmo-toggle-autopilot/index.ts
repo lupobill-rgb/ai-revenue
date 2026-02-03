@@ -87,27 +87,28 @@ serve(async (req) => {
       );
     }
 
-    const upstream = campaign;
-    const normalizedCampaignId =
-      upstream?.campaignId ??
-      upstream?.campaign_id ??
-      upstream?.data?.campaignId ??
-      upstream?.data?.campaign_id ??
-      upstream?.id ??
-      upstream?.data?.id;
+    // campaign.id is guaranteed to exist from the .select().single() query
+    const normalizedCampaignId = campaign.id;
 
     if (!normalizedCampaignId || typeof normalizedCampaignId !== "string") {
       throw new Error(
-        `missing campaignId from autopilot response; keys=${Object.keys(upstream || {}).join(",")}`
+        `Invalid campaignId from database; keys=${Object.keys(campaign || {}).join(",")}`
       );
     }
 
     console.log(`Autopilot ${enabled ? "enabled" : "disabled"} for campaign ${normalizedCampaignId}`);
 
-    return new Response(JSON.stringify({ campaignId: normalizedCampaignId }), {
-      status: 200,
-      headers: { ...corsHeaders, "content-type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        autopilotEnabled: enabled,
+        campaignId: normalizedCampaignId,
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
 
   } catch (error) {
     console.error("ai-cmo-toggle-autopilot error:", error);
