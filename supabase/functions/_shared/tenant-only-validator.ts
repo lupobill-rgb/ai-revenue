@@ -10,7 +10,6 @@ type ValidateRequestBodyResult<TBody> = {
 const forbiddenWorkspaceFields = [
   ["tenant", "Id"].join(""),
   "tenant",
-  ["tenant", "id"].join("_"),
 ];
 
 function getForbiddenFields(body: Record<string, unknown>): string[] {
