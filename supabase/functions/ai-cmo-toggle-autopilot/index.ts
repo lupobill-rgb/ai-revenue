@@ -14,7 +14,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -37,8 +37,9 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { campaignId, enabled } = await req.json();
-    
+    const { campaignId: requestedCampaignId, campaign_id, enabled } = await req.json();
+    const campaignId = requestedCampaignId ?? campaign_id;
+
     if (!campaignId) {
       return new Response(
         JSON.stringify({ error: "Missing campaignId" }),
@@ -86,16 +87,27 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Autopilot ${enabled ? "enabled" : "disabled"} for campaign ${campaignId}`);
+    const upstream = campaign;
+    const normalizedCampaignId =
+      upstream?.campaignId ??
+      upstream?.campaign_id ??
+      upstream?.data?.campaignId ??
+      upstream?.data?.campaign_id ??
+      upstream?.id ??
+      upstream?.data?.id;
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        campaignId,
-        autopilotEnabled: enabled 
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    if (!normalizedCampaignId || typeof normalizedCampaignId !== "string") {
+      throw new Error(
+        `missing campaignId from autopilot response; keys=${Object.keys(upstream || {}).join(",")}`
+      );
+    }
+
+    console.log(`Autopilot ${enabled ? "enabled" : "disabled"} for campaign ${normalizedCampaignId}`);
+
+    return new Response(JSON.stringify({ campaignId: normalizedCampaignId }), {
+      status: 200,
+      headers: { ...corsHeaders, "content-type": "application/json" },
+    });
 
   } catch (error) {
     console.error("ai-cmo-toggle-autopilot error:", error);
