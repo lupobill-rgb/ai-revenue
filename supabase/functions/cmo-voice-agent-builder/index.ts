@@ -7,8 +7,8 @@ const corsHeaders = {
 };
 
 interface VoiceAgentBuilderInput {
-  tenant_id: string;
-  workspace_id?: string;
+  tenant_id?: string; // Deprecated, kept for backward compatibility
+  workspace_id: string;
   brand_voice: string;
   icp: string;
   offer: string;
@@ -48,31 +48,32 @@ serve(async (req) => {
     const input: VoiceAgentBuilderInput = await req.json();
     const { tenant_id, workspace_id, brand_voice, icp, offer, constraints = [] } = input;
 
-    if (!tenant_id || !brand_voice || !icp || !offer) {
+    // Prefer workspace_id, fallback to tenant_id for backward compatibility
+    const workspaceId = workspace_id || tenant_id;
+    
+    if (!workspaceId || !brand_voice || !icp || !offer) {
       return new Response(JSON.stringify({ 
-        error: 'Missing required fields: tenant_id, brand_voice, icp, offer' 
+        error: 'Missing required fields: workspace_id, brand_voice, icp, offer' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const workspaceId = workspace_id || tenant_id;
-
-    console.log(`Voice Agent Builder: Building agent for tenant ${tenant_id}`);
+    console.log(`Voice Agent Builder: Building agent for workspace ${workspaceId}`);
 
     // Fetch brand profile for additional context
     const { data: brandProfile } = await supabase
       .from('cmo_brand_profiles')
       .select('*')
-      .eq('tenant_id', tenant_id)
+      .eq('workspace_id', workspaceId)
       .single();
 
     // Fetch existing voice settings
     const { data: voiceSettings } = await supabase
       .from('ai_settings_voice')
       .select('*')
-      .eq('tenant_id', tenant_id)
+      .eq('workspace_id', workspaceId)
       .single();
 
     const brandContext = brandProfile ? `
@@ -219,7 +220,6 @@ Make the system_prompt comprehensive and ready to use directly with Vapi or Elev
     const { data: savedAgent, error: saveError } = await supabase
       .from('cmo_content_assets')
       .insert({
-        tenant_id,
         workspace_id: workspaceId,
         title: agentConfig.agent_name || 'Voice Agent Configuration',
         content_type: 'voice_agent_config',
@@ -239,7 +239,7 @@ Make the system_prompt comprehensive and ready to use directly with Vapi or Elev
       console.error('Failed to save agent config:', saveError);
     }
 
-    console.log(`Voice agent config created for tenant ${tenant_id}`);
+    console.log(`Voice agent config created for workspace ${workspaceId}`);
 
     return new Response(JSON.stringify({
       provider,
