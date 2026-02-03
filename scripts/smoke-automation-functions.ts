@@ -154,7 +154,6 @@ async function main() {
     offer: "AI-powered marketing automation platform",
     channels: ["email", "voice"],
     desiredResult: "leads",
-    workspaceId,
   });
 
   let autopilotCampaignId: string | null = null;
@@ -201,7 +200,6 @@ async function main() {
 
   // 4) AI voice agent generation (builder)
   await run("cmo-voice-agent-builder", {
-    tenant_id: workspaceId,
     workspace_id: workspaceId,
     brand_voice: "Professional, warm, concise",
     icp: "B2B SaaS founders",

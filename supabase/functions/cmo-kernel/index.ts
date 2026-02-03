@@ -25,7 +25,8 @@ type CMOMode =
 
 interface KernelRequest {
   mode: CMOMode;
-  tenant_id: string;
+  tenant_id?: string; // Deprecated, kept for backward compatibility
+  workspace_id?: string;
   payload: any;
 }
 
@@ -78,10 +79,13 @@ serve(async (req) => {
       });
     }
 
-    const { mode, tenant_id, payload }: KernelRequest = await req.json();
+    const { mode, tenant_id, workspace_id, payload }: KernelRequest = await req.json();
 
-    if (!mode || !tenant_id) {
-      return new Response(JSON.stringify({ error: 'mode and tenant_id are required' }), {
+    // Prefer workspace_id, fallback to tenant_id for backward compatibility
+    const workspaceId = workspace_id || tenant_id;
+
+    if (!mode || !workspaceId) {
+      return new Response(JSON.stringify({ error: 'mode and workspace_id (or tenant_id) are required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -104,8 +108,7 @@ serve(async (req) => {
     const { data: agentRun } = await supabase
       .from('agent_runs')
       .insert({
-        workspace_id: tenant_id,
-        tenant_id: tenant_id,
+        workspace_id: workspaceId,
         agent: 'cmo-kernel',
         mode: mode,
         input: { payload },
@@ -124,7 +127,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        tenant_id,
+        workspace_id: workspaceId,
         ...payload
       }),
     });
