@@ -164,6 +164,23 @@ function containsSampleData(
   return false;
 }
 
+type ElevenLabsSettings = {
+  elevenlabs_api_key?: string | null;
+  default_elevenlabs_voice_id?: string | null;
+};
+
+function getElevenLabsStatus(settings: ElevenLabsSettings) {
+  const configured = !!settings.elevenlabs_api_key;
+  const ready = configured && !!settings.default_elevenlabs_voice_id;
+  const error = !configured
+    ? "Eleven Labs API key not configured"
+    : !settings.default_elevenlabs_voice_id
+      ? "No Eleven Labs voice ID configured"
+      : undefined;
+
+  return { configured, ready, error };
+}
+
 describe('Voice Agents Gating - NO SAMPLE LEAKAGE', () => {
   
   describe('Scenario 1: demoMode=false, voiceConnected=false (NO PROVIDER)', () => {
@@ -307,6 +324,29 @@ describe('Voice Agents Gating - NO SAMPLE LEAKAGE', () => {
       expect(showVoiceSetupBanner).toBe(false);
       expect(demoMode).toBe(false);
       // No banner at all in live + connected mode
+    });
+  });
+
+  describe('Eleven Labs configuration readiness', () => {
+    it('flags missing API key as not configured', () => {
+      const status = getElevenLabsStatus({ elevenlabs_api_key: null, default_elevenlabs_voice_id: "voice_123" });
+      expect(status.configured).toBe(false);
+      expect(status.ready).toBe(false);
+      expect(status.error).toBe("Eleven Labs API key not configured");
+    });
+
+    it('flags missing voice ID as not ready', () => {
+      const status = getElevenLabsStatus({ elevenlabs_api_key: "elevenlabs_xxx", default_elevenlabs_voice_id: null });
+      expect(status.configured).toBe(true);
+      expect(status.ready).toBe(false);
+      expect(status.error).toBe("No Eleven Labs voice ID configured");
+    });
+
+    it('marks ready when key and voice ID are present', () => {
+      const status = getElevenLabsStatus({ elevenlabs_api_key: "elevenlabs_xxx", default_elevenlabs_voice_id: "voice_123" });
+      expect(status.configured).toBe(true);
+      expect(status.ready).toBe(true);
+      expect(status.error).toBeUndefined();
     });
   });
 });

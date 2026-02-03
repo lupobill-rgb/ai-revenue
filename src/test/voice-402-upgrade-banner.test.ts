@@ -15,6 +15,18 @@ import {
   type VoiceBannerInput 
 } from "@/lib/voiceBannerLogic";
 
+type ElevenLabsSettings = {
+  is_connected?: boolean | null;
+  elevenlabs_api_key?: string | null;
+  default_elevenlabs_voice_id?: string | null;
+};
+
+const isVoiceConnectedFromSettings = (settings: ElevenLabsSettings) => {
+  const isExplicitlyConnected = settings.is_connected === true;
+  const hasElevenLabs = !!settings.elevenlabs_api_key && !!settings.default_elevenlabs_voice_id;
+  return isExplicitlyConnected || hasElevenLabs;
+};
+
 describe("getVoiceBannerType", () => {
   it("returns DEMO_MODE when demoMode=true, even with 402", () => {
     const input: VoiceBannerInput = {
@@ -133,5 +145,27 @@ describe("402 Error Shape Handling", () => {
 
     expect(getVoiceBannerType(input)).toBe("UPGRADE_REQUIRED");
     expect(shouldDisableVoiceActions(input)).toBe(true);
+  });
+});
+
+describe("Eleven Labs connection detection", () => {
+  it("treats key + voice ID as connected", () => {
+    const voiceConnected = isVoiceConnectedFromSettings({
+      is_connected: false,
+      elevenlabs_api_key: "elevenlabs_xxx",
+      default_elevenlabs_voice_id: "voice_abc123",
+    });
+
+    expect(voiceConnected).toBe(true);
+  });
+
+  it("treats missing voice ID as not connected", () => {
+    const voiceConnected = isVoiceConnectedFromSettings({
+      is_connected: false,
+      elevenlabs_api_key: "elevenlabs_xxx",
+      default_elevenlabs_voice_id: null,
+    });
+
+    expect(voiceConnected).toBe(false);
   });
 });

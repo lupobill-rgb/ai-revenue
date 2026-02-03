@@ -155,6 +155,7 @@ async function main() {
     channels: ["email", "voice"],
     desiredResult: "leads",
     workspaceId,
+    tenant_id: workspaceId,
   });
 
   let autopilotCampaignId: string | null = null;

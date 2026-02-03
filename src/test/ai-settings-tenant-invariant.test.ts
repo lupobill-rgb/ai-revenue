@@ -22,8 +22,8 @@ interface WorkspaceRow {
 interface AiSettingsVoiceRow {
   tenant_id: string; // This actually stores workspaceId
   is_connected: boolean;
-  vapi_private_key: string | null;
   elevenlabs_api_key: string | null;
+  default_elevenlabs_voice_id: string | null;
 }
 
 /**
@@ -53,8 +53,8 @@ describe("AI Settings Tenant ID Invariant", () => {
     {
       tenant_id: "245f7faf-0fab-47ea-91b2-16ef6830fb8a", // Stores workspaceId
       is_connected: true,
-      vapi_private_key: "vapi_xxx",
-      elevenlabs_api_key: null,
+      elevenlabs_api_key: "elevenlabs_xxx",
+      default_elevenlabs_voice_id: "voice_abc123",
     },
   ];
 
@@ -94,8 +94,8 @@ describe("Voice Connection Detection", () => {
     const settings: AiSettingsVoiceRow = {
       tenant_id: "ws-123",
       is_connected: true,
-      vapi_private_key: null,
       elevenlabs_api_key: null,
+      default_elevenlabs_voice_id: null,
     };
     
     const isConnected = settings.is_connected === true;
@@ -106,14 +106,13 @@ describe("Voice Connection Detection", () => {
     const settings: AiSettingsVoiceRow = {
       tenant_id: "ws-123",
       is_connected: false,
-      vapi_private_key: "vapi_xxx",
-      elevenlabs_api_key: null,
+      elevenlabs_api_key: "elevenlabs_xxx",
+      default_elevenlabs_voice_id: "voice_abc123",
     };
     
     const isExplicitlyConnected = settings.is_connected === true;
-    const hasVapi = !!settings.vapi_private_key;
-    const hasElevenLabs = !!settings.elevenlabs_api_key;
-    const voiceConnected = isExplicitlyConnected || hasVapi || hasElevenLabs;
+    const hasElevenLabs = !!settings.elevenlabs_api_key && !!settings.default_elevenlabs_voice_id;
+    const voiceConnected = isExplicitlyConnected || hasElevenLabs;
     
     expect(voiceConnected).toBe(true);
   });
@@ -122,14 +121,13 @@ describe("Voice Connection Detection", () => {
     const settings: AiSettingsVoiceRow = {
       tenant_id: "ws-123",
       is_connected: false,
-      vapi_private_key: null,
       elevenlabs_api_key: null,
+      default_elevenlabs_voice_id: null,
     };
     
     const isExplicitlyConnected = settings.is_connected === true;
-    const hasVapi = !!settings.vapi_private_key;
-    const hasElevenLabs = !!settings.elevenlabs_api_key;
-    const voiceConnected = isExplicitlyConnected || hasVapi || hasElevenLabs;
+    const hasElevenLabs = !!settings.elevenlabs_api_key && !!settings.default_elevenlabs_voice_id;
+    const voiceConnected = isExplicitlyConnected || hasElevenLabs;
     
     expect(voiceConnected).toBe(false);
   });
