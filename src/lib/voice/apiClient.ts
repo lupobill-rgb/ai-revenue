@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import type {
   VoiceAssistant,
   VoicePhoneNumber,
@@ -14,6 +15,9 @@ import type {
   VoiceKernelResponse,
 } from './types';
 
+type VoiceAgentRow = Database['public']['Tables']['voice_agents']['Row'];
+type VoiceCallRecordRow = Database['public']['Tables']['voice_call_records']['Row'];
+
 // Assistant APIs
 export async function listAssistants(): Promise<VoiceAssistant[]> {
   const { data, error } = await supabase
@@ -22,7 +26,7 @@ export async function listAssistants(): Promise<VoiceAssistant[]> {
     .eq('status', 'active')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data || []).map((agent: any) => ({
+  return (data || []).map((agent) => ({
     id: agent.agent_id,
     name: agent.name || 'Unnamed Agent',
     createdAt: agent.created_at,
@@ -138,11 +142,11 @@ export async function getAnalytics(): Promise<VoiceAnalytics> {
     .select('*')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  const calls = data || [];
-  const completed = calls.filter((c: any) => c.status === 'completed');
-  const failed = calls.filter((c: any) => c.status === 'failed');
-  const noAnswer = calls.filter((c: any) => c.status === 'no-answer');
-  const totalDuration = calls.reduce((sum: number, c: any) => sum + (c.duration_seconds || 0), 0);
+  const calls: VoiceCallRecordRow[] = data || [];
+  const completed = calls.filter((c) => c.status === 'completed');
+  const failed = calls.filter((c) => c.status === 'failed');
+  const noAnswer = calls.filter((c) => c.status === 'no-answer');
+  const totalDuration = calls.reduce((sum: number, c) => sum + (c.duration_seconds || 0), 0);
   return {
     totalCalls: calls.length,
     completedCalls: completed.length,
@@ -167,27 +171,30 @@ export async function listCampaigns(workspaceId: string): Promise<VoiceCampaign[
 
   if (error) throw error;
 
-  return (data || []).map((asset) => ({
-    id: asset.id,
-    name: asset.name,
-    status: asset.status as VoiceCampaign['status'],
-    goal: asset.goal,
-    assistantId: (asset.content as any)?.assistantId || null,
-    config: (asset.content as any)?.config || {
-      maxConcurrentCalls: 1,
-      maxCallsPerDay: 100,
-      businessHoursOnly: true,
-      timezone: 'America/New_York',
-      retryFailedCalls: true,
-      maxRetries: 2,
-      callInterval: 30,
-    },
-    stats: (asset.content as any)?.stats,
-    createdAt: asset.created_at,
-    updatedAt: asset.updated_at,
-    tenantId: asset.created_by || '',
-    workspaceId: asset.workspace_id || '',
-  }));
+  return (data || []).map((asset) => {
+    const content = asset.content as Record<string, unknown> | null;
+    return {
+      id: asset.id,
+      name: asset.name,
+      status: asset.status as VoiceCampaign['status'],
+      goal: asset.goal,
+      assistantId: (content?.assistantId as string) || null,
+      config: (content?.config as VoiceCampaign['config']) || {
+        maxConcurrentCalls: 1,
+        maxCallsPerDay: 100,
+        businessHoursOnly: true,
+        timezone: 'America/New_York',
+        retryFailedCalls: true,
+        maxRetries: 2,
+        callInterval: 30,
+      },
+      stats: content?.stats as VoiceCampaign['stats'] | undefined,
+      createdAt: asset.created_at,
+      updatedAt: asset.updated_at,
+      tenantId: asset.created_by || '',
+      workspaceId: asset.workspace_id || '',
+    };
+  });
 }
 
 export async function createCampaign(
@@ -213,14 +220,15 @@ export async function createCampaign(
     .single();
 
   if (error) throw error;
+  const content = data.content as Record<string, unknown> | null;
   return {
     id: data.id,
     name: data.name,
     status: data.status as VoiceCampaign['status'],
     goal: data.goal,
-    assistantId: (data.content as any)?.assistantId || null,
-    config: (data.content as any)?.config,
-    stats: (data.content as any)?.stats,
+    assistantId: (content?.assistantId as string) || null,
+    config: (content?.config as VoiceCampaign['config']),
+    stats: content?.stats as VoiceCampaign['stats'] | undefined,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
     tenantId: data.created_by || '',
@@ -232,7 +240,7 @@ export async function updateCampaign(
   id: string,
   updates: Partial<VoiceCampaign>
 ): Promise<VoiceCampaign> {
-  const updateData: any = {};
+  const updateData: Record<string, unknown> = {};
   if (updates.name) updateData.name = updates.name;
   if (updates.status) updateData.status = updates.status;
   if (updates.goal) updateData.goal = updates.goal;
@@ -267,14 +275,15 @@ export async function updateCampaign(
     .single();
 
   if (error) throw error;
+  const content = data.content as Record<string, unknown> | null;
   return {
     id: data.id,
     name: data.name,
     status: data.status as VoiceCampaign['status'],
     goal: data.goal,
-    assistantId: (data.content as any)?.assistantId || null,
-    config: (data.content as any)?.config,
-    stats: (data.content as any)?.stats,
+    assistantId: (content?.assistantId as string) || null,
+    config: (content?.config as VoiceCampaign['config']),
+    stats: content?.stats as VoiceCampaign['stats'] | undefined,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
     tenantId: data.created_by || '',
@@ -287,7 +296,7 @@ export async function executeCampaign(params: {
   assistantId: string;
   phoneNumberId?: string;
   leadIds: string[];
-}): Promise<{ success: boolean; results: any[] }> {
+}): Promise<{ success: boolean; results: unknown[] }> {
   const { data, error } = await supabase.functions.invoke('execute-voice-campaign', {
     body: params,
   });
