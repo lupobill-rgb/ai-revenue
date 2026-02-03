@@ -51,7 +51,7 @@ async function callEdgeFunction(opts: {
   supabaseUrl: string;
   anonKey: string;
   accessToken: string;
-  workspaceId: string;
+  tenantId: string;
   name: string;
   body?: unknown;
 }): Promise<SmokeResult> {
@@ -62,7 +62,7 @@ async function callEdgeFunction(opts: {
       Authorization: `Bearer ${opts.accessToken}`,
       apikey: opts.anonKey,
       "Content-Type": "application/json",
-      "x-workspace-id": opts.workspaceId,
+      "x-workspace-id": opts.tenantId,
     },
     body: JSON.stringify(opts.body ?? {}),
   });
@@ -101,41 +101,19 @@ async function main() {
   }
 
   const accessToken = signInData.session.access_token;
-  const userId = signInData.user?.id;
-  if (!userId) throw new Error("Auth failed: missing user id");
 
-  let workspaceId = process.env.SMOKE_WORKSPACE_ID || null;
-  if (!workspaceId) {
-    const { data: ownedWs } = await supabase
-      .from("workspaces")
-      .select("id")
-      .eq("owner_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    workspaceId = ownedWs?.id || null;
-  }
-
-  if (!workspaceId) {
-    const { data: memberWs } = await supabase
-      .from("workspace_members")
-      .select("workspace_id")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle<{ workspace_id: string }>();
-    workspaceId = memberWs?.workspace_id || null;
-  }
-
-  if (!workspaceId) {
-    throw new Error("Unable to resolve workspace. Set SMOKE_WORKSPACE_ID explicitly.");
+  // Fetch tenant_id directly from environment variables
+  const tenantId = process.env.TENANT_ID;
+  if (!tenantId) {
+    throw new Error(
+      "Unable to resolve tenant_id. Make sure TENANT_ID is set in the environment variables."
+    );
   }
 
   let failed = false;
 
   const run = async (name: string, body?: unknown) => {
-    const r = await callEdgeFunction({ supabaseUrl, anonKey, accessToken, workspaceId, name, body });
+    const r = await callEdgeFunction({ supabaseUrl, anonKey, accessToken, tenantId, name, body });
     const line = `${r.ok ? "PASS" : "FAIL"} ${r.name} -> ${r.status}`;
     const details = truncate(r.bodyText || "");
     console.log(line);
@@ -154,7 +132,7 @@ async function main() {
     offer: "AI-powered marketing automation platform",
     channels: ["email", "voice"],
     desiredResult: "leads",
-    workspaceId,
+    workspaceId: tenantId,
   });
 
   let autopilotCampaignId: string | null = null;
@@ -188,7 +166,7 @@ async function main() {
     vertical: "SaaS & Software",
     contentType: "email",
     assetGoal: "Generate qualified leads",
-    workspaceId,
+    workspaceId: tenantId,
   });
 
   // 3b) Image generation used by campaign automation flows
@@ -196,13 +174,13 @@ async function main() {
     vertical: "SaaS & Software",
     contentType: "email",
     assetGoal: "Generate qualified leads",
-    workspaceId,
+    workspaceId: tenantId,
   });
 
   // 4) AI voice agent generation (builder)
   await run("cmo-voice-agent-builder", {
-    tenant_id: workspaceId,
-    workspace_id: workspaceId,
+    tenant_id: tenantId,
+    workspace_id: tenantId,
     brand_voice: "Professional, warm, concise",
     icp: "B2B SaaS founders",
     offer: "AI marketing automation",
