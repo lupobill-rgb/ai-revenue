@@ -132,6 +132,21 @@ async function main() {
     throw new Error("Unable to resolve workspace. Set SMOKE_WORKSPACE_ID explicitly.");
   }
 
+  const { data: workspaceMeta, error: workspaceMetaError } = await supabase
+    .from("workspaces")
+    .select("tenant_id, owner_id")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceMetaError) {
+    throw new Error(`Unable to resolve workspace tenant: ${workspaceMetaError.message}`);
+  }
+
+  const tenantId = workspaceMeta?.tenant_id || workspaceMeta?.owner_id || userId;
+  if (!tenantId) {
+    throw new Error("Unable to resolve tenant id for smoke run.");
+  }
+
   let failed = false;
 
   const run = async (name: string, body?: unknown) => {
@@ -154,6 +169,8 @@ async function main() {
     offer: "AI-powered marketing automation platform",
     channels: ["email", "voice"],
     desiredResult: "leads",
+    tenant_id: tenantId,
+    tenantId,
     workspaceId,
   });
 

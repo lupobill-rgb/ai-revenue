@@ -14,7 +14,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -37,8 +37,9 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { campaignId, enabled } = await req.json();
-    
+    const { campaignId: requestedCampaignId, campaign_id, enabled } = await req.json();
+    const campaignId = requestedCampaignId ?? campaign_id;
+
     if (!campaignId) {
       return new Response(
         JSON.stringify({ error: "Missing campaignId" }),
@@ -86,15 +87,27 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Autopilot ${enabled ? "enabled" : "disabled"} for campaign ${campaignId}`);
+    // campaign.id is guaranteed to exist from the .select().single() query
+    const normalizedCampaignId = campaign.id;
+
+    if (!normalizedCampaignId || typeof normalizedCampaignId !== "string") {
+      throw new Error(
+        `Invalid campaignId from database; keys=${Object.keys(campaign || {}).join(",")}`
+      );
+    }
+
+    console.log(`Autopilot ${enabled ? "enabled" : "disabled"} for campaign ${normalizedCampaignId}`);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        campaignId,
-        autopilotEnabled: enabled 
+      JSON.stringify({
+        success: true,
+        autopilotEnabled: enabled,
+        campaignId: normalizedCampaignId,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
     );
 
   } catch (error) {
