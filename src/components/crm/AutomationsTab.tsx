@@ -170,7 +170,7 @@ function VoiceStepConfig({
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Select a VAPI or ElevenLabs voice agent
+          Select an ElevenLabs voice agent
         </p>
       </div>
 

@@ -50,7 +50,7 @@ export function ProviderSettings({ workspaceId, onUpdate }: ProviderSettingsProp
   const [socialSettings, setSocialSettings] = useState<SocialSettings | null>(null);
 
   const [selectedEmailProvider, setSelectedEmailProvider] = useState<string>("resend");
-  const [selectedVoiceProvider, setSelectedVoiceProvider] = useState<string>("vapi");
+  const [selectedVoiceProvider, setSelectedVoiceProvider] = useState<string>("elevenlabs");
   const [selectedSocialProvider, setSelectedSocialProvider] = useState<string>("coming_soon");
 
   const [testingEmail, setTestingEmail] = useState(false);
@@ -83,7 +83,7 @@ export function ProviderSettings({ workspaceId, onUpdate }: ProviderSettingsProp
       if (voiceRow) {
         const data = voiceRow;
         setVoiceSettings(data);
-        setSelectedVoiceProvider(data.voice_provider || "vapi");
+        setSelectedVoiceProvider(data.voice_provider || "elevenlabs");
       }
 
       const socialRow = socialRes.data?.[0] as SocialSettings | undefined;
@@ -225,13 +225,6 @@ export function ProviderSettings({ workspaceId, onUpdate }: ProviderSettingsProp
         });
         success = !error && data?.success;
         message = data?.message || error?.message || "ElevenLabs connection failed";
-      } else {
-        // Default: VAPI
-        const { data, error } = await supabase.functions.invoke("vapi-list-assistants", {
-          body: {},
-        });
-        success = !error && data?.assistants;
-        message = success ? "VAPI connection verified" : error?.message || "VAPI connection failed";
       }
 
       const testResult = {
@@ -392,15 +385,6 @@ export function ProviderSettings({ workspaceId, onUpdate }: ProviderSettingsProp
         </CardHeader>
         <CardContent className="space-y-4">
           <RadioGroup value={selectedVoiceProvider} onValueChange={saveVoiceProvider} disabled={saving}>
-            <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50">
-              <RadioGroupItem value="vapi" id="vapi" />
-              <Label htmlFor="vapi" className="flex-1 cursor-pointer">
-                <span className="font-medium">VAPI</span>
-                <span className="text-sm text-muted-foreground ml-2">
-                  (AI voice calls with custom assistants)
-                </span>
-              </Label>
-            </div>
             <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50">
               <RadioGroupItem value="elevenlabs" id="elevenlabs" />
               <Label htmlFor="elevenlabs" className="flex-1 cursor-pointer">

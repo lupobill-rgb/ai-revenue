@@ -38,11 +38,10 @@ serve(async (req) => {
 
     console.log("CMO Optimizer Cron: Starting daily optimization run...");
 
-    // Query all autopilot-enabled campaigns
+    // Query all active campaigns
     const { data: campaigns, error: campaignsError } = await supabase
       .from("cmo_campaigns")
-      .select("id, tenant_id, tenant_id, campaign_name, goal")
-      .eq("autopilot_enabled", true)
+      .select("id, tenant_id, campaign_name, goal")
       .eq("status", "active");
 
     if (campaignsError) {
@@ -50,7 +49,7 @@ serve(async (req) => {
       throw new Error(`Failed to fetch campaigns: ${campaignsError.message}`);
     }
 
-    console.log(`Found ${campaigns?.length || 0} autopilot campaigns to optimize`);
+    console.log(`Found ${campaigns?.length || 0} active campaigns to optimize`);
 
     const results: any[] = [];
 
@@ -103,7 +102,6 @@ serve(async (req) => {
               "x-internal-secret": internalSecret || "",
             },
             body: JSON.stringify({
-              tenant_id: campaign.tenant_id,
               tenant_id: campaign.tenant_id,
               campaign_id: campaign.id,
               goal: campaign.goal || "leads",

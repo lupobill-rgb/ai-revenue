@@ -257,7 +257,6 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
     const { data: campaign, error: campaignError } = await supabase
       .from('cmo_campaigns')
       .insert({
-        tenant_id,
         tenant_id: tenantId,
         campaign_name: assets.campaign_name || `AI Campaign - ${desired_result}`,
         campaign_type: 'autopilot',
@@ -285,7 +284,6 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
         const { data: asset } = await supabase
           .from('cmo_content_assets')
           .insert({
-            tenant_id,
             tenant_id: tenantId,
             campaign_id: campaign.id,
             title: `${post.channel} Post`,
@@ -307,7 +305,6 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
         const { data: asset } = await supabase
           .from('cmo_content_assets')
           .insert({
-            tenant_id,
             tenant_id: tenantId,
             campaign_id: campaign.id,
             title: email.subject,
@@ -328,7 +325,6 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
         const { data: asset } = await supabase
           .from('cmo_content_assets')
           .insert({
-            tenant_id,
             tenant_id: tenantId,
             campaign_id: campaign.id,
             title: `Voice Script - ${script.scenario}`,
@@ -350,7 +346,6 @@ Only include asset types for the channels specified, EXCEPT landing_pages which 
         const { data: asset } = await supabase
           .from('cmo_content_assets')
           .insert({
-            tenant_id,
             tenant_id: tenantId,
             campaign_id: campaign.id,
             title: `SMS Step ${sms.step}`,

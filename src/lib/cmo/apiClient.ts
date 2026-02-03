@@ -14,7 +14,6 @@ export type Campaign = {
   campaign_type: string;
   status: string | null;
   goal: string | null;
-  autopilot_enabled: boolean;
   last_optimization_at: string | null;
   last_optimization_note: string | null;
   created_at: string;
@@ -24,7 +23,7 @@ export type Campaign = {
 export type VoiceAgent = {
   id: string;
   name: string;
-  provider: "vapi" | "elevenlabs";
+  provider: "elevenlabs";
   config?: Record<string, unknown>;
 };
 
@@ -34,14 +33,6 @@ export type CampaignOptimization = {
   summary: string | null;
   changes: unknown;
   optimization_type: string;
-};
-
-export type BuildAutopilotCampaignInput = {
-  tenantId: string;
-  icp: string;
-  offer: string;
-  channels: ("email" | "sms" | "linkedin" | "voice" | "landing_page")[];
-  desiredResult: CampaignGoal;
 };
 
 // ============ CAMPAIGNS ============
@@ -57,21 +48,6 @@ export async function fetchCampaigns(tenantId: string): Promise<Campaign[]> {
   return data || [];
 }
 
-export async function toggleAutopilot(
-  campaignId: string,
-  enabled: boolean
-): Promise<void> {
-  const { data, error } = await supabase.functions.invoke(
-    "ai-cmo-toggle-autopilot",
-    {
-      body: { campaign_id: campaignId, enabled },
-    }
-  );
-
-  if (error) throw new Error(error.message);
-  return data;
-}
-
 export async function updateCampaignGoal(
   campaignId: string,
   goal: CampaignGoal | null
@@ -85,28 +61,6 @@ export async function updateCampaignGoal(
 
   if (error) throw new Error(error.message);
   return data;
-}
-
-// ============ AUTOPILOT CAMPAIGN BUILDER ============
-
-export async function buildAutopilotCampaign(
-  payload: BuildAutopilotCampaignInput
-): Promise<{ campaignId: string; status: string }> {
-  const { data, error } = await supabase.functions.invoke(
-    "ai-cmo-autopilot-build",
-    {
-      body: {
-        tenant_id: payload.tenantId,
-        icp: payload.icp,
-        offer: payload.offer,
-        channels: payload.channels,
-        desired_result: payload.desiredResult,
-      },
-    }
-  );
-
-  if (error) throw new Error(error.message);
-  return data as { campaignId: string; status: string };
 }
 
 // ============ VOICE AGENTS ============
@@ -133,7 +87,7 @@ export async function buildVoiceAgent(payload: {
   icp: string;
   offer: string;
   constraints?: string[];
-  preferredProvider?: "vapi" | "elevenlabs";
+  preferredProvider?: "elevenlabs";
 }): Promise<VoiceAgent> {
   const { data, error } = await supabase.functions.invoke(
     "cmo-voice-agent-builder",

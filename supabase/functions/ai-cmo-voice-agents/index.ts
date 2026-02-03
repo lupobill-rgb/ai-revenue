@@ -92,7 +92,7 @@ serve(async (req) => {
       const agents = (voiceAgents || []).map((agent: any) => ({
         id: agent.id,
         name: agent.title,
-        provider: agent.dependencies?.provider || "vapi",
+        provider: agent.dependencies?.provider || "elevenlabs",
       }));
 
       return new Response(

@@ -200,7 +200,7 @@ export function useVoiceData(options: UseVoiceDataOptions = {}) {
           workspace_id: workspaceId,
           phone_number: data.phone_number,
           display_name: data.display_name,
-          provider: data.provider || 'vapi',
+          provider: data.provider || 'elevenlabs',
           is_default: phoneNumbers.length === 0,
           status: 'active',
         })

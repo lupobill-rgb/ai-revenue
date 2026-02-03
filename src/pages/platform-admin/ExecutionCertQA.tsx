@@ -1729,7 +1729,7 @@ export default function ExecutionCertQA() {
               </div>
               <p className="text-sm text-muted-foreground">
                 {liveMode 
-                  ? 'Uses real provider APIs (Resend/VAPI) - actual emails/calls will be sent'
+                  ? 'Uses real provider APIs (Resend/ElevenLabs) - actual emails/calls will be sent'
                   : 'Sandbox mode - simulates provider responses without real API calls'}
               </p>
             </div>

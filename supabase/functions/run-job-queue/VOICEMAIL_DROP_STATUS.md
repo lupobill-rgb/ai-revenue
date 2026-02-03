@@ -3,10 +3,10 @@
 ## Current State: ❌ NOT IMPLEMENTED
 
 ### What EXISTS
-- **Live Voice Calls** via VAPI (`voice_call_batch` job type)
+- **Live Voice Calls** via ElevenLabs (`voice_call_batch` job type)
   - AI-powered conversational calls
-  - Uses VAPI assistant with real-time AI conversation
-  - Creates channel_outbox rows with provider='vapi'
+  - Uses ElevenLabs agents for voice interactions
+  - Creates channel_outbox rows with provider='elevenlabs'
   - Status: ✅ WORKING
 
 ### What is MISSING

@@ -28,7 +28,7 @@ export interface AutomationStepConfig {
   
   // Voice config
   assistant_id?: string;
-  agent_id?: string; // VAPI or ElevenLabs agent ID
+  agent_id?: string; // ElevenLabs agent ID
   script?: string;
   script_template?: string; // Script template for the call
   phone_number_id?: string;

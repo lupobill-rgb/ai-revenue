@@ -4,7 +4,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
-const VAPI_PRIVATE_KEY = Deno.env.get('VAPI_PRIVATE_KEY')
 const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY')
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
 
@@ -24,33 +23,12 @@ serve(async (req) => {
     const health = {
       ready: false,
       providers: {
-        vapi: { connected: false, agents: 0 },
         elevenlabs: { connected: false, agents: 0 },
         orchestration: { enabled: false }
       },
       capabilities: [] as string[],
       message: '',
       action_required: null as string | null
-    }
-    
-    // Check VAPI
-    if (VAPI_PRIVATE_KEY) {
-      try {
-        const vapiTest = await fetch('https://api.vapi.ai/assistant?limit=1', {
-          headers: { 'Authorization': `Bearer ${VAPI_PRIVATE_KEY}` },
-          signal: AbortSignal.timeout(3000) // 3s timeout
-        })
-        
-        if (vapiTest.ok) {
-          const data = await vapiTest.json()
-          health.providers.vapi.connected = true
-          health.providers.vapi.agents = Array.isArray(data) ? data.length : 0
-          health.capabilities.push('VAPI voice calls')
-          health.capabilities.push('VAPI voicemail drops')
-        }
-      } catch (e) {
-        // Silent fail - not critical
-      }
     }
     
     // Check ElevenLabs
@@ -92,8 +70,8 @@ serve(async (req) => {
     }
     
     // Determine overall status
-    const hasVoiceProvider = health.providers.vapi.connected || health.providers.elevenlabs.connected
-    const hasAgents = health.providers.vapi.agents > 0 || health.providers.elevenlabs.agents > 0
+    const hasVoiceProvider = health.providers.elevenlabs.connected
+    const hasAgents = health.providers.elevenlabs.agents > 0
     const hasOrchestration = health.providers.orchestration.enabled
     
     if (hasVoiceProvider && hasOrchestration) {
@@ -109,7 +87,7 @@ serve(async (req) => {
       health.ready = false
       
       const missing = []
-      if (!hasVoiceProvider) missing.push('voice provider (VAPI or ElevenLabs)')
+      if (!hasVoiceProvider) missing.push('voice provider (ElevenLabs)')
       if (!hasOrchestration) missing.push('OpenAI for orchestration')
       
       health.message = `❌ Missing: ${missing.join(', ')}`

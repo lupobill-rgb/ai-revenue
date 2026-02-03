@@ -829,7 +829,6 @@ export type Database = {
         Row: {
           default_elevenlabs_voice_id: string | null
           default_phone_number_id: string | null
-          default_vapi_assistant_id: string | null
           elevenlabs_api_key: string | null
           elevenlabs_model: string | null
           is_connected: boolean | null
@@ -837,14 +836,11 @@ export type Database = {
           last_tested_at: string | null
           tenant_id: string
           updated_at: string | null
-          vapi_private_key: string | null
-          vapi_public_key: string | null
           voice_provider: string | null
         }
         Insert: {
           default_elevenlabs_voice_id?: string | null
           default_phone_number_id?: string | null
-          default_vapi_assistant_id?: string | null
           elevenlabs_api_key?: string | null
           elevenlabs_model?: string | null
           is_connected?: boolean | null
@@ -852,14 +848,11 @@ export type Database = {
           last_tested_at?: string | null
           tenant_id: string
           updated_at?: string | null
-          vapi_private_key?: string | null
-          vapi_public_key?: string | null
           voice_provider?: string | null
         }
         Update: {
           default_elevenlabs_voice_id?: string | null
           default_phone_number_id?: string | null
-          default_vapi_assistant_id?: string | null
           elevenlabs_api_key?: string | null
           elevenlabs_model?: string | null
           is_connected?: boolean | null
@@ -867,8 +860,6 @@ export type Database = {
           last_tested_at?: string | null
           tenant_id?: string
           updated_at?: string | null
-          vapi_private_key?: string | null
-          vapi_public_key?: string | null
           voice_provider?: string | null
         }
         Relationships: [
@@ -993,7 +984,6 @@ export type Database = {
           status: Database["public"]["Enums"]["asset_status"]
           type: Database["public"]["Enums"]["asset_type"]
           updated_at: string
-          vapi_id: string | null
           views: number
           workspace_id: string | null
         }
@@ -1017,7 +1007,6 @@ export type Database = {
           status?: Database["public"]["Enums"]["asset_status"]
           type: Database["public"]["Enums"]["asset_type"]
           updated_at?: string
-          vapi_id?: string | null
           views?: number
           workspace_id?: string | null
         }
@@ -1041,7 +1030,6 @@ export type Database = {
           status?: Database["public"]["Enums"]["asset_status"]
           type?: Database["public"]["Enums"]["asset_type"]
           updated_at?: string
-          vapi_id?: string | null
           views?: number
           workspace_id?: string | null
         }

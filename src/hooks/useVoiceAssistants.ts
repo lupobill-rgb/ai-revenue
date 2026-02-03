@@ -1,6 +1,6 @@
 /**
  * Voice Assistants Hook
- * Manages VAPI assistant state and operations
+ * Manages voice assistant state and operations
  */
 
 import { useCallback } from 'react';

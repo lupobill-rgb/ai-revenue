@@ -8,7 +8,6 @@ const corsHeaders = {
 
 interface VoiceAgentBuilderInput {
   tenant_id: string;
-  tenant_id?: string;
   brand_voice: string;
   icp: string;
   offer: string;
@@ -46,7 +45,7 @@ serve(async (req) => {
     }
 
     const input: VoiceAgentBuilderInput = await req.json();
-    const { tenant_id, tenant_id, brand_voice, icp, offer, constraints = [] } = input;
+    const { tenant_id, brand_voice, icp, offer, constraints = [] } = input;
 
     if (!tenant_id || !brand_voice || !icp || !offer) {
       return new Response(JSON.stringify({ 
@@ -57,7 +56,7 @@ serve(async (req) => {
       });
     }
 
-    const tenantId = tenant_id || tenant_id;
+    const tenantId = tenant_id;
 
     console.log(`Voice Agent Builder: Building agent for tenant ${tenant_id}`);
 
@@ -165,7 +164,7 @@ Generate the following configuration in JSON format:
   "compliance_notes": "Any compliance considerations based on constraints"
 }
 
-Make the system_prompt comprehensive and ready to use directly with Vapi or ElevenLabs.`;
+Make the system_prompt comprehensive and ready to use directly with ElevenLabs.`;
 
     // Call Lovable AI
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -209,8 +208,8 @@ Make the system_prompt comprehensive and ready to use directly with Vapi or Elev
       throw new Error('Failed to parse generated agent configuration');
     }
 
-    // Determine provider based on settings
-    const provider = voiceSettings?.vapi_private_key ? 'vapi' : 'elevenlabs';
+    // ElevenLabs is the only supported provider
+    const provider = 'elevenlabs';
     
     // Use configured voice ID if available
     const voiceId = voiceSettings?.default_elevenlabs_voice_id || agentConfig.voice_id || 'EXAVITQu4vr4xnSDxMaL';
@@ -219,7 +218,6 @@ Make the system_prompt comprehensive and ready to use directly with Vapi or Elev
     const { data: savedAgent, error: saveError } = await supabase
       .from('cmo_content_assets')
       .insert({
-        tenant_id,
         tenant_id: tenantId,
         title: agentConfig.agent_name || 'Voice Agent Configuration',
         content_type: 'voice_agent_config',

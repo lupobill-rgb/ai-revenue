@@ -39,7 +39,7 @@ export const landingTemplatePresets: LandingPageDraft[] = [
         type: "social_proof",
         heading: "Teams Using AI CMO Don't Go Back",
         body:
-          "Once your campaigns run on autopilot, you stop hiring headcount to chase spreadsheets.",
+          "Once your campaigns run with AI automation, you stop hiring headcount to chase spreadsheets.",
         bullets: [
           "Fewer tools, more pipeline",
           "Predictable outbound at lower cost",
@@ -154,7 +154,7 @@ export const landingTemplatePresets: LandingPageDraft[] = [
         type: "problem_solution",
         heading: "You Don't Need Another Agency. You Need an OS.",
         body:
-          "Instead of handoffs and PDFs, you get a system that runs your outbound and content on autopilot.",
+          "Instead of handoffs and PDFs, you get a system that runs your outbound and content with AI automation.",
         bullets: []
       },
       {

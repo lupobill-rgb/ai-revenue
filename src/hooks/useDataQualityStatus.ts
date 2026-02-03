@@ -103,7 +103,7 @@ export function useDataQualityStatus(workspaceId?: string | null): DataQualitySt
       // ╚══════════════════════════════════════════════════════════════════════════╝
       const { data: voiceSettingsArr } = await supabase
         .from('ai_settings_voice')
-        .select('is_connected, vapi_private_key, elevenlabs_api_key')
+        .select('is_connected, elevenlabs_api_key')
         .eq('tenant_id', workspaceId)
         .limit(1);
 
@@ -111,9 +111,8 @@ export function useDataQualityStatus(workspaceId?: string | null): DataQualitySt
       
       if (voiceSettings) {
         const isExplicitlyConnected = voiceSettings.is_connected === true;
-        const hasVapi = !!voiceSettings.vapi_private_key;
         const hasElevenLabs = !!voiceSettings.elevenlabs_api_key;
-        setVoiceConnected(isExplicitlyConnected || hasVapi || hasElevenLabs);
+        setVoiceConnected(isExplicitlyConnected || hasElevenLabs);
       }
     } catch (err) {
       console.error('[useDataQualityStatus] Error fetching view status:', err);

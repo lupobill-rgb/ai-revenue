@@ -9,7 +9,6 @@ export interface VoiceSetupStatus {
   ready: boolean
   loading: boolean
   providers: {
-    vapi: { connected: boolean; agents: number }
     elevenlabs: { connected: boolean; agents: number }
     orchestration: { enabled: boolean }
   }
@@ -24,7 +23,6 @@ export function useVoiceSetup() {
     ready: false,
     loading: true,
     providers: {
-      vapi: { connected: false, agents: 0 },
       elevenlabs: { connected: false, agents: 0 },
       orchestration: { enabled: false }
     },

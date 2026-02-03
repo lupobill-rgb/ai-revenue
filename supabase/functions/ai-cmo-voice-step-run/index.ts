@@ -117,19 +117,12 @@ serve(async (req) => {
       .single();
 
     const agentConfig = voiceAgent.dependencies?.config || {};
-    const provider = voiceAgent.dependencies?.provider || "vapi";
+    const provider = voiceAgent.dependencies?.provider || "elevenlabs";
 
     // Execute call based on provider
     let callResult: CallResult;
 
-    if (provider === "vapi") {
-      callResult = await executeVapiCall(
-        lead,
-        personalizedScript,
-        agentConfig,
-        voiceSettings
-      );
-    } else if (provider === "elevenlabs") {
+    if (provider === "elevenlabs") {
       callResult = await executeElevenLabsCall(
         lead,
         personalizedScript,
@@ -137,8 +130,8 @@ serve(async (req) => {
         voiceSettings
       );
     } else {
-      // Default to VAPI
-      callResult = await executeVapiCall(
+      // Default to ElevenLabs
+      callResult = await executeElevenLabsCall(
         lead,
         personalizedScript,
         agentConfig,
@@ -246,83 +239,6 @@ function personalizeScript(template: string, lead: any, history: any[]): string 
   return script;
 }
 
-async function executeVapiCall(
-  lead: any,
-  script: string,
-  agentConfig: any,
-  voiceSettings: any
-): Promise<CallResult> {
-  const vapiKey = voiceSettings?.vapi_private_key || Deno.env.get("VAPI_PRIVATE_KEY");
-
-  if (!vapiKey) {
-    console.error("VAPI private key not configured");
-    return { status: "failed", outcome: "no_answer" };
-  }
-
-  if (!lead.phone) {
-    console.error("Lead has no phone number");
-    return { status: "failed", outcome: "no_answer" };
-  }
-
-  try {
-    // Create outbound call via VAPI
-    const response = await fetch("https://api.vapi.ai/call/phone", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${vapiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        phoneNumberId: voiceSettings?.default_vapi_phone_id,
-        customer: {
-          number: lead.phone,
-          name: `${lead.first_name || ""} ${lead.last_name || ""}`.trim(),
-        },
-        assistant: {
-          model: {
-            provider: "openai",
-            model: agentConfig.model || "gpt-4o-mini",
-          },
-          voice: {
-            provider: "openai",
-            voiceId: agentConfig.voice_id || "alloy",
-          },
-          firstMessage: agentConfig.first_message || script,
-          transcriber: {
-            provider: "deepgram",
-            model: "nova-2",
-            language: "en",
-          },
-          ...(agentConfig.system_prompt && { systemPrompt: agentConfig.system_prompt }),
-        },
-        maxDurationSeconds: agentConfig.max_duration || 300,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("VAPI call failed:", errorText);
-      return { status: "failed", outcome: "no_answer" };
-    }
-
-    const callData = await response.json();
-    console.log("VAPI call initiated:", callData.id);
-
-    // For now, return pending - real implementation would poll or use webhooks
-    // In production, use VAPI webhooks to get actual results
-    return {
-      status: "completed",
-      outcome: "callback", // Default until webhook updates
-      duration_seconds: 0,
-      transcript: "",
-    };
-
-  } catch (error) {
-    console.error("VAPI call error:", error);
-    return { status: "failed", outcome: "no_answer" };
-  }
-}
-
 async function executeElevenLabsCall(
   lead: any,
   script: string,
@@ -344,7 +260,7 @@ async function executeElevenLabsCall(
   try {
     // ElevenLabs conversational AI phone call
     // Note: ElevenLabs telephony integration requires additional setup
-    const response = await fetch("https://api.elevenlabs.io/v1/convai/conversation", {
+    const response = await fetch("https://api.elevenlabs.io/v1/convai/conversations/phone", {
       method: "POST",
       headers: {
         "xi-api-key": elevenLabsKey,
@@ -352,7 +268,12 @@ async function executeElevenLabsCall(
       },
       body: JSON.stringify({
         agent_id: agentConfig.agent_id,
-        phone_number: lead.phone,
+        to_phone_number: lead.phone,
+        metadata: {
+          lead_id: lead.id,
+          lead_name: `${lead.first_name || ""} ${lead.last_name || ""}`.trim(),
+          campaign_id: agentConfig.campaign_id,
+        },
         first_message: agentConfig.first_message || script,
       }),
     });

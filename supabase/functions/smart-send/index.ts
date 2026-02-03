@@ -48,7 +48,6 @@ serve(async (req) => {
       sent_to: leads.length,
       channels_used: {
         voice_calls: result.strategies?.elevenlabs_calls || 0,
-        voicemails: result.strategies?.vapi_voicemails || 0,
         sms: result.strategies?.sms_messages || 0,
         email: result.strategies?.email_messages || 0
       },

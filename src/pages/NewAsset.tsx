@@ -20,7 +20,6 @@ const assetSchema = z.object({
   description: z.string().max(1000).optional(),
   type: z.enum(["video", "email", "voice", "landing_page"]),
   fal_id: z.string().max(500).optional(),
-  vapi_id: z.string().max(500).optional(),
   preview_url: z.string().url("Must be a valid URL").max(1000).optional().or(z.literal("")),
 });
 
@@ -35,7 +34,6 @@ const NewAsset = () => {
   const [description, setDescription] = useState("");
   const [type, setType] = useState<string>("video");
   const [falId, setFalId] = useState("");
-  const [vapiId, setVapiId] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [segmentId, setSegmentId] = useState<string>("");
   const [vertical, setVertical] = useState<string>("");
@@ -106,7 +104,6 @@ const NewAsset = () => {
       description,
       type,
       fal_id: falId,
-      vapi_id: vapiId,
       preview_url: previewUrl,
     });
 
@@ -130,7 +127,6 @@ const NewAsset = () => {
           description: result.data.description,
           type: result.data.type,
           fal_id: result.data.fal_id,
-          vapi_id: result.data.vapi_id,
           preview_url: result.data.preview_url || null,
           segment_id: segmentId || null,
           goal: goal || null,
@@ -367,16 +363,6 @@ const NewAsset = () => {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="vapi_id">vapi.ai Flow ID</Label>
-                  <Input
-                    id="vapi_id"
-                    value={vapiId}
-                    onChange={(e) => setVapiId(e.target.value)}
-                    placeholder="Enter vapi.ai flow ID"
-                    className="bg-background border-input"
-                  />
-                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="preview_url">Preview URL</Label>

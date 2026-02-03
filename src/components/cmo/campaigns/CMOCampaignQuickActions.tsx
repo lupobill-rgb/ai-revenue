@@ -6,7 +6,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Bot, Plus, Sparkles, Target, TrendingUp } from 'lucide-react';
+import { Plus, Sparkles, Target, TrendingUp } from 'lucide-react';
 
 interface CMOCampaignQuickActionsProps {
   onActionClick?: (action: string) => void;
@@ -14,11 +14,6 @@ interface CMOCampaignQuickActionsProps {
 
 export function CMOCampaignQuickActions({ onActionClick }: CMOCampaignQuickActionsProps) {
   const navigate = useNavigate();
-
-  const handleLaunchAutopilot = () => {
-    navigate('/create?tab=content&type=autopilot');
-    onActionClick?.('autopilot');
-  };
 
   const handleCreateCampaign = () => {
     navigate('/create?tab=content');
@@ -34,13 +29,6 @@ export function CMOCampaignQuickActions({ onActionClick }: CMOCampaignQuickActio
         </CardTitle>
       </CardHeader>
       <CardContent className="flex gap-3 flex-wrap">
-        <Button
-          onClick={handleLaunchAutopilot}
-          className="gap-2"
-        >
-          <Bot className="h-4 w-4" />
-          Launch Autopilot Campaign
-        </Button>
         <Button
           variant="outline"
           onClick={handleCreateCampaign}

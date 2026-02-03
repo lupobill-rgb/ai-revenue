@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 
 // Types matching VoiceAgents.tsx
-interface VapiAnalytics {
+interface VoiceAnalytics {
   totalCalls: number;
   completedCalls: number;
   totalDurationMinutes: number;
@@ -17,25 +17,25 @@ interface VapiAnalytics {
   callsByStatus: Record<string, number>;
 }
 
-interface VapiAssistant {
+interface VoiceAssistant {
   id: string;
   name: string;
 }
 
-interface VapiPhoneNumber {
+interface VoicePhoneNumber {
   id: string;
   number: string;
   name: string;
 }
 
-interface VapiCall {
+interface VoiceCall {
   id: string;
   type: string;
   status: string;
 }
 
 // Zero analytics constant (must match VoiceAgents.tsx)
-const ZERO_ANALYTICS: VapiAnalytics = {
+const ZERO_ANALYTICS: VoiceAnalytics = {
   totalCalls: 0,
   completedCalls: 0,
   totalDurationMinutes: 0,
@@ -45,7 +45,7 @@ const ZERO_ANALYTICS: VapiAnalytics = {
 };
 
 // Sample data (simulating what VoiceAgents.tsx defines)
-const SAMPLE_ANALYTICS: VapiAnalytics = {
+const SAMPLE_ANALYTICS: VoiceAnalytics = {
   totalCalls: 156,
   completedCalls: 128,
   totalDurationMinutes: 340,
@@ -54,21 +54,21 @@ const SAMPLE_ANALYTICS: VapiAnalytics = {
   callsByStatus: { completed: 128, failed: 18, pending: 10 },
 };
 
-const SAMPLE_ASSISTANTS: VapiAssistant[] = [
+const SAMPLE_ASSISTANTS: VoiceAssistant[] = [
   { id: 'sample-1', name: 'Sample Agent 1' },
   { id: 'sample-2', name: 'Sample Agent 2' },
 ];
 
-const SAMPLE_PHONE_NUMBERS: VapiPhoneNumber[] = [
+const SAMPLE_PHONE_NUMBERS: VoicePhoneNumber[] = [
   { id: 'phone-1', number: '+1 (555) 123-4567', name: 'Primary' },
 ];
 
-const SAMPLE_CALLS: VapiCall[] = [
+const SAMPLE_CALLS: VoiceCall[] = [
   { id: 'call-1', type: 'outbound', status: 'completed' },
 ];
 
 // Real data (could be empty or have values)
-const REAL_ANALYTICS: VapiAnalytics = {
+const REAL_ANALYTICS: VoiceAnalytics = {
   totalCalls: 5,
   completedCalls: 3,
   totalDurationMinutes: 12,
@@ -77,15 +77,15 @@ const REAL_ANALYTICS: VapiAnalytics = {
   callsByStatus: { completed: 3, failed: 2 },
 };
 
-const REAL_ASSISTANTS: VapiAssistant[] = [
+const REAL_ASSISTANTS: VoiceAssistant[] = [
   { id: 'real-1', name: 'My Real Agent' },
 ];
 
-const REAL_PHONE_NUMBERS: VapiPhoneNumber[] = [
+const REAL_PHONE_NUMBERS: VoicePhoneNumber[] = [
   { id: 'real-phone-1', number: '+1 (800) 555-0100', name: 'Production Line' },
 ];
 
-const REAL_CALLS: VapiCall[] = [
+const REAL_CALLS: VoiceCall[] = [
   { id: 'real-call-1', type: 'outbound', status: 'completed' },
 ];
 
@@ -95,8 +95,8 @@ const REAL_CALLS: VapiCall[] = [
 function computeDisplayAnalytics(
   demoMode: boolean,
   voiceConnected: boolean,
-  analytics: VapiAnalytics | null
-): VapiAnalytics {
+  analytics: VoiceAnalytics | null
+): VoiceAnalytics {
   const showSamples = demoMode === true;
   
   // Demo mode: sample only if analytics is null/undefined
@@ -112,8 +112,8 @@ function computeDisplayAnalytics(
 function computeDisplayCalls(
   demoMode: boolean,
   voiceConnected: boolean,
-  calls: VapiCall[]
-): VapiCall[] {
+  calls: VoiceCall[]
+): VoiceCall[] {
   const showSamples = demoMode === true;
   return showSamples
     ? (calls.length ? calls : SAMPLE_CALLS)
@@ -123,8 +123,8 @@ function computeDisplayCalls(
 function computeDisplayAssistants(
   demoMode: boolean,
   voiceConnected: boolean,
-  assistants: VapiAssistant[]
-): VapiAssistant[] {
+  assistants: VoiceAssistant[]
+): VoiceAssistant[] {
   const showSamples = demoMode === true;
   return showSamples
     ? (assistants.length ? assistants : SAMPLE_ASSISTANTS)
@@ -134,8 +134,8 @@ function computeDisplayAssistants(
 function computeDisplayPhoneNumbers(
   demoMode: boolean,
   voiceConnected: boolean,
-  phoneNumbers: VapiPhoneNumber[]
-): VapiPhoneNumber[] {
+  phoneNumbers: VoicePhoneNumber[]
+): VoicePhoneNumber[] {
   const showSamples = demoMode === true;
   return showSamples
     ? (phoneNumbers.length ? phoneNumbers : SAMPLE_PHONE_NUMBERS)
@@ -146,10 +146,10 @@ function computeDisplayPhoneNumbers(
  * Helper to check if any SAMPLE_ data leaked
  */
 function containsSampleData(
-  analytics: VapiAnalytics,
-  assistants: VapiAssistant[],
-  phoneNumbers: VapiPhoneNumber[],
-  calls: VapiCall[]
+  analytics: VoiceAnalytics,
+  assistants: VoiceAssistant[],
+  phoneNumbers: VoicePhoneNumber[],
+  calls: VoiceCall[]
 ): boolean {
   // Check analytics matches sample
   if (analytics.totalCalls === SAMPLE_ANALYTICS.totalCalls &&

@@ -224,7 +224,6 @@ serve(async (req) => {
           .from("channel_outbox")
           .insert({
             tenant_id: tenantId,
-            tenant_id: campaign.tenant_id,
             channel: campaign.channel || "email",
             provider: "resend",
             recipient_id: lead.id || null,

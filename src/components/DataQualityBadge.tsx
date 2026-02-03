@@ -259,7 +259,7 @@ function getStatusConfig(status: DataQualityStatus) {
         alertClass: 'border-orange-500/50 bg-orange-500/10',
         iconClass: 'text-orange-500',
         alertTitle: 'Setup Required',
-        alertDescription: 'Connect Vapi or ElevenLabs to enable live call analytics. Until connected, voice KPIs show 0.',
+        alertDescription: 'Connect ElevenLabs to enable live call analytics. Until connected, voice KPIs show 0.',
       };
     case 'EMPTY_CRM':
       return {

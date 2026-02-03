@@ -92,12 +92,6 @@ export function VoiceSetupStatus() {
         <div className="space-y-2">
           <h4 className="text-sm font-medium">Connected Providers</h4>
           <div className="flex flex-wrap gap-2">
-            {providers.vapi.connected && (
-              <Badge variant="default" className="gap-1">
-                <Phone className="h-3 w-3" />
-                VAPI ({providers.vapi.agents} agents)
-              </Badge>
-            )}
             {providers.elevenlabs.connected && (
               <Badge variant="default" className="gap-1">
                 <Phone className="h-3 w-3" />
@@ -110,8 +104,7 @@ export function VoiceSetupStatus() {
                 Smart Routing
               </Badge>
             )}
-            {!providers.vapi.connected && 
-             !providers.elevenlabs.connected && 
+            {!providers.elevenlabs.connected && 
              !providers.orchestration.enabled && (
               <Badge variant="outline">No providers configured</Badge>
             )}
@@ -179,9 +172,7 @@ export function VoiceSetupBadge() {
   }
 
   if (ready) {
-    const providerCount = 
-      (providers.vapi.connected ? 1 : 0) + 
-      (providers.elevenlabs.connected ? 1 : 0)
+    const providerCount = providers.elevenlabs.connected ? 1 : 0
     
     return (
       <Badge variant="default" className="gap-1">

@@ -18,11 +18,9 @@ import {
 } from "../_shared/outbox-contract.ts";
 import {
   processEmailBatchOptimized,
-  sendVoiceBatchConcurrent,
   fanOutBatchResults,
   logBatchMetrics,
   type EmailBatchItem,
-  type VoiceBatchItem,
 } from "../_shared/provider-batching.ts";
 import { validateRequestBody } from "../_shared/tenant-only-validator.ts";
 
@@ -61,8 +59,6 @@ interface EmailSettings {
 
 interface VoiceSettings {
   voice_provider: string | null;
-  default_vapi_assistant_id: string | null;
-  vapi_private_key: string | null;
   default_elevenlabs_voice_id: string | null;
   elevenlabs_api_key: string | null;
   is_connected: boolean | null;
@@ -236,38 +232,6 @@ async function sendEmail(
       return { success: false, error: data.message || `Resend error: ${res.status}` };
     }
     return { success: true, messageId: data.id };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
-  }
-}
-
-// Initiate voice call via VAPI
-async function initiateVapiCall(
-  vapiPrivateKey: string,
-  assistantId: string,
-  phoneNumberId: string,
-  customerNumber: string,
-  customerName?: string
-): Promise<{ success: boolean; callId?: string; error?: string }> {
-  try {
-    const res = await fetch("https://api.vapi.ai/call", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${vapiPrivateKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        assistantId,
-        phoneNumberId,
-        customer: { number: customerNumber, name: customerName },
-      }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      return { success: false, error: data.message || `VAPI error: ${res.status}` };
-    }
-    return { success: true, callId: data.id };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
@@ -550,20 +514,15 @@ async function processEmailBatch(
   return { success: failed === 0, sent, failed, skipped, partial: sent > 0 && failed > 0 };
 }
 
-// Process voice call batch job - supports VAPI and ElevenLabs
-// OPTIMIZED with concurrent batching for VAPI
+// Process voice call batch job - ElevenLabs only
 async function processVoiceBatch(
   supabase: any,
   job: Job,
-  vapiPrivateKey: string,
   elevenLabsApiKey: string
 ): Promise<BatchResult> {
   const startTime = Date.now();
   const campaignId = job.payload.campaign_id as string;
-  const provider = (job.payload.provider as string) || "vapi";
-  const useBatching = (job.payload.use_batching !== false); // Default to true
 
-  // Get voice settings
   const { data: voiceSettingsData } = await supabase
     .from("ai_settings_voice")
     .select("*")
@@ -572,383 +531,108 @@ async function processVoiceBatch(
 
   const voiceSettings = voiceSettingsData as VoiceSettings | null;
 
-  // Validate provider-specific requirements
-  if (provider === "vapi") {
-    if (!voiceSettings?.default_vapi_assistant_id) {
-      return { success: false, called: 0, failed: 0, error: "VAPI not configured - missing assistant ID. Configure in Settings → Voice." };
-    }
-    if (!vapiPrivateKey) {
-      return { success: false, called: 0, failed: 0, error: "VAPI_PRIVATE_KEY not configured" };
-    }
+  if (!elevenLabsApiKey) {
+    return { success: false, called: 0, failed: 0, error: "ELEVENLABS_API_KEY not configured" };
+  }
 
-    // Get phone number for VAPI calls
-    const { data: phoneNumbersData } = await supabase
-      .from("voice_phone_numbers")
-      .select("*")
-      .eq("tenant_id", job.tenant_id)
-      .eq("is_default", true)
-      .limit(1);
+  const voiceId = voiceSettings?.default_elevenlabs_voice_id || "JBFqnCBsd6RMkjVDRZzb"; // Default: George
 
-    const phoneNumbers = (phoneNumbersData || []) as PhoneNumber[];
-    const phoneNumber = phoneNumbers[0];
-    
-    if (!phoneNumber?.provider_phone_number_id) {
-      return { success: false, called: 0, failed: 0, error: "No default phone number configured for VAPI" };
-    }
+  const { data: campaign } = await supabase
+    .from("campaigns")
+    .select("*, assets(*)")
+    .eq("id", campaignId)
+    .single();
 
-    // Get leads to call
-    const { data: leadsData } = await supabase
-      .from("leads")
-      .select("id, phone, first_name, last_name")
-      .eq("tenant_id", job.tenant_id)
-      .not("phone", "is", null)
-      .limit(10);
+  if (!campaign) {
+    return { success: false, called: 0, failed: 0, error: "Campaign not found" };
+  }
 
-    const leads = (leadsData || []) as Lead[];
+  const campaignData = campaign as { assets?: { content?: Record<string, unknown> } };
+  const script = (campaignData.assets?.content as Record<string, string>)?.script ||
+                 (campaignData.assets?.content as Record<string, string>)?.body ||
+                 "Hello, this is an automated message.";
 
-    if (leads.length === 0) {
-      return { success: false, called: 0, failed: 0, error: "No leads found with phone numbers" };
-    }
+  const scheduledFor = getDeterministicScheduledFor(job);
+  const idempotencyKey = await generateIdempotencyKey([
+    job.run_id,
+    campaignId,
+    voiceId,
+    scheduledFor,
+  ]);
 
-    const scriptVersion = voiceSettings.default_vapi_assistant_id || "v1";
-    const scheduledFor = getDeterministicScheduledFor(job);
-
-    // Use optimized concurrent batching
-    if (useBatching && leads.length > 1) {
-      console.log(`[voice] Using optimized concurrent processing for ${leads.length} calls`);
-      
-      // Phase 1: Insert all outbox rows and collect batch items
-      const voiceBatchItems: VoiceBatchItem[] = [];
-      let skipped = 0;
-      let earlyFailed = 0;
-
-      for (const lead of leads) {
-        if (!lead.phone) continue;
-        
-        const idempotencyKey = await generateIdempotencyKey([
-          job.run_id,
-          lead.id,
-          scriptVersion,
-          scheduledFor,
-        ]);
-        
-        const outboxResult = await beginOutboxItem({
-          supabase,
-          tenantId: job.tenant_id,
-          runId: job.run_id,
-          jobId: job.id,
-          channel: "voice" as Channel,
-          provider: "vapi" as Provider,
-          recipientId: lead.id,
-          recipientPhone: lead.phone,
-          payload: { campaign_id: campaignId, assistant_id: voiceSettings.default_vapi_assistant_id },
-          idempotencyKey,
-        });
-        
-        if (outboxResult.skipped) {
-          skipped++;
-          continue;
-        }
-        
-        if (!outboxResult.outboxId) {
-          console.error(`[voice] Failed to begin outbox for lead ${lead.id}:`, outboxResult.error);
-          earlyFailed++;
-          continue;
-        }
-
-        voiceBatchItems.push({
-          outboxId: outboxResult.outboxId,
-          phoneNumber: lead.phone,
-          customerName: `${lead.first_name || ""} ${lead.last_name || ""}`.trim(),
-          recipientId: lead.id,
-        });
-      }
-
-      // Phase 2: Send concurrent batch with rate limiting
-      if (voiceBatchItems.length === 0) {
-        return {
-          success: skipped > 0 || earlyFailed === 0,
-          called: 0,
-          failed: earlyFailed,
-          skipped,
-          error: earlyFailed > 0 ? "Failed to create outbox entries" : undefined,
-        };
-      }
-
-      const batchResponse = await sendVoiceBatchConcurrent(
-        vapiPrivateKey,
-        voiceSettings.default_vapi_assistant_id,
-        phoneNumber.provider_phone_number_id,
-        voiceBatchItems,
-        5 // concurrency limit
-      );
-
-      // Phase 3: Fan out responses to outbox rows
-      let called = 0;
-      let failed = 0;
-
-      for (const item of voiceBatchItems) {
-        const result = batchResponse.results.get(item.phoneNumber);
-        
-        if (result?.success) {
-          await finalizeOutboxSuccess(supabase, item.outboxId, result.messageId || null, result.providerResponse, "called");
-          called++;
-          
-          // Insert voice call record
-          await supabase.from("voice_call_records").insert({
-            tenant_id: job.tenant_id,
-            lead_id: item.recipientId,
-            campaign_id: campaignId,
-            provider_call_id: result.messageId,
-            status: "queued",
-            call_type: "outbound",
-            customer_number: item.phoneNumber,
-            customer_name: item.customerName,
-          } as never);
-        } else {
-          await finalizeOutboxFailure(supabase, item.outboxId, result?.error || "Unknown error");
-          failed++;
-        }
-      }
-
-      const durationMs = Date.now() - startTime;
-
-      // Log batch metrics
-      await logBatchMetrics(supabase, job.tenant_id, job.run_id, job.id, {
-        channel: "voice",
-        provider: "vapi",
-        batchSize: leads.length,
-        sent: called,
-        failed: failed + earlyFailed,
-        skipped,
-        durationMs,
-        avgItemDurationMs: leads.length > 0 ? durationMs / leads.length : 0,
-      });
-
-      await supabase.from("campaign_audit_log").insert({
-        tenant_id: job.tenant_id,
+  const { data: insertedOutbox, error: insertError } = await supabase
+    .from("channel_outbox")
+    .insert({
+      tenant_id: job.tenant_id,
+      run_id: job.run_id,
+      job_id: job.id,
+      channel: "voice",
+      provider: "elevenlabs",
+      payload: {
         campaign_id: campaignId,
-        run_id: job.run_id,
-        job_id: job.id,
-        event_type: "job_completed",
-        actor_type: "system",
-        details: { 
-          provider: "vapi", 
-          called, 
-          failed: failed + earlyFailed, 
-          skipped, 
-          total: leads.length,
-          batch_optimized: true,
-          duration_ms: durationMs,
-        },
-      } as never);
-
-      return { 
-        success: (failed + earlyFailed) === 0, 
-        called, 
-        failed: failed + earlyFailed, 
-        skipped, 
-        partial: called > 0 && (failed + earlyFailed) > 0 
-      };
-    }
-
-    // Fallback: Individual processing
-    console.log(`[voice] Using individual processing for ${leads.length} calls`);
-    
-    let called = 0;
-    let failed = 0;
-    let skipped = 0;
-
-    for (const lead of leads) {
-      if (!lead.phone) continue;
-      
-      const idempotencyKey = await generateIdempotencyKey([
-        job.run_id,
-        lead.id,
-        scriptVersion,
-        scheduledFor,
-      ]);
-      
-      const outboxResult = await beginOutboxItem({
-        supabase,
-        tenantId: job.tenant_id,
-        runId: job.run_id,
-        jobId: job.id,
-        channel: "voice" as Channel,
-        provider: "vapi" as Provider,
-        recipientId: lead.id,
-        recipientPhone: lead.phone,
-        payload: { campaign_id: campaignId, assistant_id: voiceSettings.default_vapi_assistant_id },
-        idempotencyKey,
-      });
-      
-      if (outboxResult.skipped) {
-        skipped++;
-        continue;
-      }
-      
-      if (!outboxResult.outboxId) {
-        console.error(`[voice] Failed to begin outbox for lead ${lead.id}:`, outboxResult.error);
-        failed++;
-        continue;
-      }
-      
-      const outboxId = outboxResult.outboxId;
-      
-      const result = await initiateVapiCall(
-        vapiPrivateKey,
-        voiceSettings.default_vapi_assistant_id,
-        phoneNumber.provider_phone_number_id,
-        lead.phone,
-        `${lead.first_name || ""} ${lead.last_name || ""}`.trim()
-      );
-
-      if (result.success) {
-        await finalizeOutboxSuccess(supabase, outboxId, result.callId || null, result, "called");
-        called++;
-        await supabase.from("voice_call_records").insert({
-          tenant_id: job.tenant_id,
-          lead_id: lead.id,
-          campaign_id: campaignId,
-          provider_call_id: result.callId,
-          status: "queued",
-          call_type: "outbound",
-          customer_number: lead.phone,
-          customer_name: `${lead.first_name || ""} ${lead.last_name || ""}`.trim(),
-        } as never);
-      } else {
-        await finalizeOutboxFailure(supabase, outboxId, result.error || "Unknown error");
-        failed++;
-      }
-    }
-
-    const durationMs = Date.now() - startTime;
-
-    await supabase.from("campaign_audit_log").insert({
-      tenant_id: job.tenant_id,
-      campaign_id: campaignId,
-      run_id: job.run_id,
-      job_id: job.id,
-      event_type: "job_completed",
-      actor_type: "system",
-      details: { provider: "vapi", called, failed, skipped, total: leads.length, batch_optimized: false, duration_ms: durationMs },
-    } as never);
-
-    return { success: failed === 0, called, failed, skipped, partial: called > 0 && failed > 0 };
-  }
-  
-  // ElevenLabs TTS provider
-  if (provider === "elevenlabs") {
-    if (!elevenLabsApiKey) {
-      return { success: false, called: 0, failed: 0, error: "ELEVENLABS_API_KEY not configured" };
-    }
-
-    const voiceId = voiceSettings?.default_elevenlabs_voice_id || "JBFqnCBsd6RMkjVDRZzb"; // Default: George
-
-    // Get campaign asset with voice script
-    const { data: campaign } = await supabase
-      .from("campaigns")
-      .select("*, assets(*)")
-      .eq("id", campaignId)
-      .single();
-
-    if (!campaign) {
-      return { success: false, called: 0, failed: 0, error: "Campaign not found" };
-    }
-
-    const campaignData = campaign as { assets?: { content?: Record<string, unknown> } };
-    const script = (campaignData.assets?.content as Record<string, string>)?.script || 
-                   (campaignData.assets?.content as Record<string, string>)?.body ||
-                   "Hello, this is an automated message.";
-
-    // Generate idempotency key: sha256(run_id + campaign_id + voice_id + scheduled_for)
-    const scheduledFor = getDeterministicScheduledFor(job);
-    const idempotencyKey = await generateIdempotencyKey([
-      job.run_id,
-      campaignId,
-      voiceId,
-      scheduledFor,
-    ]);
-    
-    // IDEMPOTENCY: Insert outbox entry BEFORE provider call with status 'queued'
-    const { data: insertedOutbox, error: insertError } = await supabase
-      .from("channel_outbox")
-      .insert({
-        tenant_id: job.tenant_id,
-        run_id: job.run_id,
-        job_id: job.id,
-        channel: "voice",
-        provider: "elevenlabs",
-        payload: { 
-          campaign_id: campaignId, 
-          voice_id: voiceId,
-        },
-        status: "queued",
-        idempotency_key: idempotencyKey,
-        skipped: false,
-      } as never)
-      .select("id")
-      .single();
-    
-    // If insert failed due to unique constraint (idempotent replay), skip
-    if (insertError) {
-      if (insertError.code === "23505") { // Unique violation
-        console.log(`[elevenlabs] Idempotent skip - already in outbox`);
-        await supabase
-          .from("channel_outbox")
-          .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
-          .eq("tenant_id", job.tenant_id)
-          .eq("idempotency_key", idempotencyKey);
-        return { success: true, called: 0, failed: 0, skipped: 1 };
-      }
-      console.error(`[elevenlabs] Failed to insert outbox:`, insertError);
-      return { success: false, called: 0, failed: 1, error: insertError.message };
-    }
-    
-    const outboxId = insertedOutbox?.id;
-
-    // Generate audio using ElevenLabs
-    const result = await generateElevenLabsAudio(elevenLabsApiKey, script, voiceId);
-
-    // Update outbox with provider response
-    await supabase
-      .from("channel_outbox")
-      .update({
-        status: result.success ? "generated" : "failed",
-        provider_message_id: result.success ? `elevenlabs_${Date.now()}` : null,
-        error: result.error,
-        payload: { 
-          campaign_id: campaignId, 
-          voice_id: voiceId,
-          audio_generated: result.success,
-        },
-      } as never)
-      .eq("id", outboxId);
-
-    await supabase.from("campaign_audit_log").insert({
-      tenant_id: job.tenant_id,
-      campaign_id: campaignId,
-      run_id: job.run_id,
-      job_id: job.id,
-      event_type: "job_completed",
-      actor_type: "system",
-      details: { 
-        provider: "elevenlabs", 
-        audio_generated: result.success, 
         voice_id: voiceId,
-        error: result.error,
       },
-    } as never);
+      status: "queued",
+      idempotency_key: idempotencyKey,
+      skipped: false,
+    } as never)
+    .select("id")
+    .single();
 
-    return { 
-      success: result.success, 
-      called: result.success ? 1 : 0, 
-      failed: result.success ? 0 : 1,
-      error: result.error,
-    };
+  if (insertError) {
+    if (insertError.code === "23505") {
+      console.log(`[elevenlabs] Idempotent skip - already in outbox`);
+      await supabase
+        .from("channel_outbox")
+        .update({ skipped: true, skip_reason: "idempotent_replay" } as never)
+        .eq("tenant_id", job.tenant_id)
+        .eq("idempotency_key", idempotencyKey);
+      return { success: true, called: 0, failed: 0, skipped: 1 };
+    }
+    console.error(`[elevenlabs] Failed to insert outbox:`, insertError);
+    return { success: false, called: 0, failed: 1, error: insertError.message };
   }
 
-  return { success: false, called: 0, failed: 0, error: `Unknown voice provider: ${provider}` };
+  const outboxId = insertedOutbox?.id;
+  const result = await generateElevenLabsAudio(elevenLabsApiKey, script, voiceId);
+
+  await supabase
+    .from("channel_outbox")
+    .update({
+      status: result.success ? "generated" : "failed",
+      provider_message_id: result.success ? `elevenlabs_${Date.now()}` : null,
+      error: result.error,
+      payload: {
+        campaign_id: campaignId,
+        voice_id: voiceId,
+        audio_generated: result.success,
+      },
+    } as never)
+    .eq("id", outboxId);
+
+  const durationMs = Date.now() - startTime;
+  await supabase.from("campaign_audit_log").insert({
+    tenant_id: job.tenant_id,
+    campaign_id: campaignId,
+    run_id: job.run_id,
+    job_id: job.id,
+    event_type: "job_completed",
+    actor_type: "system",
+    details: {
+      provider: "elevenlabs",
+      audio_generated: result.success,
+      voice_id: voiceId,
+      error: result.error,
+      duration_ms: durationMs,
+    },
+  } as never);
+
+  return {
+    success: result.success,
+    called: result.success ? 1 : 0,
+    failed: result.success ? 0 : 1,
+    error: result.error,
+  };
 }
 
 // Process social post batch job
@@ -1333,7 +1017,6 @@ Deno.serve(async (req) => {
 
     // Get API keys
     const resendApiKey = Deno.env.get("RESEND_API_KEY") || "";
-    const vapiPrivateKey = Deno.env.get("VAPI_PRIVATE_KEY") || "";
     const elevenLabsApiKey = Deno.env.get("ELEVENLABS_API_KEY") || "";
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID") || "";
     const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN") || "";
@@ -1563,7 +1246,7 @@ Deno.serve(async (req) => {
             break;
           }
           case "voice_call_batch": {
-            result = await processVoiceBatch(supabase, job, vapiPrivateKey, elevenLabsApiKey);
+            result = await processVoiceBatch(supabase, job, elevenLabsApiKey);
             break;
           }
           case "social_post_batch": {

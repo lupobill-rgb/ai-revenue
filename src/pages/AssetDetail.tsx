@@ -1217,7 +1217,7 @@ const AssetDetail = () => {
                           id="external_id"
                           value={externalId}
                           onChange={(e) => setExternalId(e.target.value)}
-                          placeholder="fal.ai or vapi.ai ID"
+                          placeholder="fal.ai or elevenlabs ID"
                           className="bg-background border-input focus:ring-2 focus:ring-primary"
                         />
                         {errors.external_id && <p className="text-sm text-destructive">{errors.external_id}</p>}

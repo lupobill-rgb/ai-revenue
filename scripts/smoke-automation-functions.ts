@@ -51,7 +51,7 @@ async function callEdgeFunction(opts: {
   supabaseUrl: string;
   anonKey: string;
   accessToken: string;
-  workspaceId: string;
+  tenantId: string;
   name: string;
   body?: unknown;
 }): Promise<SmokeResult> {
@@ -62,7 +62,7 @@ async function callEdgeFunction(opts: {
       Authorization: `Bearer ${opts.accessToken}`,
       apikey: opts.anonKey,
       "Content-Type": "application/json",
-      "x-workspace-id": opts.workspaceId,
+      "x-tenant-id": opts.tenantId,
     },
     body: JSON.stringify(opts.body ?? {}),
   });
@@ -104,38 +104,33 @@ async function main() {
   const userId = signInData.user?.id;
   if (!userId) throw new Error("Auth failed: missing user id");
 
-  let workspaceId = process.env.SMOKE_WORKSPACE_ID || null;
-  if (!workspaceId) {
-    const { data: ownedWs } = await supabase
-      .from("workspaces")
-      .select("id")
-      .eq("owner_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    workspaceId = ownedWs?.id || null;
+  let tenantId = firstEnv("SMOKE_TENANT_ID", "SMOKE_WORKSPACE_ID");
+  if (!tenantId) {
+    const metaTenantId =
+      signInData.user?.user_metadata?.tenant_id ||
+      signInData.user?.app_metadata?.tenant_id ||
+      null;
+    tenantId = typeof metaTenantId === "string" ? metaTenantId : null;
   }
 
-  if (!workspaceId) {
-    const { data: memberWs } = await supabase
-      .from("workspace_members")
-      .select("workspace_id")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle<{ workspace_id: string }>();
-    workspaceId = memberWs?.workspace_id || null;
+  if (!tenantId) {
+    throw new Error("Unable to resolve tenant_id. Set SMOKE_TENANT_ID explicitly.");
   }
 
-  if (!workspaceId) {
-    throw new Error("Unable to resolve workspace. Set SMOKE_WORKSPACE_ID explicitly.");
+  const { data: tenantRow, error: tenantError } = await supabase
+    .from("tenants")
+    .select("id")
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  if (tenantError || !tenantRow) {
+    throw new Error("Unable to resolve tenant in tenants table. Check SMOKE_TENANT_ID.");
   }
 
   let failed = false;
 
   const run = async (name: string, body?: unknown) => {
-    const r = await callEdgeFunction({ supabaseUrl, anonKey, accessToken, workspaceId, name, body });
+    const r = await callEdgeFunction({ supabaseUrl, anonKey, accessToken, tenantId, name, body });
     const line = `${r.ok ? "PASS" : "FAIL"} ${r.name} -> ${r.status}`;
     const details = truncate(r.bodyText || "");
     console.log(line);
@@ -148,34 +143,7 @@ async function main() {
     return r;
   };
 
-  // 1) Autopilot (AI Voice + AI Email)
-  const autopilot = await run("ai-cmo-autopilot-build", {
-    icp: "B2B SaaS founders with 10-50 employees",
-    offer: "AI-powered marketing automation platform",
-    channels: ["email", "voice"],
-    desiredResult: "leads",
-    workspaceId,
-  });
-
-  let autopilotCampaignId: string | null = null;
-  try {
-    const raw = (autopilot.bodyText || "").trim();
-    // Sometimes proxies prepend/append whitespace; keep parsing resilient.
-    const jsonCandidate =
-      raw.startsWith("{") && raw.endsWith("}")
-        ? raw
-        : (() => {
-            const start = raw.indexOf("{");
-            const end = raw.lastIndexOf("}");
-            return start !== -1 && end !== -1 && end > start ? raw.slice(start, end + 1) : raw;
-          })();
-    const parsed = jsonCandidate ? JSON.parse(jsonCandidate) : null;
-    autopilotCampaignId = parsed?.campaignId || parsed?.campaign_id || null;
-  } catch {
-    // ignore
-  }
-
-  // 2) Auto-create campaign (quick create)
+  // 1) Auto-create campaign (quick create)
   await run("campaign-orchestrator", {
     campaignName: `Smoke Test Campaign ${new Date().toISOString().slice(0, 10)}`,
     vertical: "SaaS & Software",
@@ -183,43 +151,30 @@ async function main() {
     channels: { email: true, social: false, voice: true, video: false, landing_page: false },
   });
 
-  // 3) Auto-create email (content generation)
+  // 2) Auto-create email (content generation)
   await run("content-generate", {
     vertical: "SaaS & Software",
     contentType: "email",
     assetGoal: "Generate qualified leads",
-    workspaceId,
+    tenant_id: tenantId,
   });
 
-  // 3b) Image generation used by campaign automation flows
+  // 2b) Image generation used by campaign automation flows
   await run("generate-hero-image", {
     vertical: "SaaS & Software",
     contentType: "email",
     assetGoal: "Generate qualified leads",
-    workspaceId,
+    tenant_id: tenantId,
   });
 
-  // 4) AI voice agent generation (builder)
+  // 3) AI voice agent generation (builder)
   await run("cmo-voice-agent-builder", {
-    tenant_id: workspaceId,
-    workspace_id: workspaceId,
+    tenant_id: tenantId,
     brand_voice: "Professional, warm, concise",
     icp: "B2B SaaS founders",
     offer: "AI marketing automation",
     constraints: ["Do not mention pricing unless asked", "Comply with TCPA guidelines"],
   });
-
-  // 5) Autopilot toggle (requires campaign id)
-  if (autopilotCampaignId) {
-    await run("ai-cmo-toggle-autopilot", {
-      campaign_id: autopilotCampaignId,
-      campaignId: autopilotCampaignId,
-      enabled: true,
-    });
-  } else {
-    console.log("SKIP ai-cmo-toggle-autopilot -> missing campaignId from autopilot response");
-    failed = true;
-  }
 
   if (failed) {
     console.error("❌ Automation smoke harness FAILED");

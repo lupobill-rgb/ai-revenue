@@ -39,7 +39,7 @@ interface CampaignRequest {
 
 interface ChannelStrategy {
   lead_id: string
-  primary_channel: 'elevenlabs' | 'vapi' | 'sms' | 'email'
+  primary_channel: 'elevenlabs' | 'sms' | 'email'
   fallback_channels: string[]
   timing: 'immediate' | 'business_hours' | 'optimal'
   estimated_cost: number
@@ -99,7 +99,6 @@ serve(async (req) => {
       total_leads: campaign.leads.length,
       strategies: {
         elevenlabs_calls: channelGroups.elevenlabs?.length || 0,
-        vapi_voicemails: channelGroups.vapi?.length || 0,
         sms_messages: channelGroups.sms?.length || 0,
         email_messages: channelGroups.email?.length || 0
       },
@@ -174,23 +173,23 @@ async function determineChannelStrategy(
   if (leadScore >= 8 && hasPhone && budget >= 0.50) {
     if (goal === 'appointment') {
       primary_channel = 'elevenlabs'
-      fallback_channels = ['vapi', 'sms', 'email']
+      fallback_channels = ['sms', 'email']
       estimated_cost = 0.75
       reasoning = 'High-value lead, appointment goal → Live AI call for best conversion'
     } else {
-      primary_channel = 'vapi'
+      primary_channel = 'elevenlabs'
       fallback_channels = ['sms', 'email']
-      estimated_cost = 0.15
-      reasoning = 'High-value lead, non-appointment → Voicemail + SMS backup'
+      estimated_cost = 0.75
+      reasoning = 'High-value lead, non-appointment → AI call with SMS/email backup'
     }
   }
   
   // MEDIUM VALUE (5-7) + Has Phone
   else if (leadScore >= 5 && hasPhone) {
-    primary_channel = 'vapi'
+    primary_channel = 'elevenlabs'
     fallback_channels = ['sms', 'email']
-    estimated_cost = 0.15
-    reasoning = 'Medium-value lead → Voicemail drop with SMS/email backup'
+    estimated_cost = 0.75
+    reasoning = 'Medium-value lead → AI call with SMS/email backup'
   }
   
   // MEDIUM VALUE (5-7) + No Phone but has Email
@@ -271,18 +270,6 @@ async function executeCampaign(
       note: 'AI voice calls will be made during business hours'
     })
     // TODO: Queue ElevenLabs calls via their API
-  }
-  
-  // Execute VAPI voicemails
-  if (channelGroups.vapi?.length) {
-    console.log(`🎙️ Scheduling ${channelGroups.vapi.length} VAPI voicemails`)
-    executions.push({
-      channel: 'vapi',
-      count: channelGroups.vapi.length,
-      status: 'queued',
-      note: 'Voicemail drops will be sent'
-    })
-    // TODO: Queue VAPI voicemails via their API
   }
   
   // Execute SMS via Twilio

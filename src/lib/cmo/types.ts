@@ -170,8 +170,6 @@ export interface CMOCampaign {
   primary_kpi?: Record<string, unknown>;
   secondary_kpis?: Record<string, unknown>;
   success_criteria?: string;
-  // Autopilot fields
-  autopilot_enabled?: boolean;
   goal?: CampaignGoal | null;
   last_optimization_at?: string | null;
   last_optimization_note?: string | null;

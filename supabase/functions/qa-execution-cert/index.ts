@@ -764,7 +764,7 @@ async function deployLaunchTest(
           .eq("tenant_id", run.tenant_id)
           .eq("is_connected", true)
           .single();
-        provider = voiceSettings?.voice_provider || "vapi";
+        provider = voiceSettings?.voice_provider || "elevenlabs";
       } else if (run.channel === "social") {
         const { data: socialSettings } = await supabase
           .from("ai_settings_social")
@@ -1023,35 +1023,11 @@ async function checkProviderStatus(
         );
       }
     } else if (config.channel === 'voice') {
-      // Voice can be configured via VAPI *or* ElevenLabs.
+      // Voice is configured via ElevenLabs.
       // This check gates "Live Mode" in the QA UI, so it should reflect
       // real availability of provider credentials.
 
-      // 1) Prefer VAPI if a default assistant is configured.
-      const { data: vapiSettings } = await supabase
-        .from("ai_settings_voice")
-        .select("tenant_id, voice_provider, is_connected, default_vapi_assistant_id")
-        .eq("is_connected", true)
-        .or("voice_provider.eq.vapi,voice_provider.is.null")
-        .not("default_vapi_assistant_id", "is", null)
-        .limit(1)
-        .maybeSingle();
-
-      if (vapiSettings) {
-        return new Response(
-          JSON.stringify({
-            success: true,
-            data: {
-              connected: true,
-              provider: vapiSettings.voice_provider || 'vapi',
-              tenantId: vapiSettings.tenant_id,
-            },
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // 2) Otherwise, allow ElevenLabs if an API key exists (DB or environment).
+      // Allow ElevenLabs if an API key exists (DB or environment).
       const envElevenLabsKey = Deno.env.get("ELEVENLABS_API_KEY");
 
       const { data: anyVoiceRow } = await supabase
@@ -1272,7 +1248,7 @@ async function deployL2FailureTest(
     // Create outbox entries that will fail
     const failureMessages: Record<string, string> = {
       smtp_host: "Connection refused: SMTP host 'invalid-smtp.fake-domain.local' not found. Check your email provider settings.",
-      missing_voice: "Voice call failed: No phone number configured for this tenant. Please configure a VAPI phone number in Settings.",
+      missing_voice: "Voice call failed: ElevenLabs is not configured for this tenant. Please configure ElevenLabs in Settings.",
       invalid_token: "Authentication failed: API token is invalid or expired. Error code: 401 Unauthorized. Please update your credentials.",
     };
 

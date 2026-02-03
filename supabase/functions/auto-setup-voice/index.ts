@@ -1,10 +1,9 @@
 // Auto-Setup Voice Agents
-// Automatically configures VAPI, ElevenLabs, and orchestration
+// Automatically configures ElevenLabs and orchestration
 // Zero-config onboarding - everything just works!
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
-const VAPI_PRIVATE_KEY = Deno.env.get('VAPI_PRIVATE_KEY')
 const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY')
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
 
@@ -29,44 +28,7 @@ serve(async (req) => {
       ready_to_use: false
     }
     
-    // Step 1: Check VAPI connection
-    if (VAPI_PRIVATE_KEY) {
-      try {
-        const vapiCheck = await fetch('https://api.vapi.ai/assistant', {
-          headers: {
-            'Authorization': `Bearer ${VAPI_PRIVATE_KEY}`
-          }
-        })
-        
-        if (vapiCheck.ok) {
-          setupResults.setup_steps.push({
-            step: 'vapi_connection',
-            status: 'connected',
-            message: 'VAPI connected successfully'
-          })
-          
-          // Auto-create default VAPI agent if none exist
-          const assistants = await vapiCheck.json()
-          if (!assistants || assistants.length === 0) {
-            const newAgent = await createDefaultVapiAgent()
-            if (newAgent) {
-              setupResults.agents_created.push({
-                provider: 'vapi',
-                agent: newAgent
-              })
-            }
-          }
-        }
-      } catch (error) {
-        setupResults.setup_steps.push({
-          step: 'vapi_connection',
-          status: 'skipped',
-          message: 'VAPI not configured (optional)'
-        })
-      }
-    }
-    
-    // Step 2: Check ElevenLabs connection
+    // Step 1: Check ElevenLabs connection
     if (ELEVENLABS_API_KEY) {
       try {
         const elevenLabsCheck = await fetch('https://api.elevenlabs.io/v1/user', {
@@ -120,7 +82,7 @@ serve(async (req) => {
       }
     }
     
-    // Step 3: Setup orchestration defaults
+    // Step 2: Setup orchestration defaults
     if (OPENAI_API_KEY) {
       setupResults.setup_steps.push({
         step: 'orchestration',
@@ -135,14 +97,13 @@ serve(async (req) => {
       })
     }
     
-    // Step 4: Determine ready state
-    const hasVapi = setupResults.setup_steps.some(s => s.step === 'vapi_connection' && s.status === 'connected')
+    // Step 3: Determine ready state
     const hasElevenLabs = setupResults.setup_steps.some(s => s.step === 'elevenlabs_connection' && s.status === 'connected')
     const hasOrchestration = setupResults.setup_steps.some(s => s.step === 'orchestration' && s.status === 'ready')
     
-    setupResults.ready_to_use = (hasVapi || hasElevenLabs) && hasOrchestration
+    setupResults.ready_to_use = hasElevenLabs && hasOrchestration
     
-    // Step 5: Generate onboarding message
+    // Step 4: Generate onboarding message
     if (setupResults.ready_to_use) {
       setupResults.setup_steps.push({
         step: 'complete',
@@ -156,7 +117,7 @@ serve(async (req) => {
       })
     } else {
       const missing = []
-      if (!hasVapi && !hasElevenLabs) missing.push('Voice provider (VAPI or ElevenLabs)')
+      if (!hasElevenLabs) missing.push('Voice provider (ElevenLabs)')
       if (!hasOrchestration) missing.push('OpenAI for orchestration')
       
       setupResults.setup_steps.push({
@@ -191,50 +152,3 @@ serve(async (req) => {
     )
   }
 })
-
-// Create default VAPI agent
-async function createDefaultVapiAgent() {
-  try {
-    const response = await fetch('https://api.vapi.ai/assistant', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${VAPI_PRIVATE_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        name: 'Default Sales Agent',
-        model: {
-          provider: 'openai',
-          model: 'gpt-4o-mini',
-          temperature: 0.7,
-          messages: [{
-            role: 'system',
-            content: `You are a friendly sales assistant. Your goal is to:
-1. Introduce yourself and the company
-2. Understand the lead's needs
-3. Schedule a meeting if they're interested
-4. Be helpful and professional
-
-Keep responses concise (2-3 sentences). Ask one question at a time.`
-          }]
-        },
-        voice: {
-          provider: 'elevenlabs',
-          voiceId: '21m00Tcm4TlvDq8ikWAM' // Default professional voice
-        },
-        firstMessage: "Hi! I'm calling from your marketing platform. Do you have a quick moment to chat?",
-        endCallMessage: "Thanks for your time! Have a great day.",
-        recordingEnabled: true
-      })
-    })
-    
-    if (response.ok) {
-      const agent = await response.json()
-      console.log(`✅ Created default VAPI agent: ${agent.id}`)
-      return agent
-    }
-  } catch (error) {
-    console.error('Failed to create default VAPI agent:', error)
-  }
-  return null
-}

@@ -18,7 +18,7 @@ Configure these **GitHub repo secrets**:
 - `SUPABASE_ANON_KEY` (the `eyJ...` anon/public JWT key)
 - `SMOKE_EMAIL`
 - `SMOKE_PASSWORD`
-- `SMOKE_WORKSPACE_ID` (optional; recommended for stability)
+- `SMOKE_TENANT_ID` (optional; recommended for stability)
 
 Then set branch protection to require the check **Automation Smoke Harness (PR Gate)**.
 
@@ -27,16 +27,14 @@ Then set branch protection to require the check **Automation Smoke Harness (PR G
 ### Headers (canonical)
 
 - `Authorization: Bearer <access_token>`
-- `x-workspace-id: <workspace_uuid>`
+- `x-tenant-id: <tenant_uuid>`
 
 ### Harness-called functions
 
-- `ai-cmo-autopilot-build`
 - `campaign-orchestrator`
 - `content-generate`
 - `generate-hero-image`
 - `cmo-voice-agent-builder`
-- `ai-cmo-toggle-autopilot`
 
 ## Required Edge Function env vars (Supabase secrets)
 
@@ -48,5 +46,5 @@ Set these in Supabase (not in CI):
 
 Additionally required by specific functions:
 
-- `SUPABASE_SERVICE_ROLE_KEY` (used by `generate-hero-image`, `ai-cmo-autopilot-build`, `ai-cmo-toggle-autopilot`)
+- `SUPABASE_SERVICE_ROLE_KEY` (used by `generate-hero-image`)
 

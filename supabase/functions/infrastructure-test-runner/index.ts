@@ -133,15 +133,6 @@ function validateProviderIdFormat(providerId: string, provider: string): { valid
         return { valid: false, reason: `Invalid Resend ID format: ${providerId}` };
       }
       break;
-    case 'vapi':
-      // Vapi call IDs typically look like: "call_abc123..."
-      if (!/^call_[a-zA-Z0-9]{8,}$/i.test(providerId)) {
-        // Allow more lenient format but flag simulated ones
-        if (providerId.startsWith('call_sim')) {
-          return { valid: false, reason: `Simulated Vapi call ID: ${providerId}` };
-        }
-      }
-      break;
     case 'elevenlabs':
       // ElevenLabs conversation/call IDs - typically alphanumeric with various formats
       // Accept any reasonably long ID that doesn't look simulated
@@ -755,7 +746,7 @@ Deno.serve(async (req) => {
       const testEvidence: Record<string, unknown> = { mode, itr_run_id: itrRunId };
       
       try {
-        // Check if voice is configured - support both VAPI and ElevenLabs
+        // Check if voice is configured - ElevenLabs only
         const { data: voiceSettings } = await supabase
           .from('ai_settings_voice')
           .select('*')
@@ -763,30 +754,27 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         // Determine which provider is available
-        const vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY');
         const elevenLabsApiKey = Deno.env.get('ELEVENLABS_API_KEY');
         
-        const hasVapi = Boolean(vapiPrivateKey && voiceSettings?.default_vapi_assistant_id);
         const hasElevenLabs = Boolean(elevenLabsApiKey || voiceSettings?.elevenlabs_api_key);
         
-        // Determine the provider to use (prefer VAPI if both configured, as it's designed for calls)
-        const voiceProvider = hasVapi ? 'vapi' : (hasElevenLabs ? 'elevenlabs' : null);
+        // Determine the provider to use
+        const voiceProvider = hasElevenLabs ? 'elevenlabs' : null;
         
         testEvidence.voice_provider = voiceProvider;
-        testEvidence.has_vapi = hasVapi;
         testEvidence.has_elevenlabs = hasElevenLabs;
 
         if (!voiceSettings?.is_connected && !voiceProvider) {
           output.tests.voice_e2e = {
             status: 'SKIPPED',
-            reason: 'Voice provider not configured - need VAPI assistant ID or ElevenLabs API key',
+            reason: 'Voice provider not configured - need ElevenLabs API key',
             duration_ms: Date.now() - testStart,
             evidence: testEvidence,
           };
         } else if (!voiceProvider) {
           output.tests.voice_e2e = {
             status: 'SKIPPED',
-            reason: 'No voice provider credentials available (VAPI needs assistant ID, ElevenLabs needs API key)',
+            reason: 'No voice provider credentials available (ElevenLabs needs API key)',
             duration_ms: Date.now() - testStart,
             evidence: testEvidence,
           };
@@ -867,8 +855,7 @@ Deno.serve(async (req) => {
               recipient_phone: lead.phone,
               idempotency_key: `itr-sim-voice-${itrRunId}-${lead.id}`,
               status: 'queued',
-              payload: { 
-                assistant_id: voiceSettings?.default_vapi_assistant_id,
+              payload: {
                 voice_id: voiceSettings?.default_elevenlabs_voice_id,
                 provider: voiceProvider,
                 itr_run_id: itrRunId
@@ -917,11 +904,9 @@ Deno.serve(async (req) => {
             // LIVE: Make calls directly (inline) to test actual provider integration
             // Don't rely on workers - ITR needs to verify real provider connectivity
             
-            const vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY');
             const elevenLabsApiKey = Deno.env.get('ELEVENLABS_API_KEY');
             
             testEvidence.provider_used = voiceProvider;
-            testEvidence.has_vapi_key = Boolean(vapiPrivateKey);
             testEvidence.has_elevenlabs_key = Boolean(elevenLabsApiKey);
             
             // Create campaign run for tracking
@@ -948,7 +933,6 @@ Deno.serve(async (req) => {
               idempotency_key: `itr-live-voice-${itrRunId}-${lead.id}`,
               status: 'queued',
               payload: { 
-                assistant_id: voiceSettings?.default_vapi_assistant_id,
                 voice_id: voiceSettings?.default_elevenlabs_voice_id,
                 provider: voiceProvider,
                 itr_run_id: itrRunId
@@ -970,54 +954,7 @@ Deno.serve(async (req) => {
               output.evidence.outbox_row_ids.push(outboxRow.id);
               
               try {
-                if (voiceProvider === 'vapi' && vapiPrivateKey) {
-                  // Make VAPI call
-                  const assistantId = voiceSettings?.default_vapi_assistant_id;
-                  if (!assistantId) {
-                    throw new Error('VAPI assistant ID not configured');
-                  }
-                  
-                  // For ITR test, we use a test phone number pattern
-                  const customerNumber = outboxRow.recipient_phone || '+15550001001';
-                  
-                  console.log(`[ITR Voice] Making VAPI call to ${customerNumber}`);
-                  
-                  const vapiResponse = await fetch('https://api.vapi.ai/call', {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${vapiPrivateKey}`,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      assistantId,
-                      customer: {
-                        number: customerNumber,
-                      },
-                      // Use a test mode flag if available
-                    }),
-                  });
-                  
-                  const vapiResult = await vapiResponse.json();
-                  
-                  if (vapiResponse.ok && vapiResult.id) {
-                    // Success - update outbox
-                    await supabase
-                      .from('channel_outbox')
-                      .update({
-                        status: 'called',
-                        provider_message_id: vapiResult.id,
-                        provider_response: { ...vapiResult, itr_live: true },
-                      })
-                      .eq('id', outboxRow.id);
-                    
-                    output.evidence.outbox_final_statuses[outboxRow.id] = 'called';
-                    output.evidence.provider_ids.push(vapiResult.id);
-                    callsSucceeded++;
-                  } else {
-                    throw new Error(vapiResult.message || vapiResult.error || 'VAPI call failed');
-                  }
-                  
-                } else if (voiceProvider === 'elevenlabs' && elevenLabsApiKey) {
+                if (voiceProvider === 'elevenlabs' && elevenLabsApiKey) {
                   // ElevenLabs doesn't make outbound phone calls in the same way
                   // It's primarily for TTS/voice generation
                   // For ITR purposes, we'll verify API connectivity

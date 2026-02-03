@@ -18,9 +18,6 @@ verify_jwt = true
 [functions.ai-cmo-lead-status]
 verify_jwt = true
 
-[functions.ai-cmo-toggle-autopilot]
-verify_jwt = true
-
 [functions.ai-cmo-update-goal]
 verify_jwt = true
 
@@ -241,24 +238,6 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.trigger-user-automation]
-verify_jwt = true
-
-[functions.vapi-analytics]
-verify_jwt = true
-
-[functions.vapi-list-assistants]
-verify_jwt = true
-
-[functions.vapi-list-calls]
-verify_jwt = true
-
-[functions.vapi-list-phone-numbers]
-verify_jwt = true
-
-[functions.vapi-manage-assistant]
-verify_jwt = true
-
-[functions.vapi-outbound-call]
 verify_jwt = true
 
 [functions.outbound-prospect-intel]

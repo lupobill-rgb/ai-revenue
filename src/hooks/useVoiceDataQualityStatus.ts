@@ -5,7 +5,7 @@
  * 
  * Returns:
  * - status: 'DEMO_MODE' | 'LIVE_OK' | 'NO_VOICE_PROVIDER_CONNECTED'
- * - voiceConnected: Whether a voice provider (VAPI/ElevenLabs) is connected
+ * - voiceConnected: Whether a voice provider (ElevenLabs) is connected
  * - isDemoMode: Whether demo mode is active
  * - canShowVoiceMetrics: True only when DEMO_MODE or LIVE_OK
  * - loading: Whether the status is still being determined
@@ -67,7 +67,7 @@ export function useVoiceDataQualityStatus(workspaceId?: string | null): VoiceDat
       // ╚══════════════════════════════════════════════════════════════════════════╝
       const { data: voiceSettingsData, error: voiceError } = await supabase
         .from("ai_settings_voice")
-        .select("is_connected, vapi_private_key, elevenlabs_api_key, voice_provider")
+        .select("is_connected, elevenlabs_api_key, voice_provider")
         .eq("tenant_id", workspaceId)
         .limit(1);
 
@@ -82,11 +82,10 @@ export function useVoiceDataQualityStatus(workspaceId?: string | null): VoiceDat
       // - PRIMARY: is_connected === true (authoritative signal from SettingsIntegrations)
       // - FALLBACK: check for key presence (migration resilience for older rows)
       const isExplicitlyConnected = voiceSettings?.is_connected === true;
-      const hasVapi = !!voiceSettings?.vapi_private_key;
       const hasElevenLabs = !!voiceSettings?.elevenlabs_api_key;
       
       // Primary signal is is_connected; key-presence is fallback only
-      setVoiceConnected(isExplicitlyConnected || hasVapi || hasElevenLabs);
+      setVoiceConnected(isExplicitlyConnected || hasElevenLabs);
 
     } catch (err) {
       console.error("[useVoiceDataQualityStatus] Error:", err);

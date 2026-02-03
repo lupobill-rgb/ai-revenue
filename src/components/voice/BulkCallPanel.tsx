@@ -132,14 +132,16 @@ export function BulkCallPanel({
           customer_name: `${lead.first_name} ${lead.last_name}`,
         });
 
-        // Invoke the outbound call via VAPI
-        const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {
+        // Invoke the outbound call via ElevenLabs
+        const { data, error } = await supabase.functions.invoke('elevenlabs-make-call', {
           body: {
-            assistantId,
-            phoneNumberId,
-            customerNumber: lead.phone,
-            customerName: `${lead.first_name} ${lead.last_name}`,
-            leadId: lead.id,
+            agent_id: assistantId,
+            phone_number: lead.phone,
+            lead_data: {
+              id: lead.id,
+              name: `${lead.first_name} ${lead.last_name}`,
+              company: lead.company,
+            },
           },
         });
 

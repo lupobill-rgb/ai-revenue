@@ -15,7 +15,6 @@ interface IntegrationStatus {
 
 interface OrchestrationInput {
   tenant_id: string;
-  tenant_id?: string;
   campaign_id: string;
   action: 'validate' | 'launch' | 'optimize' | 'pause' | 'resume';
   channels?: string[];
@@ -84,7 +83,7 @@ async function validateIntegrations(
     });
   }
 
-  // Check voice/VAPI settings
+  // Check voice/ElevenLabs settings
   if (channels.includes('voice')) {
     const { data: voiceSettings } = await supabase
       .from('ai_settings_voice')
@@ -94,10 +93,10 @@ async function validateIntegrations(
 
     statuses.push({
       name: 'voice',
-      configured: !!voiceSettings?.vapi_private_key || !!voiceSettings?.vapi_public_key,
-      ready: !!voiceSettings?.is_connected && !!voiceSettings?.default_vapi_assistant_id,
-      error: !voiceSettings?.vapi_private_key ? 'VAPI API keys not configured' : 
-             !voiceSettings?.default_vapi_assistant_id ? 'No default voice assistant configured' : undefined,
+      configured: !!voiceSettings?.elevenlabs_api_key,
+      ready: !!voiceSettings?.is_connected && !!voiceSettings?.default_elevenlabs_voice_id,
+      error: !voiceSettings?.elevenlabs_api_key ? 'ElevenLabs API key not configured' :
+             !voiceSettings?.default_elevenlabs_voice_id ? 'No default ElevenLabs voice configured' : undefined,
     });
   }
 
@@ -111,10 +110,10 @@ async function validateIntegrations(
 
     statuses.push({
       name: 'voice_vm',
-      configured: !!voiceSettings?.vapi_private_key || !!voiceSettings?.vapi_public_key,
-      ready: !!voiceSettings?.is_connected && !!voiceSettings?.default_vapi_assistant_id,
-      error: !voiceSettings?.vapi_private_key ? 'VAPI API keys not configured for voicemail' : 
-             !voiceSettings?.default_vapi_assistant_id ? 'No voice assistant configured for voicemail' : undefined,
+      configured: !!voiceSettings?.elevenlabs_api_key,
+      ready: !!voiceSettings?.is_connected && !!voiceSettings?.default_elevenlabs_voice_id,
+      error: !voiceSettings?.elevenlabs_api_key ? 'ElevenLabs API key not configured for voicemail' :
+             !voiceSettings?.default_elevenlabs_voice_id ? 'No ElevenLabs voice configured for voicemail' : undefined,
     });
   }
 
@@ -488,7 +487,7 @@ async function launchCampaign(
         .eq('tenant_id', tenantId)
         .maybeSingle();
 
-      if (voiceSettings?.default_vapi_assistant_id) {
+      if (voiceSettings?.default_elevenlabs_voice_id) {
         // Get leads with phone numbers, filtered by target_tags
         const { data: leads } = await getFilteredLeads(['phone', 'first_name', 'last_name', 'company'], 50);
         const phoneLeads = (leads || []).filter((l: any) => l.phone);
@@ -503,14 +502,13 @@ async function launchCampaign(
                 .insert({
                   tenant_id: tenantId,
                   channel: 'voice',
-                  provider: 'vapi',
+                  provider: 'elevenlabs',
                   recipient_id: lead.id,
                   recipient_phone: lead.phone,
                   payload: {
                     campaign_id: campaignId,
                     asset_id: asset.id,
-                    assistant_id: voiceSettings.default_vapi_assistant_id,
-                    phone_number_id: voiceSettings.default_phone_number_id,
+                    voice_id: voiceSettings.default_elevenlabs_voice_id,
                     script: asset.key_message,
                   },
                   status: 'scheduled',
@@ -543,7 +541,7 @@ async function launchCampaign(
         .eq('tenant_id', tenantId)
         .maybeSingle();
 
-      if (voiceSettings?.default_vapi_assistant_id) {
+      if (voiceSettings?.default_elevenlabs_voice_id) {
         // Get leads with phone numbers, filtered by target_tags/segments
         const { data: leads } = await getFilteredLeads(['phone', 'first_name', 'last_name', 'company'], 100);
         const phoneLeads = (leads || []).filter((l: any) => l.phone);
@@ -558,7 +556,7 @@ async function launchCampaign(
                 .insert({
                   tenant_id: tenantId,
                   channel: 'voice_vm',
-                  provider: 'vapi',
+                  provider: 'elevenlabs',
                   recipient_id: lead.id,
                   recipient_phone: lead.phone,
                   payload: {
@@ -567,6 +565,7 @@ async function launchCampaign(
                     voicemail_asset_id: asset.id,
                     script: asset.key_message,
                     ringless: true,
+                    voice_id: voiceSettings.default_elevenlabs_voice_id,
                   },
                   status: 'scheduled',
                   scheduled_at: new Date().toISOString(),
@@ -727,7 +726,6 @@ async function emitKernelEvent(
 async function logAuditEvent(
   supabaseAdmin: any,
   tenantId: string,
-  tenantId: string,
   agent: string,
   mode: string,
   input: any,
@@ -736,7 +734,6 @@ async function logAuditEvent(
 ): Promise<void> {
   try {
     await supabaseAdmin.from('agent_runs').insert({
-      tenant_id: tenantId,
       tenant_id: tenantId,
       agent,
       mode,
@@ -782,7 +779,7 @@ serve(async (req) => {
     }
 
     const input: OrchestrationInput = await req.json();
-    const { tenant_id, tenant_id, campaign_id, action, channels = [], auto_create_deals = true, pipeline_stage = 'qualification' } = input;
+    const { tenant_id, campaign_id, action, channels = [], auto_create_deals = true, pipeline_stage = 'qualification' } = input;
 
     // Generate unique request ID for correlation tracking
     const requestId = crypto.randomUUID();
@@ -967,7 +964,6 @@ serve(async (req) => {
     // Log orchestration run to audit trail (separate from kernel events)
     await logAuditEvent(
       supabaseAdmin,
-      tenantId,
       tenantId,
       'cmo-campaign-orchestrate',
       action,

@@ -19,7 +19,7 @@ interface VoiceSetupWizardProps {
 
 export function VoiceSetupWizard({ onAddNumber, isAdding }: VoiceSetupWizardProps) {
   const [step, setStep] = useState<'intro' | 'add'>('intro');
-  const [provider, setProvider] = useState('vapi');
+  const [provider, setProvider] = useState('elevenlabs');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [displayName, setDisplayName] = useState('');
 
@@ -50,7 +50,7 @@ export function VoiceSetupWizard({ onAddNumber, isAdding }: VoiceSetupWizardProp
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Voice calling requires a VAPI or ElevenLabs account. You'll need to configure your API keys in Settings first.
+              Voice calling requires an ElevenLabs account. You'll need to configure your API keys in Settings first.
             </AlertDescription>
           </Alert>
 
@@ -64,7 +64,7 @@ export function VoiceSetupWizard({ onAddNumber, isAdding }: VoiceSetupWizardProp
                   <div className="flex-1">
                     <h4 className="font-medium">I have a phone number</h4>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Add an existing VAPI, Twilio, or ElevenLabs number
+                      Add an existing Twilio or ElevenLabs number
                     </p>
                   </div>
                   <ArrowRight className="h-5 w-5 text-muted-foreground" />
@@ -81,7 +81,7 @@ export function VoiceSetupWizard({ onAddNumber, isAdding }: VoiceSetupWizardProp
                   <div className="flex-1">
                     <h4 className="font-medium">Get a new number</h4>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Coming soon: provision via VAPI
+                      Coming soon: provision via ElevenLabs
                     </p>
                   </div>
                 </div>
@@ -118,7 +118,6 @@ export function VoiceSetupWizard({ onAddNumber, isAdding }: VoiceSetupWizardProp
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="vapi">VAPI</SelectItem>
               <SelectItem value="twilio">Twilio</SelectItem>
               <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
             </SelectContent>
