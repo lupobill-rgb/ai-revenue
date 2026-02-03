@@ -817,8 +817,8 @@ export default function SettingsIntegrations() {
     setSaving("voice");
 
     try {
-      // Determine if voice is connected based on having valid API keys
-      const hasVoiceKeys = !!(vapiPrivateKey || elevenlabsApiKey);
+      // Determine if voice is connected based on Eleven Labs configuration
+      const hasVoiceKeys = !!(elevenlabsApiKey && defaultElevenlabsVoiceId);
       
       const payload = {
         tenant_id: tenantId,

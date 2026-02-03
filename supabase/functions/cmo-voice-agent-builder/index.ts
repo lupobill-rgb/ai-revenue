@@ -210,7 +210,7 @@ Make the system_prompt comprehensive and ready to use directly with Vapi or Elev
     }
 
     // Determine provider based on settings
-    const provider = voiceSettings?.vapi_private_key ? 'vapi' : 'elevenlabs';
+    const provider = voiceSettings?.elevenlabs_api_key ? 'elevenlabs' : 'vapi';
     
     // Use configured voice ID if available
     const voiceId = voiceSettings?.default_elevenlabs_voice_id || agentConfig.voice_id || 'EXAVITQu4vr4xnSDxMaL';

@@ -84,7 +84,7 @@ async function validateIntegrations(
     });
   }
 
-  // Check voice/VAPI settings
+  // Check voice/Eleven Labs settings
   if (channels.includes('voice')) {
     const { data: voiceSettings } = await supabase
       .from('ai_settings_voice')
@@ -92,12 +92,15 @@ async function validateIntegrations(
       .eq('tenant_id', workspaceId)
       .maybeSingle();
 
+    const elevenLabsApiKey = voiceSettings?.elevenlabs_api_key;
+    const elevenLabsVoiceId = voiceSettings?.default_elevenlabs_voice_id;
+
     statuses.push({
       name: 'voice',
-      configured: !!voiceSettings?.vapi_private_key || !!voiceSettings?.vapi_public_key,
-      ready: !!voiceSettings?.is_connected && !!voiceSettings?.default_vapi_assistant_id,
-      error: !voiceSettings?.vapi_private_key ? 'VAPI API keys not configured' : 
-             !voiceSettings?.default_vapi_assistant_id ? 'No default voice assistant configured' : undefined,
+      configured: !!elevenLabsApiKey,
+      ready: !!elevenLabsApiKey && !!elevenLabsVoiceId,
+      error: !elevenLabsApiKey ? 'Eleven Labs API key not configured' : 
+             !elevenLabsVoiceId ? 'No Eleven Labs voice ID configured' : undefined,
     });
   }
 
@@ -109,12 +112,15 @@ async function validateIntegrations(
       .eq('tenant_id', workspaceId)
       .maybeSingle();
 
+    const elevenLabsApiKey = voiceSettings?.elevenlabs_api_key;
+    const elevenLabsVoiceId = voiceSettings?.default_elevenlabs_voice_id;
+
     statuses.push({
       name: 'voice_vm',
-      configured: !!voiceSettings?.vapi_private_key || !!voiceSettings?.vapi_public_key,
-      ready: !!voiceSettings?.is_connected && !!voiceSettings?.default_vapi_assistant_id,
-      error: !voiceSettings?.vapi_private_key ? 'VAPI API keys not configured for voicemail' : 
-             !voiceSettings?.default_vapi_assistant_id ? 'No voice assistant configured for voicemail' : undefined,
+      configured: !!elevenLabsApiKey,
+      ready: !!elevenLabsApiKey && !!elevenLabsVoiceId,
+      error: !elevenLabsApiKey ? 'Eleven Labs API key not configured for voicemail' : 
+             !elevenLabsVoiceId ? 'No Eleven Labs voice ID configured for voicemail' : undefined,
     });
   }
 

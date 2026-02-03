@@ -12,6 +12,9 @@ jobs:
   voice-data-quality:
     name: Voice Data Quality & Tenant Invariants
     runs-on: ubuntu-latest
+    env:
+      ELEVEN_LABS_API_KEY: ${{ secrets.ELEVEN_LABS_API_KEY }}
+      ELEVEN_LABS_PROJECT_ID: ${{ secrets.ELEVEN_LABS_PROJECT_ID }}
     
     steps:
       - name: Checkout
