@@ -139,7 +139,7 @@ async function main() {
     .eq("id", workspaceId)
     .maybeSingle();
   const tenantId = workspaceDetails?.tenant_id;
-  if (!tenantId) throw new Error("Unable to resolve tenant_id for workspace");
+  if (!tenantId) throw new Error(`Unable to resolve tenant_id for workspace ${workspaceId}`);
 
   let failed = false;
 
