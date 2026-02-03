@@ -132,6 +132,15 @@ async function main() {
     throw new Error("Unable to resolve workspace. Set SMOKE_WORKSPACE_ID explicitly.");
   }
 
+  // Fetch tenant_id from the workspaces table
+  const { data: workspaceDetails } = await supabase
+    .from("workspaces")
+    .select("tenant_id")
+    .eq("id", workspaceId)
+    .maybeSingle();
+  const tenantId = workspaceDetails?.tenant_id;
+  if (!tenantId) throw new Error("Unable to resolve tenant_id for workspace");
+
   let failed = false;
 
   const run = async (name: string, body?: unknown) => {
@@ -154,6 +163,7 @@ async function main() {
     offer: "AI-powered marketing automation platform",
     channels: ["email", "voice"],
     desiredResult: "leads",
+    tenant_id: tenantId,
     workspaceId,
   });
 
@@ -201,12 +211,12 @@ async function main() {
 
   // 4) AI voice agent generation (builder)
   await run("cmo-voice-agent-builder", {
-    tenant_id: workspaceId,
     workspace_id: workspaceId,
     brand_voice: "Professional, warm, concise",
     icp: "B2B SaaS founders",
     offer: "AI marketing automation",
     constraints: ["Do not mention pricing unless asked", "Comply with TCPA guidelines"],
+    tenant_id: tenantId,
   });
 
   // 5) Autopilot toggle (requires campaign id)
