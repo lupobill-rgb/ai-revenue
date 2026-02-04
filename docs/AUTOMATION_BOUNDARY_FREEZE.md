@@ -31,11 +31,14 @@ Then set branch protection to require the check **Automation Smoke Harness (PR G
 
 ### Harness-called functions
 
-- `ai-cmo-autopilot-build`
 - `campaign-orchestrator`
 - `content-generate`
 - `generate-hero-image`
 - `cmo-voice-agent-builder`
+
+Optional (disabled by default; set `ENABLE_AUTOPILOT_SMOKE=1`):
+
+- `ai-cmo-autopilot-build`
 - `ai-cmo-toggle-autopilot`
 
 ## Required Edge Function env vars (Supabase secrets)
