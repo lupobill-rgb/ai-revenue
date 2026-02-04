@@ -154,6 +154,7 @@ async function main() {
     offer: "AI-powered marketing automation platform",
     channels: ["email", "voice"],
     desiredResult: "leads",
+    tenant_id: workspaceId,
     workspaceId,
   });
 
