@@ -37,9 +37,6 @@ jobs:
           SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
           SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
 
-          # Required tenant for tenant-aware smoke runs
-          TENANT_ID: ${{ secrets.TENANT_ID }}
-
           # Optional: pin a specific workspace for smoke runs
           SMOKE_WORKSPACE_ID: ${{ secrets.SMOKE_WORKSPACE_ID }}
         run: npm run smoke:automation
