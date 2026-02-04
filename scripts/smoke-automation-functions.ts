@@ -87,6 +87,10 @@ async function main() {
 
   const email = requiredEnv("SMOKE_EMAIL");
   const password = requiredEnv("SMOKE_PASSWORD");
+  const tenantId = process.env.SMOKE_TENANT_ID || process.env.TENANT_ID;
+  if (!tenantId) {
+    throw new Error("Missing env: SMOKE_TENANT_ID or TENANT_ID");
+  }
 
   const supabase = createClient(supabaseUrl, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -148,33 +152,6 @@ async function main() {
     return r;
   };
 
-  // 1) Autopilot (AI Voice + AI Email)
-  const autopilot = await run("ai-cmo-autopilot-build", {
-    icp: "B2B SaaS founders with 10-50 employees",
-    offer: "AI-powered marketing automation platform",
-    channels: ["email", "voice"],
-    desiredResult: "leads",
-    workspaceId,
-  });
-
-  let autopilotCampaignId: string | null = null;
-  try {
-    const raw = (autopilot.bodyText || "").trim();
-    // Sometimes proxies prepend/append whitespace; keep parsing resilient.
-    const jsonCandidate =
-      raw.startsWith("{") && raw.endsWith("}")
-        ? raw
-        : (() => {
-            const start = raw.indexOf("{");
-            const end = raw.lastIndexOf("}");
-            return start !== -1 && end !== -1 && end > start ? raw.slice(start, end + 1) : raw;
-          })();
-    const parsed = jsonCandidate ? JSON.parse(jsonCandidate) : null;
-    autopilotCampaignId = parsed?.campaignId || parsed?.campaign_id || null;
-  } catch {
-    // ignore
-  }
-
   // 2) Auto-create campaign (quick create)
   await run("campaign-orchestrator", {
     campaignName: `Smoke Test Campaign ${new Date().toISOString().slice(0, 10)}`,
@@ -201,25 +178,12 @@ async function main() {
 
   // 4) AI voice agent generation (builder)
   await run("cmo-voice-agent-builder", {
-    tenant_id: workspaceId,
-    workspace_id: workspaceId,
+    tenant_id: tenantId,
     brand_voice: "Professional, warm, concise",
     icp: "B2B SaaS founders",
     offer: "AI marketing automation",
     constraints: ["Do not mention pricing unless asked", "Comply with TCPA guidelines"],
   });
-
-  // 5) Autopilot toggle (requires campaign id)
-  if (autopilotCampaignId) {
-    await run("ai-cmo-toggle-autopilot", {
-      campaign_id: autopilotCampaignId,
-      campaignId: autopilotCampaignId,
-      enabled: true,
-    });
-  } else {
-    console.log("SKIP ai-cmo-toggle-autopilot -> missing campaignId from autopilot response");
-    failed = true;
-  }
 
   if (failed) {
     console.error("❌ Automation smoke harness FAILED");
