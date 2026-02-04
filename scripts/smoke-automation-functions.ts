@@ -210,7 +210,10 @@ async function main() {
   });
 
   // 5) Autopilot toggle (requires campaign id)
-  if (autopilotCampaignId) {
+  const enableAutopilot = process.env.ENABLE_AUTOPILOT_SMOKE === "1";
+  if (!enableAutopilot) {
+    console.log("SKIP ai-cmo-toggle-autopilot (disabled)");
+  } else if (autopilotCampaignId) {
     await run("ai-cmo-toggle-autopilot", {
       campaign_id: autopilotCampaignId,
       campaignId: autopilotCampaignId,
