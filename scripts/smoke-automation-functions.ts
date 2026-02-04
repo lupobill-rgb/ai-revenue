@@ -148,31 +148,37 @@ async function main() {
     return r;
   };
 
-  // 1) Autopilot (AI Voice + AI Email)
-  const autopilot = await run("ai-cmo-autopilot-build", {
-    icp: "B2B SaaS founders with 10-50 employees",
-    offer: "AI-powered marketing automation platform",
-    channels: ["email", "voice"],
-    desiredResult: "leads",
-    workspaceId,
-  });
+  const enableAutopilot = process.env.ENABLE_AUTOPILOT_SMOKE === "1";
 
+  // 1) Autopilot (AI Voice + AI Email)
   let autopilotCampaignId: string | null = null;
-  try {
-    const raw = (autopilot.bodyText || "").trim();
-    // Sometimes proxies prepend/append whitespace; keep parsing resilient.
-    const jsonCandidate =
-      raw.startsWith("{") && raw.endsWith("}")
-        ? raw
-        : (() => {
-            const start = raw.indexOf("{");
-            const end = raw.lastIndexOf("}");
-            return start !== -1 && end !== -1 && end > start ? raw.slice(start, end + 1) : raw;
-          })();
-    const parsed = jsonCandidate ? JSON.parse(jsonCandidate) : null;
-    autopilotCampaignId = parsed?.campaignId || parsed?.campaign_id || null;
-  } catch {
-    // ignore
+  if (!enableAutopilot) {
+    console.log("SKIP ai-cmo-autopilot-build (disabled)");
+  } else {
+    const autopilot = await run("ai-cmo-autopilot-build", {
+      icp: "B2B SaaS founders with 10-50 employees",
+      offer: "AI-powered marketing automation platform",
+      channels: ["email", "voice"],
+      desiredResult: "leads",
+      workspaceId,
+    });
+
+    try {
+      const raw = (autopilot.bodyText || "").trim();
+      // Sometimes proxies prepend/append whitespace; keep parsing resilient.
+      const jsonCandidate =
+        raw.startsWith("{") && raw.endsWith("}")
+          ? raw
+          : (() => {
+              const start = raw.indexOf("{");
+              const end = raw.lastIndexOf("}");
+              return start !== -1 && end !== -1 && end > start ? raw.slice(start, end + 1) : raw;
+            })();
+      const parsed = jsonCandidate ? JSON.parse(jsonCandidate) : null;
+      autopilotCampaignId = parsed?.campaignId || parsed?.campaign_id || null;
+    } catch {
+      // ignore
+    }
   }
 
   // 2) Auto-create campaign (quick create)
@@ -209,8 +215,7 @@ async function main() {
     constraints: ["Do not mention pricing unless asked", "Comply with TCPA guidelines"],
   });
 
-  // 5) Autopilot toggle (gated by ENABLE_AUTOPILOT_SMOKE and requires campaign id)
-  const enableAutopilot = process.env.ENABLE_AUTOPILOT_SMOKE === "1";
+  // 5) Autopilot toggle (requires campaign id)
   if (!enableAutopilot) {
     console.log("SKIP ai-cmo-toggle-autopilot (disabled)");
   } else if (autopilotCampaignId) {
