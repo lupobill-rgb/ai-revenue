@@ -39,5 +39,8 @@ jobs:
 
           # Optional: pin a specific workspace for smoke runs
           SMOKE_WORKSPACE_ID: ${{ secrets.SMOKE_WORKSPACE_ID }}
+
+          # Autopilot toggle step is disabled by default
+          ENABLE_AUTOPILOT_SMOKE: "0"
         run: npm run smoke:automation
 
