@@ -47,6 +47,15 @@ function isJwtLikeKey(key: string) {
   return parts.length === 3 && key.startsWith("eyJ");
 }
 
+const smokeMockFlag = (process.env.SMOKE_AUTOMATION_MOCKS || process.env.SMOKE_AUTOMATION_MOCK || "").toLowerCase();
+const useMockResponses = smokeMockFlag === "1" || smokeMockFlag === "true" || smokeMockFlag === "yes";
+const mockResponses: Record<string, unknown> = {
+  "ai-cmo-autopilot-build": {
+    campaignId: "test_campaign_123",
+    status: "created",
+  },
+};
+
 async function callEdgeFunction(opts: {
   supabaseUrl: string;
   anonKey: string;
@@ -55,6 +64,16 @@ async function callEdgeFunction(opts: {
   name: string;
   body?: unknown;
 }): Promise<SmokeResult> {
+  if (useMockResponses) {
+    const mockBody = mockResponses[opts.name] ?? { status: "mocked" };
+    return {
+      name: opts.name,
+      status: 200,
+      ok: true,
+      bodyText: JSON.stringify(mockBody),
+      buildHeader: null,
+    };
+  }
   const url = `${opts.supabaseUrl.replace(/\/+$/, "")}/functions/v1/${opts.name}`;
   const resp = await fetch(url, {
     method: "POST",
